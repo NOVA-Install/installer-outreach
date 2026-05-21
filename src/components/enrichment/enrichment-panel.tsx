@@ -142,6 +142,13 @@ const SOURCES = [
     cost: "~$0.002/search",
   },
   {
+    key: "website_quality",
+    label: "Website Quality & PageSpeed",
+    endpoint: "/api/enrichment/website-quality",
+    description: "PageSpeed scores, form quality (basic vs multi-step), site builder, social links, HTTPS, privacy policy, schema markup",
+    cost: "Free",
+  },
+  {
     key: "creditsafe",
     label: "CreditSafe",
     endpoint: "",

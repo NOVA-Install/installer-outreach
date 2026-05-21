@@ -13,6 +13,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CommandK } from "@/components/layout/command-k";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -38,10 +39,12 @@ export function Sidebar() {
             height={20}
             className="shrink-0"
           />
-          <span className="text-[9px] uppercase tracking-[0.25em] text-sidebar-foreground/30 font-medium mt-0.5 pl-px">
-            Installer Tracker
-          </span>
         </div>
+      </div>
+
+      {/* Search */}
+      <div className="px-2 pt-2">
+        <CommandK />
       </div>
 
       {/* Navigation */}

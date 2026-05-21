@@ -13,6 +13,9 @@ import {
   dataforseoTasks,
 } from "@/lib/db/schema";
 import { eq, sql } from "drizzle-orm";
+import { detectTechnologies } from "@/lib/enrichment/tech-detection";
+import { enrichSingleWebsiteQuality } from "@/lib/enrichment/website-quality";
+import dns from "node:dns/promises";
 
 // Inline single-installer enrichment to avoid the batch job overhead
 
@@ -189,51 +192,68 @@ export async function POST(
           ? installer.website
           : `https://${installer.website}`;
 
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 10000);
+        // Extract domain for DNS lookup
+        let domain: string | null = null;
+        try { domain = new URL(url).hostname.replace(/^www\./, ""); } catch {}
 
-        const res = await fetch(url, {
-          signal: controller.signal,
-          headers: {
-            "User-Agent":
-              "Mozilla/5.0 (compatible; InstallerCRM/1.0)",
-          },
-          redirect: "follow",
-        });
-        clearTimeout(timeout);
+        // Run HTML fetch and DNS lookup in parallel
+        const [htmlResult, dnsResult] = await Promise.allSettled([
+          (async () => {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 10000);
+            const res = await fetch(url, {
+              signal: controller.signal,
+              headers: { "User-Agent": "Mozilla/5.0 (compatible; InstallerCRM/1.0)" },
+              redirect: "follow",
+            });
+            clearTimeout(timeout);
+            return res.text();
+          })(),
+          domain ? (async () => {
+            const records: string[] = [];
+            try { const txt = await dns.resolveTxt(domain!); for (const e of txt) records.push(e.join(" ")); } catch {}
+            try { const c = await dns.resolveCname(domain!); records.push(...c); } catch {}
+            for (const sub of ["crm", "app", "portal", "email", "tracking", "go"]) {
+              try { const c = await dns.resolveCname(`${sub}.${domain}`); records.push(...c); } catch {}
+            }
+            // Match DNS records against known patterns
+            const lowerRecords = records.map((r) => r.toLowerCase());
+            const dnsDetected: string[] = [];
+            let dnsCrm: { name: string } | null = null;
+            const DNS_CRM_PATTERNS: [string[], string][] = [
+              [["hubspot", "hs-site-verification"], "HubSpot"],
+              [["salesforce", "pardot"], "Salesforce"],
+              [["zoho"], "Zoho"],
+              [["activecampaign"], "ActiveCampaign"],
+              [["infusionsoft", "keap"], "Keap"],
+              [["freshworks", "freshsales"], "Freshsales"],
+              [["simplifiedenergy"], "Simplified Energy"],
+              [["autarc.energy", "autarc"], "Autarc"],
+              [["reonic"], "Reonic"],
+              [["easysolar"], "EasySolar"],
+              [["opensolar"], "OpenSolar"],
+              [["sunstak"], "Sunstak"],
+              [["jobnimbus"], "JobNimbus"],
+              [["commusoft"], "Commusoft"],
+              [["simpro"], "SimPRO"],
+              [["tradify"], "Tradify"],
+              [["mailchimp", "mandrillapp", "mcsv.net"], "Mailchimp"],
+              [["sendgrid"], "SendGrid"],
+              [["mailgun"], "Mailgun"],
+            ];
+            for (const [patterns, name] of DNS_CRM_PATTERNS) {
+              if (patterns.some((p) => lowerRecords.some((r) => r.includes(p)))) {
+                dnsDetected.push(name);
+                if (!dnsCrm) dnsCrm = { name };
+              }
+            }
+            return { detected: dnsDetected, crm: dnsCrm };
+          })() : Promise.resolve(null),
+        ]);
 
-        const html = await res.text();
-        const lowerHtml = html.toLowerCase();
-
-        const detected: string[] = [];
-        const checks = {
-          hasGoogleAnalytics: ["gtag(", "google-analytics.com", "googletagmanager.com", "analytics.js", "g-", "ua-"].some((p) => lowerHtml.includes(p)),
-          hasGoogleAds: ["aw-", "googleadservices.com", "google_conversion", "conversion.js", "googleads.g.doubleclick.net", "googlesyndication.com", "adservice.google.com", "ads/ga-audiences"].some((p) => lowerHtml.includes(p)),
-          hasMetaPixel: ["fbq(", "connect.facebook.net", "facebook.com/tr"].some((p) => lowerHtml.includes(p)),
-          hasCrmTool: false,
-          crmToolName: null as string | null,
-          hasLiveChat: false,
-          liveChatTool: null as string | null,
-        };
-
-        if (checks.hasGoogleAnalytics) detected.push("Google Analytics");
-        if (checks.hasGoogleAds) detected.push("Google Ads");
-        if (checks.hasMetaPixel) detected.push("Meta Pixel");
-
-        const crmPatterns: [string, string][] = [["hubspot", "HubSpot"], ["salesforce", "Salesforce"], ["zoho", "Zoho"], ["pipedrive", "Pipedrive"], ["activecampaign", "ActiveCampaign"]];
-        for (const [pattern, name] of crmPatterns) {
-          if (lowerHtml.includes(pattern)) { checks.hasCrmTool = true; checks.crmToolName = name; detected.push(name); break; }
-        }
-
-        const chatPatterns: [string, string][] = [["tawk.to", "Tawk.to"], ["intercom", "Intercom"], ["drift", "Drift"], ["crisp.chat", "Crisp"], ["zendesk", "Zendesk"], ["livechat", "LiveChat"]];
-        for (const [pattern, name] of chatPatterns) {
-          if (lowerHtml.includes(pattern)) { checks.hasLiveChat = true; checks.liveChatTool = name; detected.push(name); break; }
-        }
-
-        if (["bat.bing.com", "uetag", "clarity.ms"].some((p) => lowerHtml.includes(p))) detected.push("Microsoft Ads");
-        if (lowerHtml.includes("googletagmanager.com/gtm.js")) detected.push("Google Tag Manager");
-        if (lowerHtml.includes("hotjar.com")) detected.push("Hotjar");
-        if (lowerHtml.includes("mailchimp.com") || lowerHtml.includes("list-manage.com")) detected.push("Mailchimp");
+        const html = htmlResult.status === "fulfilled" ? htmlResult.value : "";
+        const dnsData = dnsResult.status === "fulfilled" ? dnsResult.value : null;
+        const tech = detectTechnologies(html, dnsData ?? undefined);
 
         await db
           .delete(marketingSignals)
@@ -244,20 +264,20 @@ export async function POST(
           hasMetaAds: null,
           metaAdCount: null,
           metaAdLastSeen: null,
-          hasGoogleAnalytics: checks.hasGoogleAnalytics,
-          hasGoogleAds: checks.hasGoogleAds,
-          hasMetaPixel: checks.hasMetaPixel,
-          hasCrmTool: checks.hasCrmTool,
-          crmToolName: checks.crmToolName,
-          hasLiveChat: checks.hasLiveChat,
-          liveChatTool: checks.liveChatTool,
-          detectedTechnologies: JSON.stringify(detected),
+          hasGoogleAnalytics: tech.hasGoogleAnalytics,
+          hasGoogleAds: tech.hasGoogleAds,
+          hasMetaPixel: tech.hasMetaPixel,
+          hasCrmTool: tech.hasCrmTool,
+          crmToolName: tech.crmToolName,
+          hasLiveChat: tech.hasLiveChat,
+          liveChatTool: tech.liveChatTool,
+          detectedTechnologies: JSON.stringify(tech.detected),
           estimatedMonthlyTraffic: null,
           estimatedAdSpend: null,
           fetchedAt: new Date().toISOString(),
         });
 
-        results.tech_detection = { detected };
+        results.tech_detection = { detected: tech.detected };
       } catch (err) {
         errors.push(
           `Tech Detection: ${err instanceof Error ? err.message : String(err)}`
@@ -1048,6 +1068,19 @@ export async function POST(
       }
     } catch (err) {
       errors.push(`Job Postings: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  if (source === "all" || source === "website_quality") {
+    if (!installer.website) {
+      results.website_quality = { message: "No website URL" };
+    } else {
+      try {
+        const result = await enrichSingleWebsiteQuality(installerId, installer.website, installer.email);
+        results.website_quality = result;
+      } catch (err) {
+        errors.push(`Website Quality: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
   }
 

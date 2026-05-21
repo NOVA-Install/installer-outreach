@@ -9,7 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { MoreHorizontal, Sparkles, Merge, MessageSquarePlus } from "lucide-react";
+import { MoreHorizontal, Sparkles, Merge, MessageSquarePlus, X } from "lucide-react";
 import { EnrichSingle } from "./enrich-single";
 import { TaskTracker } from "./task-tracker";
 import { MergeDialog } from "./merge-dialog";
@@ -71,15 +71,27 @@ export function InstallerActionsMenu({
         onExternalClose={() => setShowMerge(false)}
       />
 
+      {/* Enrichment slide-over panel */}
       {showEnrich && (
-        <div className="space-y-4 mt-4">
-          <EnrichSingle
-            installerId={installerId}
-            hasGoogleReviews={hasGoogleReviews}
-            hasTrustpilotProfile={hasTrustpilotProfile}
-          />
-          <TaskTracker installerId={installerId} />
-        </div>
+        <>
+          <div className="fixed inset-0 bg-black/20 z-40" onClick={() => setShowEnrich(false)} />
+          <div className="fixed top-0 right-0 h-full w-[460px] max-w-[90vw] bg-white border-l border-[#e5e5e5] shadow-2xl z-50 overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-[#e5e5e5] px-4 py-3 flex items-center justify-between z-10">
+              <span className="text-[13px] font-semibold text-[#1D1D1D]">Enrich Data</span>
+              <button onClick={() => setShowEnrich(false)} className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-[#f0f0f0] transition-colors">
+                <X className="h-4 w-4 text-[#6a6a6a]" />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              <EnrichSingle
+                installerId={installerId}
+                hasGoogleReviews={hasGoogleReviews}
+                hasTrustpilotProfile={hasTrustpilotProfile}
+              />
+              <TaskTracker installerId={installerId} />
+            </div>
+          </div>
+        </>
       )}
     </>
   );

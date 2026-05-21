@@ -71,6 +71,7 @@ interface Installer {
   hasGoogleAds: boolean | null;
   hasMetaPixel: boolean | null;
   hasCrmTool: boolean | null;
+  crmToolName: string | null;
   hasLiveChat: boolean | null;
   // Traffic
   googleOrganicEtv: number | null;
@@ -83,6 +84,16 @@ interface Installer {
   isShortlisted: boolean | null;
   priority: number | null;
   priorityNote: string | null;
+  // Website quality
+  formType: string | null;
+  performanceScore: number | null;
+  siteBuilder: string | null;
+  // Social
+  facebookUrl: string | null;
+  instagramUrl: string | null;
+  linkedinUrl: string | null;
+  twitterUrl: string | null;
+  youtubeUrl: string | null;
 }
 
 interface InstallerResponse {
@@ -95,6 +106,7 @@ interface InstallerResponse {
 
 interface InstallerTableProps {
   counties: string[];
+  crmTools: string[];
 }
 
 interface Filters {
@@ -111,11 +123,14 @@ interface Filters {
   scoreMax: string;
   ratingMin: string;
   isShortlisted: string;
+  crmTool: string;
+  formType: string;
 }
 
 const EMPTY_FILTERS: Filters = {
   county: "", stage: "", tier: "", hasWebsite: "", hasEmail: "", hasReviews: "",
   inMcs: "", inNova: "", inTrustMark: "", scoreMin: "", scoreMax: "", ratingMin: "", isShortlisted: "",
+  crmTool: "", formType: "",
 };
 
 function countActiveFilters(f: Filters): number {
@@ -261,26 +276,13 @@ function EditableStage({
   );
 }
 
-// --- Star rating display ---
+// --- Compact rating bar ---
 
-function StarRating({ rating, color }: { rating: number; color: string }) {
+function RatingBar({ rating, max = 5, color }: { rating: number; max?: number; color: string }) {
+  const pct = (rating / max) * 100;
   return (
-    <div className="flex items-center gap-[1px]">
-      {Array.from({ length: 5 }).map((_, i) => {
-        const fill = Math.min(1, Math.max(0, rating - i));
-        return (
-          <div key={i} className="relative h-3 w-3">
-            {/* Empty star */}
-            <Star className="absolute inset-0 h-3 w-3 text-[#e5e5e5]" />
-            {/* Filled star with clip */}
-            {fill > 0 && (
-              <div className="absolute inset-0 overflow-hidden" style={{ width: `${fill * 100}%` }}>
-                <Star className="h-3 w-3" style={{ fill: color, color }} />
-              </div>
-            )}
-          </div>
-        );
-      })}
+    <div className="w-[40px] h-[4px] rounded-full bg-[#f0f0f0] overflow-hidden shrink-0">
+      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
     </div>
   );
 }
@@ -321,16 +323,15 @@ function getDomain(url: string | null): string | null {
 
 function CompanyLogo({ domain, name }: { domain: string | null; name: string }) {
   const [errored, setErrored] = useState(false);
-  // Generate a consistent color from the name
   const hue = name.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0) % 360;
 
   if (!domain || errored) {
     return (
       <div
-        className="h-9 w-9 rounded-[10px] flex items-center justify-center shrink-0 shadow-[0_1px_3px_rgba(0,0,0,0.06)]"
-        style={{ background: `hsl(${hue}, 40%, 92%)` }}
+        className="h-8 w-8 rounded-lg flex items-center justify-center shrink-0"
+        style={{ background: `hsl(${hue}, 35%, 93%)` }}
       >
-        <span className="text-[13px] font-bold" style={{ color: `hsl(${hue}, 45%, 45%)` }}>
+        <span className="text-[12px] font-bold" style={{ color: `hsl(${hue}, 40%, 50%)` }}>
           {name[0]?.toUpperCase() || "?"}
         </span>
       </div>
@@ -340,9 +341,9 @@ function CompanyLogo({ domain, name }: { domain: string | null; name: string }) 
     <img
       src={`https://www.google.com/s2/favicons?domain=${domain}&sz=128`}
       alt=""
-      width={36}
-      height={36}
-      className="h-9 w-9 rounded-[10px] bg-white object-contain shrink-0 shadow-[0_1px_3px_rgba(0,0,0,0.06)] border border-[#f0f0f0]"
+      width={32}
+      height={32}
+      className="h-8 w-8 rounded-lg bg-white object-contain shrink-0 border border-[#f0f0f0]"
       onError={() => setErrored(true)}
     />
   );
@@ -355,33 +356,37 @@ const ALL_COLUMNS: ColumnDef[] = [
     sortKey: "companyName",
     render: (row) => {
       const domain = getDomain(row.website);
-      const sources = [
-        row.inMcs && "MCS",
-        row.inNova && "Nova",
-        row.inTrustMark && "TM",
-      ].filter(Boolean);
       const techs = row.technologiesCertified?.split(",").map((t) => t.trim()).filter(Boolean) || [];
       return (
-        <div className="flex items-center gap-3 py-[3px]">
+        <div className="flex items-center gap-2.5">
           <CompanyLogo domain={domain} name={row.companyName} />
           <div className="min-w-0">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <Link href={`/installers/${row.id}`} className="text-[13px] font-semibold text-[#1D1D1D] hover:text-[#4ABDE8] transition-colors">
+            <div className="flex items-center gap-1.5">
+              <Link href={`/installers/${row.id}`} className="text-[13px] font-semibold text-[#1D1D1D] hover:text-[#4ABDE8] transition-colors truncate">
                 {row.companyName}
               </Link>
-              {row.inMcs && (
-                <img src="/mcs-certified.png" alt="MCS" title="MCS Certified" className="h-[28px] rounded-[3px] object-contain shrink-0" />
-              )}
-              {row.inTrustMark && (
-                <img src="/logo-trustmark.jpg" alt="TrustMark" title="TrustMark Certified" className="h-[22px] rounded-[3px] object-contain shrink-0" />
+              {row.website && (
+                <a href={row.website.startsWith("http") ? row.website : `https://${row.website}`} target="_blank" rel="noopener noreferrer" className="text-[#b0b0b0] hover:text-[#4ABDE8] transition-colors shrink-0">
+                  <ExternalLink className="h-3 w-3" />
+                </a>
               )}
             </div>
-            {techs.length > 0 && (
-              <div className="text-[11px] text-[#9a9a9a] truncate max-w-[280px] mt-[1px]">
-                {techs.slice(0, 3).join(" · ")}
-                {techs.length > 3 && <span className="text-[#c5c5c5]"> +{techs.length - 3}</span>}
-              </div>
-            )}
+            <div className="flex items-center gap-1 mt-0.5">
+              {techs.length > 0 ? techs.map((t) => {
+                const lower = t.toLowerCase();
+                if (lower.includes("solar") || lower.includes("pv")) return <span key={t} title={t} className="inline-flex items-center justify-center h-[18px] w-[18px] rounded bg-amber-50 text-[11px]" aria-label={t}>☀️</span>;
+                if (lower.includes("heat pump") || lower.includes("ashp") || lower.includes("air source")) return <span key={t} title={t} className="inline-flex items-center justify-center h-[18px] w-[18px] rounded bg-sky-50 text-[11px]" aria-label={t}>🌡️</span>;
+                if (lower.includes("battery") || lower.includes("storage")) return <span key={t} title={t} className="inline-flex items-center justify-center h-[18px] w-[18px] rounded bg-emerald-50 text-[11px]" aria-label={t}>🔋</span>;
+                if (lower.includes("wind")) return <span key={t} title={t} className="inline-flex items-center justify-center h-[18px] w-[18px] rounded bg-blue-50 text-[11px]" aria-label={t}>💨</span>;
+                if (lower.includes("biomass")) return <span key={t} title={t} className="inline-flex items-center justify-center h-[18px] w-[18px] rounded bg-orange-50 text-[11px]" aria-label={t}>🪵</span>;
+                if (lower.includes("ground source") || lower.includes("gshp")) return <span key={t} title={t} className="inline-flex items-center justify-center h-[18px] w-[18px] rounded bg-green-50 text-[11px]" aria-label={t}>🌍</span>;
+                if (lower.includes("ev") || lower.includes("charger") || lower.includes("charging")) return <span key={t} title={t} className="inline-flex items-center justify-center h-[18px] w-[18px] rounded bg-violet-50 text-[11px]" aria-label={t}>⚡</span>;
+                if (lower.includes("boiler")) return <span key={t} title={t} className="inline-flex items-center justify-center h-[18px] w-[18px] rounded bg-red-50 text-[11px]" aria-label={t}>🔥</span>;
+                return <span key={t} title={t} className="inline-flex items-center justify-center h-[18px] px-1 rounded bg-gray-50 text-[9px] text-[#9a9a9a] font-medium">{t.slice(0, 3).toUpperCase()}</span>;
+              }) : (
+                <span className="text-[11px] text-[#b0b0b0]">{row.county || ""}</span>
+              )}
+            </div>
           </div>
         </div>
       );
@@ -398,9 +403,14 @@ const ALL_COLUMNS: ColumnDef[] = [
   },
   {
     key: "county",
-    label: "County",
+    label: "Location",
     sortKey: "county",
-    render: (row) => <span className="text-[#6a6a6a]">{row.county || "—"}</span>,
+    render: (row) => row.county ? (
+      <div className="flex items-center gap-1.5">
+        <span className="text-[12px] shrink-0">🇬🇧</span>
+        <span className="text-[13px] text-[#3a3a3a]">{row.county}{row.country ? `, ${row.country}` : ", England"}</span>
+      </div>
+    ) : <span className="text-[#d5d5d5]">—</span>,
   },
   {
     key: "postcode",
@@ -464,31 +474,55 @@ const ALL_COLUMNS: ColumnDef[] = [
     key: "googleReviews",
     label: "Google",
     sortKey: "googleReviewCount",
-    render: (row) =>
-      row.googleRating != null ? (
+    render: (row) => {
+      if (row.googleRating == null) return <span className="text-[#d5d5d5]">—</span>;
+      const r = row.googleRating;
+      const bg = r >= 4.5 ? "#0d652d" : r >= 4.0 ? "#2e7d32" : r >= 3.5 ? "#f9a825" : r >= 3.0 ? "#e65100" : "#c62828";
+      return (
         <div className="flex flex-col gap-0.5">
-          <StarRating rating={row.googleRating} color="#e8b94a" />
-          <div className="flex items-center gap-1">
-            <span className="font-medium tabular-nums text-[12px] text-[#1D1D1D]">{row.googleRating.toFixed(1)}</span>
-            {row.googleReviewCount != null && <span className="text-[11px] text-[#9a9a9a]">({row.googleReviewCount})</span>}
+          <div className="inline-flex items-center gap-1 h-[22px] px-1.5 rounded-md w-fit" style={{ backgroundColor: bg }}>
+            <svg className="h-2.5 w-2.5 shrink-0" viewBox="0 0 24 24" fill="white"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            <span className="font-bold tabular-nums text-[11.5px] text-white leading-none">{r.toFixed(1)}</span>
           </div>
+          {row.googleReviewCount != null && (
+            <span className="text-[11px] text-[#6a6a6a] tabular-nums pl-0.5">{row.googleReviewCount.toLocaleString()} reviews</span>
+          )}
         </div>
-      ) : <span className="text-[#d5d5d5]">—</span>,
+      );
+    },
   },
   {
     key: "trustpilotReviews",
     label: "Trustpilot",
     sortKey: "trustpilotReviewCount",
-    render: (row) =>
-      row.trustpilotRating != null ? (
+    render: (row) => {
+      if (row.trustpilotRating == null) return <span className="text-[#d5d5d5]">—</span>;
+      const r = row.trustpilotRating;
+      const starCount = Math.round(r);
+      const tpColors: Record<number, string> = { 5: "#00b67a", 4: "#73cf11", 3: "#ffce00", 2: "#ff8622", 1: "#ff3722" };
+      const tpColor = tpColors[starCount] || "#00b67a";
+      return (
         <div className="flex flex-col gap-0.5">
-          <StarRating rating={row.trustpilotRating} color="#00b67a" />
-          <div className="flex items-center gap-1">
-            <span className="font-medium tabular-nums text-[12px] text-[#1D1D1D]">{row.trustpilotRating.toFixed(1)}</span>
-            {row.trustpilotReviewCount != null && <span className="text-[11px] text-[#9a9a9a]">({row.trustpilotReviewCount})</span>}
+          <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-[2px]">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-[14px] w-[14px] flex items-center justify-center rounded-[2px]"
+                  style={{ backgroundColor: i < starCount ? tpColor : "#dcdce6" }}
+                >
+                  <svg className="h-[8px] w-[8px]" viewBox="0 0 24 24" fill="white"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                </div>
+              ))}
+            </div>
+            <span className="font-semibold tabular-nums text-[12px] text-[#1D1D1D]">{r.toFixed(1)}</span>
           </div>
+          {row.trustpilotReviewCount != null && (
+            <span className="text-[11px] text-[#6a6a6a] tabular-nums pl-0.5">{row.trustpilotReviewCount.toLocaleString()} reviews</span>
+          )}
         </div>
-      ) : <span className="text-[#d5d5d5]">—</span>,
+      );
+    },
   },
   {
     key: "totalReviews",
@@ -518,10 +552,24 @@ const ALL_COLUMNS: ColumnDef[] = [
     key: "score",
     label: "Score",
     sortKey: "overallScore",
-    render: (row) =>
-      row.overallScore != null
-        ? <span className="font-medium tabular-nums text-[#1D1D1D]">{row.overallScore.toFixed(0)}</span>
-        : <span className="text-[#d5d5d5]">—</span>,
+    render: (row) => {
+      if (row.overallScore == null) return <span className="text-[#d5d5d5]">—</span>;
+      const s = row.overallScore;
+      const pct = Math.min(100, Math.max(0, s));
+      const color = pct >= 70 ? "#10b981" : pct >= 45 ? "#f59e0b" : "#9ca3af";
+      const circumference = 2 * Math.PI * 13;
+      const dasharray = `${(pct / 100) * circumference} ${circumference}`;
+      return (
+        <div className="relative h-[34px] w-[34px]">
+          <svg className="h-full w-full -rotate-90" viewBox="0 0 34 34">
+            <circle cx="17" cy="17" r="13" stroke="#f0f0f0" strokeWidth="2.5" fill="none" />
+            <circle cx="17" cy="17" r="13" stroke={color} strokeWidth="2.5" fill="none"
+              strokeDasharray={dasharray} strokeLinecap="round" />
+          </svg>
+          <span className="absolute inset-0 flex items-center justify-center font-bold tabular-nums text-[11px] leading-none text-[#1D1D1D]">{s.toFixed(0)}</span>
+        </div>
+      );
+    },
   },
   {
     key: "estInstalls",
@@ -536,26 +584,39 @@ const ALL_COLUMNS: ColumnDef[] = [
     key: "website",
     label: "Website",
     sortKey: "website",
-    render: (row) =>
-      row.website ? (
+    render: (row) => {
+      const domain = getDomain(row.website);
+      return domain ? (
         <a
-          href={row.website.startsWith("http") ? row.website : `https://${row.website}`}
+          href={row.website!.startsWith("http") ? row.website! : `https://${row.website}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 h-[26px] px-2.5 rounded-lg bg-[#FAFAF9] border border-[#e5e5e5] text-[11px] font-medium text-[#3a3a3a] hover:border-[#4ABDE8] hover:text-[#4ABDE8] hover:bg-[#FFF8F5] transition-all whitespace-nowrap shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
+          className="text-[12px] text-[#6a6a6a] hover:text-[#4ABDE8] transition-colors truncate block max-w-[160px]"
         >
-          <ExternalLink className="h-3 w-3" />
-          Visit site
+          {domain}
         </a>
-      ) : <span className="text-[#d5d5d5]">—</span>,
+      ) : <span className="text-[#d5d5d5]">—</span>;
+    },
   },
   {
     key: "technologies",
     label: "Technologies",
-    render: (row) =>
-      row.technologiesCertified
-        ? <span className="text-[12px] text-[#6a6a6a] truncate block max-w-[180px]">{row.technologiesCertified}</span>
-        : <span className="text-[#d5d5d5]">—</span>,
+    render: (row) => {
+      if (!row.technologiesCertified) return <span className="text-[#d5d5d5]">—</span>;
+      const techs = row.technologiesCertified.split(",").map((t) => t.trim()).filter(Boolean);
+      const visible = techs.slice(0, 2);
+      const rest = techs.length - visible.length;
+      return (
+        <div className="flex items-center gap-1 flex-wrap">
+          {visible.map((t) => (
+            <span key={t} className="inline-flex items-center px-2 py-0.5 rounded-md bg-[#f0f0f0] text-[11px] font-medium text-[#3a3a3a] whitespace-nowrap">
+              {t}
+            </span>
+          ))}
+          {rest > 0 && <span className="text-[11px] text-[#9a9a9a]">+{rest}</span>}
+        </div>
+      );
+    },
   },
   {
     key: "address",
@@ -630,12 +691,14 @@ const ALL_COLUMNS: ColumnDef[] = [
   {
     key: "organicTraffic",
     label: "Organic Traffic",
+    sortKey: "googleOrganicEtv",
     render: (row) =>
       row.googleOrganicEtv != null ? <span className="tabular-nums text-[12px] text-[#6a6a6a]">{row.googleOrganicEtv.toLocaleString()}</span> : <span className="text-[#d5d5d5]">—</span>,
   },
   {
     key: "paidTraffic",
     label: "Paid Traffic",
+    sortKey: "googlePaidEtv",
     render: (row) =>
       row.googlePaidEtv != null && row.googlePaidEtv > 0 ? <span className="tabular-nums text-[12px] text-[#4ABDE8]">{row.googlePaidEtv.toLocaleString()}</span> : <span className="text-[#d5d5d5]">—</span>,
   },
@@ -706,13 +769,23 @@ const ALL_COLUMNS: ColumnDef[] = [
   {
     key: "sources",
     label: "Sources",
-    render: (row) => (
-      <div className="flex gap-0.5">
-        {row.inMcs && <span className="text-[9px] px-1 py-0.5 rounded bg-blue-50 text-blue-600 font-medium">MCS</span>}
-        {row.inNova && <span className="text-[9px] px-1 py-0.5 rounded bg-purple-50 text-purple-600 font-medium">Nova</span>}
-        {row.inTrustMark && <span className="text-[9px] px-1 py-0.5 rounded bg-green-50 text-green-600 font-medium">TM</span>}
-      </div>
-    ),
+    render: (row) => {
+      const sources = [
+        row.inMcs && { label: "MCS", color: "bg-blue-50 text-blue-600" },
+        row.inNova && { label: "Nova", color: "bg-purple-50 text-purple-600" },
+        row.inTrustMark && { label: "TM", color: "bg-green-50 text-green-600" },
+      ].filter(Boolean) as { label: string; color: string }[];
+      if (sources.length === 0) return <span className="text-[#d5d5d5]">—</span>;
+      return (
+        <div className="flex items-center gap-1">
+          {sources.map((s) => (
+            <span key={s.label} className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold ${s.color}`}>
+              {s.label}
+            </span>
+          ))}
+        </div>
+      );
+    },
   },
   {
     key: "novaYearStarted",
@@ -726,9 +799,76 @@ const ALL_COLUMNS: ColumnDef[] = [
     render: (row) =>
       row.trustmarkStatus ? <span className="text-[12px] text-[#6a6a6a]">{row.trustmarkStatus}</span> : <span className="text-[#d5d5d5]">—</span>,
   },
+  {
+    key: "formType",
+    label: "Form Type",
+    render: (row) => {
+      if (!row.formType) return <span className="text-[#d5d5d5]">—</span>;
+      const styles: Record<string, string> = {
+        multi_step: "bg-emerald-50 text-emerald-600",
+        quote_form: "bg-sky-50 text-sky-600",
+        basic_contact: "bg-amber-50 text-amber-600",
+        none: "bg-red-50 text-red-500",
+      };
+      const labels: Record<string, string> = {
+        multi_step: "Multi-step",
+        quote_form: "Quote form",
+        basic_contact: "Basic contact",
+        none: "No form",
+      };
+      return <span className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold ${styles[row.formType] || ""}`}>{labels[row.formType] || row.formType}</span>;
+    },
+  },
+  {
+    key: "performanceScore",
+    label: "PageSpeed",
+    sortKey: "performanceScore",
+    render: (row) => {
+      if (row.performanceScore == null) return <span className="text-[#d5d5d5]">—</span>;
+      const color = row.performanceScore >= 70 ? "text-emerald-600" : row.performanceScore >= 40 ? "text-amber-600" : "text-red-600";
+      return <span className={`text-[12px] font-semibold tabular-nums ${color}`}>{row.performanceScore}</span>;
+    },
+  },
+  {
+    key: "siteBuilder",
+    label: "Site Builder",
+    render: (row) =>
+      row.siteBuilder ? <span className="text-[12px] text-[#6a6a6a]">{row.siteBuilder}</span> : <span className="text-[#d5d5d5]">—</span>,
+  },
+  {
+    key: "social",
+    label: "Social",
+    render: (row) => {
+      const links = [
+        row.linkedinUrl && { label: "in", color: "#0a66c2", url: row.linkedinUrl },
+        row.facebookUrl && { label: "f", color: "#1877f2", url: row.facebookUrl },
+        row.instagramUrl && { label: "ig", color: "#e4405f", url: row.instagramUrl },
+        row.twitterUrl && { label: "X", color: "#1d9bf0", url: row.twitterUrl },
+        row.youtubeUrl && { label: "YT", color: "#ff0000", url: row.youtubeUrl },
+      ].filter(Boolean) as { label: string; color: string; url: string }[];
+      if (links.length === 0) return <span className="text-[#d5d5d5]">—</span>;
+      return (
+        <div className="flex items-center gap-1">
+          {links.map((l) => (
+            <a
+              key={l.label}
+              href={l.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="h-5 w-5 rounded flex items-center justify-center text-[8px] font-bold transition-opacity hover:opacity-70"
+              style={{ backgroundColor: `${l.color}12`, color: l.color }}
+              title={l.url}
+            >
+              {l.label}
+            </a>
+          ))}
+        </div>
+      );
+    },
+  },
 ];
 
-const DEFAULT_VISIBLE = ["companyName", "county", "postcode", "stage", "googleReviews", "trustpilotReviews", "score", "website"];
+const DEFAULT_VISIBLE = ["companyName", "county", "postcode", "stage", "googleReviews", "trustpilotReviews", "score", "totalReviews", "website", "estInstalls"];
 const STORAGE_KEY = "installer-table-columns-v2";
 const PAGE_SIZE_KEY = "installer-table-pagesize";
 
@@ -795,62 +935,159 @@ function ColumnSettings({ visible, onUpdate }: { visible: string[]; onUpdate: (c
   );
 }
 
-// --- Filter panel ---
+// --- Filter sidebar (Clay-style accordion) ---
 
-function FilterSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
+function FilterAccordion({ label, icon, isActive, children }: { label: string; icon?: ReactNode; isActive?: boolean; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
   return (
-    <div className="space-y-1">
-      <label className="text-[11px] font-medium text-[#9a9a9a] uppercase tracking-wider">{label}</label>
-      <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full h-7 rounded-md border border-[#e5e5e5] bg-white px-2 text-[13px] text-[#1D1D1D] outline-none focus:border-[#4ABDE8]">
-        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
+    <div className="border-b border-[#f0f0f0]">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center gap-2.5 px-4 py-3 text-left hover:bg-[#FAFAF9] transition-colors"
+      >
+        {icon && <span className="text-[#6a6a6a] shrink-0">{icon}</span>}
+        <span className="text-[13.5px] font-semibold text-[#1D1D1D] flex-1">{label}</span>
+        {isActive && <div className="h-[7px] w-[7px] rounded-full bg-[#4ABDE8] shrink-0" />}
+        <ChevronDown className={`h-4 w-4 text-[#9a9a9a] transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && <div className="px-4 pb-3 space-y-2">{children}</div>}
     </div>
   );
 }
 
-function FilterPanel({ filters, onChange, onClear, counties }: { filters: Filters; onChange: (f: Filters) => void; onClear: () => void; counties: string[] }) {
+function FilterSidebarSelect({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full h-8 rounded-lg border border-[#e5e5e5] bg-white px-2.5 text-[13px] text-[#1D1D1D] outline-none focus:border-[#4ABDE8] transition-colors">
+      {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+  );
+}
+
+function FilterSidebar({ filters, onChange, onClear, counties, crmTools, onClose }: { filters: Filters; onChange: (f: Filters) => void; onClear: () => void; counties: string[]; crmTools: string[]; onClose: () => void }) {
   const set = (key: keyof Filters, value: string) => onChange({ ...filters, [key]: value });
   const yesNoOpts = [{ value: "", label: "Any" }, { value: "true", label: "Yes" }, { value: "false", label: "No" }];
+  const active = countActiveFilters(filters);
 
   return (
-    <div className="border-b border-[#e5e5e5] bg-white px-4 py-3 shrink-0">
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-x-3 gap-y-2.5">
-        <FilterSelect label="County" value={filters.county} onChange={(v) => set("county", v)} options={[{ value: "", label: "All Counties" }, ...counties.map((c) => ({ value: c, label: c }))]} />
-        <FilterSelect label="Stage" value={filters.stage} onChange={(v) => set("stage", v)} options={[{ value: "", label: "All Stages" }, ...PIPELINE_STAGES.map((s) => ({ value: s.key, label: s.label }))]} />
-        <FilterSelect label="Tier" value={filters.tier} onChange={(v) => set("tier", v)} options={[{ value: "", label: "All" }, { value: "high", label: "High" }, { value: "medium", label: "Medium" }, { value: "low", label: "Low" }]} />
-        <FilterSelect label="Has Website" value={filters.hasWebsite} onChange={(v) => set("hasWebsite", v)} options={yesNoOpts} />
-        <FilterSelect label="Has Email" value={filters.hasEmail} onChange={(v) => set("hasEmail", v)} options={yesNoOpts} />
-        <FilterSelect label="Has Reviews" value={filters.hasReviews} onChange={(v) => set("hasReviews", v)} options={yesNoOpts} />
-        <div className="space-y-1">
-          <label className="text-[11px] font-medium text-[#9a9a9a] uppercase tracking-wider">Sources</label>
-          <div className="flex items-center gap-3 h-7">
-            {(["inMcs","inNova","inTrustMark"] as const).map((k) => (
-              <label key={k} className="flex items-center gap-1 text-[12px] text-[#3a3a3a] cursor-pointer">
-                <input type="checkbox" checked={filters[k]==="true"} onChange={(e) => set(k, e.target.checked ? "true" : "")} className="h-3 w-3 rounded accent-[#4ABDE8]" />
-                {k === "inMcs" ? "MCS" : k === "inNova" ? "Nova" : "TM"}
+    <div className="w-[280px] shrink-0 border-r border-[#e5e5e5] bg-white flex flex-col h-full overflow-hidden">
+      {/* Sidebar header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[#e5e5e5]">
+        <span className="text-[14px] font-semibold text-[#1D1D1D]">Filters</span>
+        <div className="flex items-center gap-2">
+          {active > 0 && (
+            <button onClick={onClear} className="text-[12px] text-[#4ABDE8] hover:underline">Clear all</button>
+          )}
+          <button onClick={onClose} className="h-6 w-6 flex items-center justify-center rounded-md text-[#9a9a9a] hover:bg-[#f0f0f0] transition-colors">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Scrollable filter list */}
+      <div className="flex-1 overflow-y-auto">
+        {/* PIPELINE section */}
+        <div className="px-4 pt-4 pb-1">
+          <span className="text-[11px] font-bold text-[#4ABDE8] uppercase tracking-wider">Pipeline</span>
+        </div>
+
+        <FilterAccordion label="Stage" isActive={!!filters.stage}>
+          <div className="space-y-1">
+            {[{ key: "", label: "All Stages" }, ...PIPELINE_STAGES.map((s) => ({ key: s.key, label: s.label, color: s.color }))].map((s) => (
+              <label key={s.key} className="flex items-center gap-2 px-1 py-1 rounded-md cursor-pointer hover:bg-[#FAFAF9] transition-colors">
+                <input
+                  type="radio"
+                  name="stage-filter"
+                  checked={filters.stage === s.key}
+                  onChange={() => set("stage", s.key)}
+                  className="h-3.5 w-3.5 accent-[#4ABDE8]"
+                />
+                {"color" in s && s.color && <div className="h-[7px] w-[7px] rounded-full shrink-0" style={{ backgroundColor: s.color }} />}
+                <span className="text-[13px] text-[#3a3a3a]">{s.label}</span>
               </label>
             ))}
           </div>
+        </FilterAccordion>
+
+        <FilterAccordion label="Tier" isActive={!!filters.tier}>
+          <FilterSidebarSelect value={filters.tier} onChange={(v) => set("tier", v)} options={[{ value: "", label: "All Tiers" }, { value: "high", label: "High" }, { value: "medium", label: "Medium" }, { value: "low", label: "Low" }]} />
+        </FilterAccordion>
+
+        <FilterAccordion label="Shortlisted" isActive={!!filters.isShortlisted}>
+          <FilterSidebarSelect value={filters.isShortlisted} onChange={(v) => set("isShortlisted", v)} options={[{ value: "", label: "Any" }, { value: "true", label: "Shortlisted only" }]} />
+        </FilterAccordion>
+
+        {/* LOCATION section */}
+        <div className="px-4 pt-4 pb-1">
+          <span className="text-[11px] font-bold text-[#4ABDE8] uppercase tracking-wider">Location</span>
         </div>
-        <div className="space-y-1">
-          <label className="text-[11px] font-medium text-[#9a9a9a] uppercase tracking-wider">Score</label>
-          <div className="flex items-center gap-1">
-            <input type="number" placeholder="Min" value={filters.scoreMin} onChange={(e) => set("scoreMin", e.target.value)} className="w-full h-7 rounded-md border border-[#e5e5e5] bg-white px-2 text-[12px] outline-none focus:border-[#4ABDE8] tabular-nums" />
-            <span className="text-[#9a9a9a] text-[11px]">–</span>
-            <input type="number" placeholder="Max" value={filters.scoreMax} onChange={(e) => set("scoreMax", e.target.value)} className="w-full h-7 rounded-md border border-[#e5e5e5] bg-white px-2 text-[12px] outline-none focus:border-[#4ABDE8] tabular-nums" />
+
+        <FilterAccordion label="County" isActive={!!filters.county}>
+          <FilterSidebarSelect value={filters.county} onChange={(v) => set("county", v)} options={[{ value: "", label: "All Counties" }, ...counties.map((c) => ({ value: c, label: c }))]} />
+        </FilterAccordion>
+
+        {/* DATA section */}
+        <div className="px-4 pt-4 pb-1">
+          <span className="text-[11px] font-bold text-[#4ABDE8] uppercase tracking-wider">Data Quality</span>
+        </div>
+
+        <FilterAccordion label="Has Website" isActive={!!filters.hasWebsite}>
+          <FilterSidebarSelect value={filters.hasWebsite} onChange={(v) => set("hasWebsite", v)} options={yesNoOpts} />
+        </FilterAccordion>
+
+        <FilterAccordion label="Has Email" isActive={!!filters.hasEmail}>
+          <FilterSidebarSelect value={filters.hasEmail} onChange={(v) => set("hasEmail", v)} options={yesNoOpts} />
+        </FilterAccordion>
+
+        <FilterAccordion label="Has Reviews" isActive={!!filters.hasReviews}>
+          <FilterSidebarSelect value={filters.hasReviews} onChange={(v) => set("hasReviews", v)} options={yesNoOpts} />
+        </FilterAccordion>
+
+        <FilterAccordion label="CRM Tool" isActive={!!filters.crmTool}>
+          <FilterSidebarSelect value={filters.crmTool} onChange={(v) => set("crmTool", v)} options={[{ value: "", label: "Any" }, { value: "has_crm", label: "Has CRM (any)" }, { value: "no_crm", label: "No CRM" }, ...crmTools.map((t) => ({ value: t, label: t }))]} />
+        </FilterAccordion>
+
+        <FilterAccordion label="Form Type" isActive={!!filters.formType}>
+          <FilterSidebarSelect value={filters.formType} onChange={(v) => set("formType", v)} options={[{ value: "", label: "Any" }, { value: "multi_step", label: "Multi-step" }, { value: "quote_form", label: "Quote form" }, { value: "basic_contact", label: "Basic contact" }, { value: "none", label: "No form" }]} />
+        </FilterAccordion>
+
+        {/* SOURCES section */}
+        <div className="px-4 pt-4 pb-1">
+          <span className="text-[11px] font-bold text-[#4ABDE8] uppercase tracking-wider">Sources</span>
+        </div>
+
+        <FilterAccordion label="Registrations" isActive={!!(filters.inMcs || filters.inNova || filters.inTrustMark)}>
+          <div className="space-y-1.5">
+            {([["inMcs", "MCS Certified"], ["inNova", "Nova Energy"], ["inTrustMark", "TrustMark"]] as const).map(([k, label]) => (
+              <label key={k} className="flex items-center gap-2.5 px-1 py-1 rounded-md cursor-pointer hover:bg-[#FAFAF9] transition-colors">
+                <input
+                  type="checkbox"
+                  checked={filters[k] === "true"}
+                  onChange={(e) => set(k, e.target.checked ? "true" : "")}
+                  className="h-4 w-4 rounded accent-[#4ABDE8]"
+                />
+                <span className="text-[13px] text-[#3a3a3a]">{label}</span>
+              </label>
+            ))}
           </div>
+        </FilterAccordion>
+
+        {/* SCORING section */}
+        <div className="px-4 pt-4 pb-1">
+          <span className="text-[11px] font-bold text-[#4ABDE8] uppercase tracking-wider">Scoring</span>
         </div>
-        <div className="space-y-1">
-          <label className="text-[11px] font-medium text-[#9a9a9a] uppercase tracking-wider">Min Rating</label>
-          <input type="number" step="0.1" min="0" max="5" placeholder="e.g. 4.0" value={filters.ratingMin} onChange={(e) => set("ratingMin", e.target.value)} className="w-full h-7 rounded-md border border-[#e5e5e5] bg-white px-2 text-[12px] outline-none focus:border-[#4ABDE8] tabular-nums" />
-        </div>
+
+        <FilterAccordion label="Score Range" isActive={!!(filters.scoreMin || filters.scoreMax)}>
+          <div className="flex items-center gap-2">
+            <input type="number" placeholder="Min" value={filters.scoreMin} onChange={(e) => set("scoreMin", e.target.value)} className="w-full h-8 rounded-lg border border-[#e5e5e5] bg-white px-2.5 text-[13px] outline-none focus:border-[#4ABDE8] tabular-nums" />
+            <span className="text-[#9a9a9a] text-[12px]">–</span>
+            <input type="number" placeholder="Max" value={filters.scoreMax} onChange={(e) => set("scoreMax", e.target.value)} className="w-full h-8 rounded-lg border border-[#e5e5e5] bg-white px-2.5 text-[13px] outline-none focus:border-[#4ABDE8] tabular-nums" />
+          </div>
+        </FilterAccordion>
+
+        <FilterAccordion label="Min Rating" isActive={!!filters.ratingMin}>
+          <input type="number" step="0.1" min="0" max="5" placeholder="e.g. 4.0" value={filters.ratingMin} onChange={(e) => set("ratingMin", e.target.value)} className="w-full h-8 rounded-lg border border-[#e5e5e5] bg-white px-2.5 text-[13px] outline-none focus:border-[#4ABDE8] tabular-nums" />
+        </FilterAccordion>
       </div>
-      {countActiveFilters(filters) > 0 && (
-        <div className="mt-2.5 flex items-center gap-2">
-          <button onClick={onClear} className="text-[12px] text-[#4ABDE8] hover:underline flex items-center gap-1"><X className="h-3 w-3" />Clear all</button>
-          <span className="text-[11px] text-[#9a9a9a]">{countActiveFilters(filters)} active</span>
-        </div>
-      )}
     </div>
   );
 }
@@ -954,7 +1191,7 @@ function InstallerCard({ row, selected, onToggle }: { row: Installer; selected: 
 
 // --- Main table ---
 
-export function InstallerTable({ counties }: InstallerTableProps) {
+export function InstallerTable({ counties, crmTools }: InstallerTableProps) {
   const [data, setData] = useState<Installer[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -1009,7 +1246,16 @@ export function InstallerTable({ counties }: InstallerTableProps) {
     try {
       const params = new URLSearchParams();
       if (search) params.set("search", search);
-      for (const [k, v] of Object.entries(filters)) { if (v) params.set(k === "stage" ? "stage" : k, v); }
+      for (const [k, v] of Object.entries(filters)) {
+        if (!v) continue;
+        if (k === "crmTool") {
+          if (v === "has_crm") params.set("hasCrmTool", "true");
+          else if (v === "no_crm") params.set("hasCrmTool", "false");
+          else params.set("crmToolName", v);
+        } else {
+          params.set(k === "stage" ? "stage" : k, v);
+        }
+      }
       params.set("page", String(page));
       params.set("pageSize", String(pageSize));
       params.set("sortBy", sortBy);
@@ -1134,14 +1380,14 @@ export function InstallerTable({ counties }: InstallerTableProps) {
   return (
     <div className="flex h-full flex-col relative">
       {/* Toolbar */}
-      <div className="flex items-center gap-2 border-b border-[#e5e5e5] bg-white px-4 py-2 shrink-0 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
-        <h1 className="text-[14px] font-semibold text-[#1D1D1D] mr-2 hidden sm:block">Installers</h1>
+      <div className="flex items-center gap-2 border-b border-[#e5e5e5] bg-white px-4 py-2 shrink-0">
+        <h1 className="text-[14px] font-semibold text-[#1D1D1D] hidden sm:block">Installers</h1>
+        {!loading && (
+          <span className="text-[12px] font-medium text-[#9a9a9a] bg-[#f0f0f0] rounded-md px-1.5 py-0.5 tabular-nums hidden sm:inline">
+            {total.toLocaleString()}
+          </span>
+        )}
         <div className="h-4 w-px bg-[#e5e5e5] mx-1 hidden sm:block" />
-
-        <div className="relative flex-1 sm:flex-none">
-          <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9a9a9a]" />
-          <input placeholder="Search..." value={searchInput} onChange={(e) => setSearchInput(e.target.value)} className="h-7 w-full sm:w-[180px] rounded-md border border-[#e5e5e5] bg-white pl-7 pr-2 text-[13px] text-[#1D1D1D] placeholder:text-[#9a9a9a] outline-none focus:border-[#4ABDE8] focus:ring-1 focus:ring-[#4ABDE8]/20 transition-colors" />
-        </div>
 
         {/* Shortlist quick toggle */}
         <button
@@ -1150,7 +1396,7 @@ export function InstallerTable({ counties }: InstallerTableProps) {
             setFilters({ ...filters, isShortlisted: next });
             setPage(1);
           }}
-          className={`h-7 flex items-center gap-1.5 rounded-md border px-2.5 text-[13px] font-medium transition-colors shrink-0 ${
+          className={`h-8 flex items-center gap-1.5 rounded-lg border px-3 text-[13px] font-medium transition-colors shrink-0 ${
             filters.isShortlisted === "true"
               ? "border-[#4ABDE8] bg-[#4ABDE8]/10 text-[#4ABDE8]"
               : "border-[#e5e5e5] bg-white text-[#6a6a6a] hover:bg-[#FAFAF9]"
@@ -1160,104 +1406,116 @@ export function InstallerTable({ counties }: InstallerTableProps) {
           <span className="hidden sm:inline">Shortlist</span>
         </button>
 
-        <button onClick={() => setShowFilters(!showFilters)} className={`h-7 flex items-center gap-1.5 rounded-md border px-2.5 text-[13px] font-medium transition-colors shrink-0 ${showFilters || activeFilterCount > 0 ? "border-[#4ABDE8] bg-[#FFF8F5] text-[#4ABDE8]" : "border-[#e5e5e5] bg-white text-[#6a6a6a] hover:bg-[#FAFAF9]"}`}>
+        <button onClick={() => setShowFilters(!showFilters)} className={`h-8 flex items-center gap-1.5 rounded-lg border px-3 text-[13px] font-medium transition-colors shrink-0 ${showFilters || activeFilterCount > 0 ? "border-[#4ABDE8] bg-[#e8f4f9] text-[#4ABDE8]" : "border-[#e5e5e5] bg-white text-[#6a6a6a] hover:bg-[#FAFAF9]"}`}>
           <Filter className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">Filter</span>
           {activeFilterCount > 0 && <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#4ABDE8] text-[10px] font-semibold text-white px-1">{activeFilterCount}</span>}
         </button>
 
         <div className="ml-auto flex items-center gap-2">
-          <span className="text-[12px] text-[#9a9a9a] tabular-nums hidden sm:inline">{total.toLocaleString()} rows</span>
           <ColumnSettings visible={visibleColumns} onUpdate={updateColumns} />
           <AddInstallerDialog />
         </div>
       </div>
 
-      {showFilters && <FilterPanel filters={filters} onChange={(f) => { setFilters(f); setPage(1); }} onClear={() => { setFilters(EMPTY_FILTERS); setPage(1); }} counties={counties} />}
-
-      {/* Desktop table */}
-      <div className="flex-1 overflow-auto bg-white hidden md:block">
-        <table className="border-collapse text-[13px]" style={{ tableLayout: "fixed", minWidth: "100%" }}>
-          <colgroup>
-            <col style={{ width: 36 }} />
-            {columns.map((col) => (
-              <col key={col.key} style={colWidths[col.key] ? { width: colWidths[col.key] } : undefined} />
-            ))}
-          </colgroup>
-          <thead className="sticky top-0 z-10">
-            <tr className="bg-[#FAFAF9] border-b border-[#e5e5e5]">
-              <th className="w-[36px] px-2.5 py-2.5">
-                <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} className="h-3.5 w-3.5 rounded accent-[#4ABDE8]" />
-              </th>
-              {columns.map((col) => (
-                <th key={col.key} className="text-left font-medium text-[#9a9a9a] text-[11px] uppercase tracking-wider px-3 py-2.5 whitespace-nowrap relative group/th">
-                  {col.sortKey ? <SortHeader label={col.label} column={col.sortKey} /> : col.label}
-                  <div
-                    onMouseDown={(e) => startResize(col.key, e)}
-                    className="absolute right-0 top-0 h-full w-[4px] cursor-col-resize opacity-0 group-hover/th:opacity-100 hover:!opacity-100 bg-[#4ABDE8]/40 transition-opacity"
-                  />
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              Array.from({ length: 15 }).map((_, i) => (
-                <tr key={i} className="border-b border-[#f0f0f0]">
-                  <td className="px-2.5 py-3"><Skeleton className="h-3.5 w-3.5 rounded" /></td>
-                  {columns.map((col) => (
-                    <td key={col.key} className="px-3 py-3 overflow-hidden"><Skeleton className="h-4 w-full rounded" /></td>
-                  ))}
-                </tr>
-              ))
-            ) : data.length === 0 ? (
-              <tr>
-                <td colSpan={columns.length + 1} className="px-3 py-20 text-center">
-                  <div className="flex flex-col items-center gap-2">
-                    <div className="h-10 w-10 rounded-xl bg-[#ece9e5] flex items-center justify-center">
-                      <Search className="h-5 w-5 text-[#9a9a9a]" />
-                    </div>
-                    <p className="text-[13px] font-medium text-[#6a6a6a]">No installers found</p>
-                    <p className="text-[12px] text-[#9a9a9a]">Try adjusting your search or filters</p>
-                  </div>
-                </td>
-              </tr>
-            ) : (
-              data.filter((row, idx, arr) => arr.findIndex((r) => r.id === row.id) === idx).map((row, rowIdx) => (
-                <tr key={row.id} className={`border-b border-[#f0f0f0] transition-colors ${selected.has(row.id) ? "bg-[#FFF8F5]" : rowIdx % 2 === 1 ? "bg-[#FAFAF9]/50" : "hover:bg-[#FAFAF9]"}`}>
-                  <td className="px-2.5 py-[6px]">
-                    <input type="checkbox" checked={selected.has(row.id)} onChange={() => toggleSelect(row.id)} className="h-3.5 w-3.5 rounded accent-[#4ABDE8]" />
-                  </td>
-                  {columns.map((col) => (
-                    <td key={col.key} className="px-3 py-[6px] overflow-hidden">
-                      {col.render(row, handleCellUpdate)}
-                    </td>
-                  ))}
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Mobile card list */}
-      <div className="flex-1 overflow-auto bg-[#F5F4F3] p-3 space-y-2 md:hidden">
-        {loading ? (
-          Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="border border-[#e5e5e5] rounded-xl bg-white p-3.5">
-              <Skeleton className="h-4 w-3/4 mb-2" />
-              <Skeleton className="h-3 w-1/2 mb-1" />
-              <Skeleton className="h-3 w-1/3" />
-            </div>
-          ))
-        ) : data.length === 0 ? (
-          <div className="text-center text-[13px] text-[#9a9a9a] py-12">No installers found</div>
-        ) : (
-          data.map((row) => (
-            <InstallerCard key={row.id} row={row} selected={selected.has(row.id)} onToggle={() => toggleSelect(row.id)} />
-          ))
+      {/* Main content area with optional sidebar */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Filter sidebar */}
+        {showFilters && (
+          <FilterSidebar
+            filters={filters}
+            onChange={(f) => { setFilters(f); setPage(1); }}
+            onClear={() => { setFilters(EMPTY_FILTERS); setPage(1); }}
+            counties={counties}
+            crmTools={crmTools}
+            onClose={() => setShowFilters(false)}
+          />
         )}
-      </div>
+
+        {/* Desktop table */}
+        <div className="flex-1 overflow-auto bg-white hidden md:block">
+          <table className="border-collapse text-[13px]" style={{ tableLayout: "fixed", minWidth: "100%" }}>
+            <colgroup>
+              <col style={{ width: 36 }} />
+              {columns.map((col) => (
+                <col key={col.key} style={colWidths[col.key] ? { width: colWidths[col.key] } : undefined} />
+              ))}
+            </colgroup>
+            <thead className="sticky top-0 z-10">
+              <tr className="bg-[#FAFAFA] border-b border-[#e8e8e8]">
+                <th className="w-[36px] px-3 py-2.5">
+                  <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} className="h-3.5 w-3.5 rounded accent-[#4ABDE8]" />
+                </th>
+                {columns.map((col) => (
+                  <th key={col.key} className="text-left font-medium text-[#6a6a6a] text-[12px] px-4 py-2.5 whitespace-nowrap relative group/th">
+                    {col.sortKey ? <SortHeader label={col.label} column={col.sortKey} /> : col.label}
+                    <div
+                      onMouseDown={(e) => startResize(col.key, e)}
+                      className="absolute right-0 top-0 h-full w-[4px] cursor-col-resize opacity-0 group-hover/th:opacity-100 hover:!opacity-100 bg-[#4ABDE8]/40 transition-opacity"
+                    />
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                Array.from({ length: 15 }).map((_, i) => (
+                  <tr key={i} className="border-b border-[#f0f0f0]">
+                    <td className="px-3 py-4"><Skeleton className="h-3.5 w-3.5 rounded" /></td>
+                    {columns.map((col) => (
+                      <td key={col.key} className="px-4 py-4 overflow-hidden"><Skeleton className="h-4 w-full rounded" /></td>
+                    ))}
+                  </tr>
+                ))
+              ) : data.length === 0 ? (
+                <tr>
+                  <td colSpan={columns.length + 1} className="px-3 py-20 text-center">
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="h-10 w-10 rounded-xl bg-[#ece9e5] flex items-center justify-center">
+                        <Search className="h-5 w-5 text-[#9a9a9a]" />
+                      </div>
+                      <p className="text-[13px] font-medium text-[#6a6a6a]">No installers found</p>
+                      <p className="text-[12px] text-[#9a9a9a]">Try adjusting your search or filters</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                data.filter((row, idx, arr) => arr.findIndex((r) => r.id === row.id) === idx).map((row) => (
+                  <tr key={row.id} className={`border-b border-[#f0f0f0] transition-colors ${selected.has(row.id) ? "bg-[#e8f4f9]/30" : "hover:bg-[#FAFAF9]/70"}`}>
+                    <td className="px-3 py-3">
+                      <input type="checkbox" checked={selected.has(row.id)} onChange={() => toggleSelect(row.id)} className="h-3.5 w-3.5 rounded accent-[#4ABDE8]" />
+                    </td>
+                    {columns.map((col) => (
+                      <td key={col.key} className="px-4 py-3 overflow-hidden">
+                        {col.render(row, handleCellUpdate)}
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Mobile card list */}
+        <div className="flex-1 overflow-auto bg-[#F5F4F3] p-3 space-y-2 md:hidden">
+          {loading ? (
+            Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="border border-[#e5e5e5] rounded-xl bg-white p-3.5">
+                <Skeleton className="h-4 w-3/4 mb-2" />
+                <Skeleton className="h-3 w-1/2 mb-1" />
+                <Skeleton className="h-3 w-1/3" />
+              </div>
+            ))
+          ) : data.length === 0 ? (
+            <div className="text-center text-[13px] text-[#9a9a9a] py-12">No installers found</div>
+          ) : (
+            data.map((row) => (
+              <InstallerCard key={row.id} row={row} selected={selected.has(row.id)} onToggle={() => toggleSelect(row.id)} />
+            ))
+          )}
+        </div>
+      </div>{/* close flex wrapper for sidebar + content */}
 
       {/* Bulk action bar */}
       {selected.size > 0 && (

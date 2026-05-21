@@ -32,6 +32,7 @@ const SOURCES = [
   { key: "google_business", label: "Google Business Info", cost: "~$0.002", group: "business" },
   { key: "google_ads", label: "Google Ads Transparency", cost: "~$0.002", group: "marketing" },
   { key: "job_postings", label: "Job Postings", cost: "~$0.002", group: "signals" },
+  { key: "website_quality", label: "Website Quality & PageSpeed", cost: "Free", group: "free" },
   { key: "creditsafe", label: "CreditSafe", cost: "Subscription", disabled: true, group: "other" },
 ];
 

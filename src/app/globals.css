@@ -134,3 +134,11 @@
     @apply font-sans;
   }
 }
+
+/* Score ring animation */
+@keyframes score-ring-fill {
+  from { stroke-dasharray: 0 213.6; }
+}
+svg circle[stroke-dasharray] {
+  animation: score-ring-fill 1s ease-out forwards;
+}

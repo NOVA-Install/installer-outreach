@@ -152,6 +152,12 @@ export const marketingSignals = pgTable("marketing_signals", {
   detectedTechnologies: text("detected_technologies"),
   estimatedMonthlyTraffic: integer("estimated_monthly_traffic"),
   estimatedAdSpend: real("estimated_ad_spend"),
+  // Social media profile URLs (extracted from website HTML)
+  facebookUrl: text("facebook_url"),
+  instagramUrl: text("instagram_url"),
+  linkedinUrl: text("linkedin_url"),
+  twitterUrl: text("twitter_url"),
+  youtubeUrl: text("youtube_url"),
   fetchedAt: text("fetched_at").notNull(),
 });
 
@@ -303,6 +309,39 @@ export const jobPostings = pgTable("job_postings", {
   totalPostings: integer("total_postings"),
   postings: text("postings"), // JSON array of { title, location, source, url, datePosted }
   isHiring: boolean("is_hiring"),
+  fetchedAt: text("fetched_at").notNull(),
+});
+
+// Website quality / PageSpeed data
+export const websiteQuality = pgTable("website_quality", {
+  id: serial("id").primaryKey(),
+  installerId: integer("installer_id")
+    .notNull()
+    .references(() => installers.id),
+  // PageSpeed Insights scores (0-100)
+  performanceScore: integer("performance_score"),
+  accessibilityScore: integer("accessibility_score"),
+  bestPracticesScore: integer("best_practices_score"),
+  seoScore: integer("seo_score"),
+  // Form quality
+  formType: text("form_type"), // "none" | "basic_contact" | "quote_form" | "multi_step"
+  formDetails: text("form_details"), // JSON: detected fields, step indicators, etc.
+  // Website signals
+  siteBuilder: text("site_builder"), // "wordpress" | "wix" | "squarespace" | "custom" | etc.
+  hasSocialLinks: boolean("has_social_links"),
+  hasFavicon: boolean("has_favicon"),
+  isMobileResponsive: boolean("is_mobile_responsive"),
+  hasPrivacyPolicy: boolean("has_privacy_policy"),
+  hasCookieConsent: boolean("has_cookie_consent"),
+  copyrightYear: integer("copyright_year"),
+  hasSchemaMarkup: boolean("has_schema_markup"),
+  hasBlog: boolean("has_blog"),
+  wordpressVersion: text("wordpress_version"),
+  brokenImageCount: integer("broken_image_count"),
+  imageCount: integer("image_count"),
+  hasGenericEmail: boolean("has_generic_email"),
+  responseTimeMs: integer("response_time_ms"),
+  isHttps: boolean("is_https"),
   fetchedAt: text("fetched_at").notNull(),
 });
 

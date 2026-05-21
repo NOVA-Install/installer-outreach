@@ -33,7 +33,7 @@ serve(async (req) => {
     page++;
   }
 
-  // Only skip installers that have traffic data with actual values (not all NULLs)
+  // Skip installers that have real traffic data (not null-only rows from previous failed batches)
   let existingTrafficIds: number[] = [];
   page = 0;
   while (true) {
@@ -42,7 +42,6 @@ serve(async (req) => {
       .select("installer_id, google_organic_etv, google_paid_etv, bing_organic_etv")
       .range(page * 1000, (page + 1) * 1000 - 1);
     if (!data || data.length === 0) break;
-    // Only consider as "existing" if at least one traffic field has data
     for (const row of data) {
       if (row.google_organic_etv != null || row.google_paid_etv != null || row.bing_organic_etv != null) {
         existingTrafficIds.push(row.installer_id);
@@ -83,9 +82,13 @@ serve(async (req) => {
   for (const inst of toProcess) {
     if (!inst.website) continue;
     try {
-      const raw = inst.website as string;
+      let raw = (inst.website as string).trim();
+      // Handle pipe-separated multiple websites - take the first one
+      if (raw.includes("|")) raw = raw.split("|")[0].trim();
       const hostname = raw.startsWith("http") ? new URL(raw).hostname : raw.split("/")[0];
-      const withoutWww = hostname.replace(/^www\./, "");
+      const withoutWww = hostname.replace(/^www\./, "").toLowerCase();
+      // Skip invalid domains (spaces, no dot, too short)
+      if (!withoutWww || withoutWww.length < 3 || !withoutWww.includes(".") || /\s/.test(withoutWww)) continue;
       domainMap.set(withoutWww, inst.id);
       domainMap.set(hostname, inst.id);
       if (!allDomains.includes(withoutWww)) allDomains.push(withoutWww);
@@ -98,9 +101,9 @@ serve(async (req) => {
   let errors = 0;
   let skipped = 0;
 
-  // Batch in groups of 200 (smaller batches = more reliable results from API)
-  for (let i = 0; i < allDomains.length; i += 200) {
-    const batch = allDomains.slice(i, i + 200);
+  // Use larger API batches (API returns all results), but batch DB writes
+  for (let i = 0; i < allDomains.length; i += 100) {
+    const batch = allDomains.slice(i, i + 100);
 
     try {
       // Google + Bing in parallel
@@ -141,30 +144,34 @@ serve(async (req) => {
         if (item.target) bingByTarget.set(item.target, item);
       }
 
-      // Only create rows for domains the API actually returned data for
+      // Collect all rows for batch insert
+      const toInsert: Record<string, unknown>[] = [];
+      const toDeleteIds: number[] = [];
       const processedIds = new Set<number>();
+
       for (const domain of batch) {
         const instId = domainMap.get(domain);
         if (!instId || processedIds.has(instId)) continue;
         processedIds.add(instId);
+        toDeleteIds.push(instId);
 
         const gItem = googleByTarget.get(domain);
         const bItem = bingByTarget.get(domain);
 
-        // Skip domains where neither Google nor Bing returned any data
-        // These will be retried on the next run instead of storing NULLs
         if (!gItem && !bItem) {
           skipped++;
+          toInsert.push({
+            installer_id: instId,
+            source: "bulk_no_data",
+            fetched_at: new Date().toISOString(),
+          });
           continue;
         }
 
         const gMetrics = (gItem?.metrics || {}) as Record<string, { etv?: number; count?: number }>;
         const bMetrics = (bItem?.metrics || {}) as Record<string, { etv?: number; count?: number }>;
 
-        // Delete any existing NULL row from a previous run before inserting
-        await supabase.from("traffic_data").delete().eq("installer_id", instId);
-
-        await supabase.from("traffic_data").insert({
+        toInsert.push({
           installer_id: instId,
           google_organic_etv: gMetrics.organic?.etv ?? null,
           google_organic_count: gMetrics.organic?.count ?? null,
@@ -183,6 +190,14 @@ serve(async (req) => {
         });
 
         processed++;
+      }
+
+      // Batch delete existing rows then batch insert new ones
+      if (toDeleteIds.length > 0) {
+        await supabase.from("traffic_data").delete().in("installer_id", toDeleteIds);
+      }
+      if (toInsert.length > 0) {
+        await supabase.from("traffic_data").insert(toInsert);
       }
 
       // Update progress after each batch
@@ -213,8 +228,8 @@ serve(async (req) => {
     errors,
     skipped,
     total: allDomains.length,
-    remaining: remaining - processed,
-    message: `Traffic enrichment: ${processed} processed, ${skipped} skipped (no API data), ${remaining - processed} remaining`,
+    remaining: remaining - processed - skipped,
+    message: `Traffic enrichment: ${processed} with data, ${skipped} no data in API, ${remaining - processed - skipped} remaining`,
   }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });

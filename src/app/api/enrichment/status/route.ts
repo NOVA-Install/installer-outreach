@@ -8,6 +8,7 @@ import {
   companiesHouseData,
   marketingSignals,
   seoData,
+  trafficData,
   installerScores,
   dataforseoTasks,
 } from "@/lib/db/schema";
@@ -40,6 +41,10 @@ export async function GET() {
   const [chCount] = await db.select({ count: count() }).from(companiesHouseData);
   const [marketingCount] = await db.select({ count: count() }).from(marketingSignals);
   const [seoCount] = await db.select({ count: count() }).from(seoData);
+  const [trafficCount] = await db
+    .select({ count: count() })
+    .from(trafficData)
+    .where(sql`${trafficData.googleOrganicEtv} IS NOT NULL OR ${trafficData.googlePaidEtv} IS NOT NULL OR ${trafficData.bingOrganicEtv} IS NOT NULL`);
   const [scoresCount] = await db.select({ count: count() }).from(installerScores);
 
   // Pending DataForSEO tasks breakdown
@@ -96,6 +101,7 @@ export async function GET() {
       companies_house: chCount?.count ?? 0,
       tech_detection: marketingCount?.count ?? 0,
       seo: seoCount?.count ?? 0,
+      traffic: trafficCount?.count ?? 0,
       scores: scoresCount?.count ?? 0,
     },
     jobs: jobsByType,

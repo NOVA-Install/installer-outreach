@@ -4,7 +4,6 @@ import { useState } from "react";
 import { PIPELINE_STAGES, type PipelineStage } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { ChevronRight } from "lucide-react";
 
 export function PipelineStageSelector({
   installerId,
@@ -43,37 +42,34 @@ export function PipelineStageSelector({
 
   return (
     <div className="space-y-2">
-      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+      <p className="text-[11px] font-medium text-[#9a9a9a] uppercase tracking-[0.06em]">
         Pipeline Stage
       </p>
-      <div className="flex items-center gap-0.5 flex-wrap">
+      <div className="flex items-center gap-1 flex-wrap">
         {PIPELINE_STAGES.map((s, i) => {
           const isActive = s.key === stage;
           const isPast = i < currentIndex;
-          const stageColor = s.color;
 
           return (
-            <div key={s.key} className="flex items-center">
+            <div key={s.key} className="flex items-center gap-1">
               {i > 0 && (
-                <ChevronRight
-                  className={cn(
-                    "h-3 w-3 mx-0.5 shrink-0",
-                    isPast ? "text-foreground/30" : "text-foreground/10"
-                  )}
-                />
+                <div className={cn(
+                  "w-4 h-px",
+                  isPast ? "bg-[#d0d0d0]" : "bg-[#ebebeb]"
+                )} />
               )}
               <button
                 onClick={() => handleStageChange(s.key)}
                 disabled={updating}
                 className={cn(
-                  "px-2.5 py-1 rounded-lg text-xs font-medium transition-all whitespace-nowrap",
+                  "relative px-3 py-1.5 rounded-full text-[12px] font-medium transition-all duration-200 whitespace-nowrap",
                   isActive
-                    ? "text-white shadow-sm"
+                    ? "text-white shadow-[0_2px_8px_rgba(0,0,0,0.12)]"
                     : isPast
-                      ? "bg-muted/80 text-foreground/60 hover:bg-muted"
-                      : "bg-transparent text-foreground/40 hover:bg-muted/60 hover:text-foreground/60"
+                      ? "bg-[#f0f0f0] text-[#6a6a6a] hover:bg-[#e8e8e8]"
+                      : "text-[#b0b0b0] hover:bg-[#f5f5f5] hover:text-[#6a6a6a]"
                 )}
-                style={isActive ? { backgroundColor: stageColor } : undefined}
+                style={isActive ? { backgroundColor: s.color } : undefined}
               >
                 {s.label}
               </button>

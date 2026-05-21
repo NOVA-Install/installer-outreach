@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { installers } from "@/lib/db/schema";
 import { eq, isNull, sql, and } from "drizzle-orm";
 import { aiMatchCompaniesHouse } from "@/lib/enrichment/ai-matcher";
+import { tieredCompanyMatch, type CompanyCandidate } from "@/lib/enrichment/company-matcher";
 
 // GET: list installers without a legal entity name
 export async function GET() {
@@ -128,52 +129,63 @@ export async function POST(request: NextRequest) {
     })
   );
 
-  // Use AI to verify the best match instead of blind postcode matching
-  try {
-    const chCandidates = results.map((r: { companyName: string; companyNumber: string; status: string; address: string; postcodeMatch: boolean }, idx: number) => ({
-      index: idx,
-      companyName: r.companyName,
-      companyNumber: r.companyNumber,
-      status: r.status,
-      address: r.address,
-      postalCode: null as string | null,
-      sicCodes: null as string[] | null,
-    }));
+  // Tiered matching: exact → similarity → AI (only if ambiguous)
+  // Extract postal codes from the address strings for proper matching
+  const chCandidates: CompanyCandidate[] = results.map(
+    (r: { companyName: string; companyNumber: string; status: string; address: string; postcodeMatch: boolean }, idx: number) => {
+      // Try to extract postcode from the address string (last part after comma)
+      const addressParts = r.address ? r.address.split(",").map((s: string) => s.trim()) : [];
+      const lastPart = addressParts[addressParts.length - 1] || null;
+      // UK postcodes match pattern like "SW1A 1AA", "B1 2NJ", "EC2A 4NE"
+      const looksLikePostcode = lastPart && /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i.test(lastPart);
 
-    const aiResult = await aiMatchCompaniesHouse(
-      { companyName: installer.companyName, website: null, postcode: installer.postcode, county: null },
-      chCandidates
-    );
-
-    if (aiResult.matched && aiResult.matchIndex != null && aiResult.confidence === "high") {
-      const match = results[aiResult.matchIndex];
-      await db
-        .update(installers)
-        .set({
-          legalEntityName: match.companyName,
-          legalEntityNumber: match.companyNumber,
-          updatedAt: new Date().toISOString(),
-        })
-        .where(eq(installers.id, installerId));
-
-      return NextResponse.json({
-        autoMatched: true,
-        match,
-        aiReasoning: aiResult.reasoning,
-        aiConfidence: aiResult.confidence,
-        results,
-      });
+      return {
+        index: idx,
+        companyName: r.companyName,
+        companyNumber: r.companyNumber,
+        status: r.status,
+        address: r.address,
+        postalCode: looksLikePostcode ? lastPart : null,
+        sicCodes: null as string[] | null,
+      };
     }
+  );
+
+  const matchResult = await tieredCompanyMatch(
+    { companyName: installer.companyName, postcode: installer.postcode },
+    chCandidates,
+    aiMatchCompaniesHouse
+  );
+
+  if (matchResult.matched && matchResult.matchIndex != null && matchResult.confidence !== "low") {
+    const match = results[matchResult.matchIndex];
+    await db
+      .update(installers)
+      .set({
+        legalEntityName: match.companyName,
+        legalEntityNumber: match.companyNumber,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(installers.id, installerId));
 
     return NextResponse.json({
-      autoMatched: false,
-      aiReasoning: aiResult.reasoning,
-      aiConfidence: aiResult.confidence,
-      aiSuggestedIndex: aiResult.matched ? aiResult.matchIndex : null,
+      autoMatched: true,
+      match,
+      matchTier: matchResult.tier,
+      matchConfidence: matchResult.confidence,
+      matchReasoning: matchResult.reasoning,
+      similarityScore: matchResult.similarityScore,
       results,
     });
-  } catch {
-    // AI unavailable — return results for manual review (no auto-accept)
-    return NextResponse.json({ autoMatched: false, results });
   }
+
+  return NextResponse.json({
+    autoMatched: false,
+    matchTier: matchResult.tier,
+    matchConfidence: matchResult.confidence,
+    matchReasoning: matchResult.reasoning,
+    similarityScore: matchResult.similarityScore,
+    suggestedIndex: matchResult.matched ? matchResult.matchIndex : null,
+    results,
+  });
 }

@@ -16,6 +16,7 @@ import {
   googleBusinessInfo,
   googleAdsData,
   jobPostings,
+  websiteQuality,
 } from "@/lib/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +37,7 @@ import {
   Briefcase,
   Users,
   Search as SearchIcon,
+  AlertCircle,
 } from "lucide-react";
 import Link from "next/link";
 import { PipelineStageSelector } from "@/components/installers/pipeline-stage";
@@ -48,17 +50,17 @@ import { ShortlistButton } from "@/components/installers/shortlist-button";
 import { AddFieldInline } from "@/components/installers/add-field-inline";
 
 const tierStyles: Record<string, string> = {
-  high: "bg-green-50 text-green-700 border-green-200",
-  medium: "bg-orange-50 text-orange-700 border-orange-200",
-  low: "bg-gray-50 text-gray-500 border-gray-200",
+  high: "bg-emerald-50 text-emerald-600 border-emerald-200/60",
+  medium: "bg-amber-50 text-amber-600 border-amber-200/60",
+  low: "bg-gray-50 text-gray-500 border-gray-200/60",
 };
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="flex items-center gap-2.5 mb-3">
-        <div className="w-[3px] h-4 rounded-full bg-primary" />
-        <h2 className="text-[13px] font-semibold text-[#1D1D1D] uppercase tracking-wider">{title}</h2>
+      <div className="flex items-center gap-3 mb-4">
+        <h2 className="text-[12px] font-semibold text-[#8a8a8a] uppercase tracking-[0.08em] shrink-0">{title}</h2>
+        <div className="flex-1 h-px bg-gradient-to-r from-[#e5e5e5] to-transparent" />
       </div>
       {children}
     </div>
@@ -67,7 +69,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function InfoCard({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={`bg-white rounded-xl border border-[#e5e5e5] p-4 hover:shadow-[0_2px_12px_rgba(0,0,0,0.04)] transition-shadow ${className || ""}`}>
+    <div className={`bg-white rounded-2xl border border-[#ebebeb] p-5 shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_30px_rgba(0,0,0,0.06)] transition-all duration-300 ${className || ""}`}>
       {children}
     </div>
   );
@@ -87,15 +89,15 @@ function Field({ label, value, mono, link }: { label: string; value: string | nu
 function ScoreBar({ label, value, max = 100 }: { label: string; value: number | null | undefined; max?: number }) {
   if (value == null) return null;
   const pct = Math.min(100, Math.max(0, (value / max) * 100));
-  const color = pct >= 70 ? "#22c55e" : pct >= 40 ? "#4ABDE8" : "#9a9a9a";
+  const gradient = pct >= 70 ? "from-emerald-400 to-emerald-500" : pct >= 40 ? "from-sky-400 to-cyan-500" : "from-gray-300 to-gray-400";
   return (
-    <div className="space-y-1">
-      <div className="flex justify-between text-[13px]">
-        <span className="text-[#6a6a6a]">{label}</span>
-        <span className="font-medium tabular-nums">{value.toFixed(0)}</span>
+    <div className="space-y-1.5">
+      <div className="flex justify-between items-baseline text-[13px]">
+        <span className="text-[#7a7a7a]">{label}</span>
+        <span className="font-semibold tabular-nums text-[#1D1D1D]">{value.toFixed(0)}</span>
       </div>
-      <div className="h-[5px] rounded-full bg-[#f0f0f0] overflow-hidden">
-        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: color }} />
+      <div className="h-[5px] rounded-full bg-[#f3f3f3] overflow-hidden">
+        <div className={`h-full rounded-full bg-gradient-to-r ${gradient} transition-all duration-700 ease-out`} style={{ width: `${pct}%` }} />
       </div>
     </div>
   );
@@ -103,11 +105,13 @@ function ScoreBar({ label, value, max = 100 }: { label: string; value: number | 
 
 function StatPill({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-2 bg-white rounded-lg border border-[#e5e5e5] px-3 py-2">
-      <span className="text-[#9a9a9a]">{icon}</span>
+    <div className="flex items-center gap-3 bg-white rounded-xl border border-[#ebebeb] px-4 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] transition-all duration-200">
+      <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-[#f7f7f7]">
+        <span className="text-[#7a7a7a]">{icon}</span>
+      </div>
       <div>
         <p className="text-[14px] font-semibold text-[#1D1D1D] leading-none tabular-nums">{value}</p>
-        <p className="text-[10px] text-[#9a9a9a] uppercase tracking-wider mt-0.5">{label}</p>
+        <p className="text-[10px] text-[#9a9a9a] uppercase tracking-[0.06em] mt-0.5">{label}</p>
       </div>
     </div>
   );
@@ -115,8 +119,10 @@ function StatPill({ label, value, icon }: { label: string; value: string; icon: 
 
 function Signal({ label, active, detail }: { label: string; active: boolean | null; detail?: string }) {
   return (
-    <div className="flex items-center gap-2">
-      {active ? <CheckCircle2 className="h-3.5 w-3.5 text-green-600" /> : <XCircle className="h-3.5 w-3.5 text-[#d5d5d5]" />}
+    <div className="flex items-center gap-2.5">
+      <div className={`flex items-center justify-center h-5 w-5 rounded-full ${active ? "bg-emerald-50" : "bg-[#f5f5f5]"}`}>
+        {active ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> : <XCircle className="h-3.5 w-3.5 text-[#d0d0d0]" />}
+      </div>
       <span className="text-[13px] text-[#3a3a3a]">
         {label}
         {detail && <span className="text-[#9a9a9a] ml-1">({detail})</span>}
@@ -137,7 +143,7 @@ export default async function InstallerDetailPage({
   const [installer] = await db.select().from(installers).where(eq(installers.id, installerId)).limit(1);
   if (!installer) notFound();
 
-  const [scores, google, trustpilot, companiesHouse, marketing, seo, traffic, keywords, gBusiness, gAds, jobs, googleReviewItems, trustpilotReviewItems, activityList] =
+  const [scores, google, trustpilot, companiesHouse, marketing, seo, traffic, keywords, gBusiness, gAds, jobs, siteQuality, googleReviewItems, trustpilotReviewItems, activityList] =
     await Promise.all([
       db.select().from(installerScores).where(eq(installerScores.installerId, installerId)).limit(1),
       db.select().from(googleReviews).where(eq(googleReviews.installerId, installerId)).limit(1),
@@ -150,6 +156,7 @@ export default async function InstallerDetailPage({
       db.select().from(googleBusinessInfo).where(eq(googleBusinessInfo.installerId, installerId)).limit(1),
       db.select().from(googleAdsData).where(eq(googleAdsData.installerId, installerId)).limit(1),
       db.select().from(jobPostings).where(eq(jobPostings.installerId, installerId)).limit(1),
+      db.select().from(websiteQuality).where(eq(websiteQuality.installerId, installerId)).limit(1),
       db.select().from(reviewItems).where(sql`${reviewItems.installerId} = ${installerId} AND ${reviewItems.source} = 'google'`).orderBy(sql`${reviewItems.reviewDate} DESC`),
       db.select().from(reviewItems).where(sql`${reviewItems.installerId} = ${installerId} AND ${reviewItems.source} = 'trustpilot'`).orderBy(sql`${reviewItems.reviewDate} DESC`),
       db.select().from(activities).where(eq(activities.installerId, installerId)).orderBy(sql`${activities.createdAt} DESC`),
@@ -165,6 +172,7 @@ export default async function InstallerDetailPage({
   const businessInfo = gBusiness[0] ?? null;
   const adsData = gAds[0] ?? null;
   const jobData = jobs[0] ?? null;
+  const quality = siteQuality[0] ?? null;
 
   const technologies = installer.technologiesCertified?.split(/[,;]/).map((t) => t.trim()).filter(Boolean) || [];
   const regions = installer.regionsCovered?.split(/[,;]/).map((r) => r.trim()).filter(Boolean) || [];
@@ -176,7 +184,7 @@ export default async function InstallerDetailPage({
   return (
     <div className="flex flex-col h-full">
       {/* Top bar */}
-      <div className="flex items-center gap-2 border-b border-[#e5e5e5] bg-white px-6 py-2 shrink-0">
+      <div className="flex items-center gap-2 border-b border-[#ebebeb] bg-white px-6 py-2.5 shrink-0">
         <Link href="/installers" className="inline-flex items-center gap-1.5 text-[13px] text-[#9a9a9a] hover:text-[#1D1D1D] transition-colors">
           <ArrowLeft className="h-3.5 w-3.5" />
           Installers
@@ -191,18 +199,18 @@ export default async function InstallerDetailPage({
 
       <div className="flex-1 overflow-y-auto">
         {/* Header */}
-        <div className="bg-gradient-to-b from-white to-[#FAFAF9] border-b border-[#e5e5e5] px-6 py-5">
+        <div className="bg-white border-b border-[#ebebeb] px-8 py-6">
           <div className="flex items-start gap-5">
             {domain ? (
-              <img src={`https://www.google.com/s2/favicons?domain=${domain}&sz=128`} alt="" className="max-h-14 max-w-[120px] rounded-xl bg-white object-contain shrink-0 shadow-[0_2px_8px_rgba(0,0,0,0.08)] border border-[#f0f0f0] p-1.5" />
+              <img src={`https://www.google.com/s2/favicons?domain=${domain}&sz=128`} alt="" className="h-14 w-14 rounded-2xl bg-white object-contain shrink-0 shadow-[0_2px_12px_rgba(0,0,0,0.08)] border border-[#f0f0f0] p-2" />
             ) : (
-              <div className="h-14 w-14 rounded-xl bg-[#ece9e5] flex items-center justify-center shrink-0">
-                <span className="text-[20px] font-bold text-[#9a9a9a]">{installer.companyName[0]}</span>
+              <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-[#e8f4f9] to-[#d4eef7] flex items-center justify-center shrink-0 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+                <span className="text-[20px] font-bold text-[#4ABDE8]">{installer.companyName[0]}</span>
               </div>
             )}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3 flex-wrap">
-                <h1 className="text-[20px] font-semibold text-[#1D1D1D] tracking-tight">{installer.companyName}</h1>
+                <h1 className="text-[22px] font-semibold text-[#1D1D1D] tracking-[-0.02em]">{installer.companyName}</h1>
                 {score?.tier && <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium capitalize border ${tierStyles[score.tier] || ""}`}>{score.tier}</span>}
                 {installer.inMcs && <img src="/mcs-certified.png" alt="MCS" title="MCS Certified" className="h-[32px] object-contain shrink-0" />}
                 {installer.inTrustMark && <img src="/logo-trustmark.jpg" alt="TrustMark" title="TrustMark Certified" className="h-[32px] object-contain shrink-0" />}
@@ -217,42 +225,86 @@ export default async function InstallerDetailPage({
               </div>
               <div className="flex flex-wrap items-center gap-3 mt-2.5">
                 {installer.email ? (
-                  <a href={`mailto:${installer.email}`} className="inline-flex items-center gap-1.5 h-[28px] px-3 rounded-lg bg-[#FAFAF9] border border-[#e5e5e5] text-[12px] text-[#3a3a3a] hover:border-primary hover:text-primary transition-colors">
+                  <a href={`mailto:${installer.email}`} className="inline-flex items-center gap-1.5 h-[30px] px-3.5 rounded-lg bg-[#fafafa] border border-[#e8e8e8] text-[12px] text-[#3a3a3a] hover:border-[#4ABDE8]/40 hover:bg-[#f0f9fd] hover:text-[#1a8ab5] transition-all duration-200">
                     <Mail className="h-3.5 w-3.5" />{installer.email}
                   </a>
                 ) : (
                   <AddFieldInline installerId={installerId} field="email" label="Email" icon={<Mail className="h-3.5 w-3.5" />} placeholder="email@company.com" />
                 )}
                 {installer.telephone ? (
-                  <a href={`tel:${installer.telephone}`} className="inline-flex items-center gap-1.5 h-[28px] px-3 rounded-lg bg-[#FAFAF9] border border-[#e5e5e5] text-[12px] text-[#3a3a3a] hover:border-primary hover:text-primary transition-colors">
+                  <a href={`tel:${installer.telephone}`} className="inline-flex items-center gap-1.5 h-[30px] px-3.5 rounded-lg bg-[#fafafa] border border-[#e8e8e8] text-[12px] text-[#3a3a3a] hover:border-[#4ABDE8]/40 hover:bg-[#f0f9fd] hover:text-[#1a8ab5] transition-all duration-200">
                     <Phone className="h-3.5 w-3.5" />{installer.telephone}
                   </a>
                 ) : (
                   <AddFieldInline installerId={installerId} field="telephone" label="Phone" icon={<Phone className="h-3.5 w-3.5" />} placeholder="01onal 123456" />
                 )}
                 {installer.website ? (
-                  <a href={installer.website.startsWith("http") ? installer.website : `https://${installer.website}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 h-[28px] px-3 rounded-lg bg-[#FAFAF9] border border-[#e5e5e5] text-[12px] text-[#3a3a3a] hover:border-primary hover:text-primary transition-colors">
+                  <a href={installer.website.startsWith("http") ? installer.website : `https://${installer.website}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 h-[30px] px-3.5 rounded-lg bg-[#fafafa] border border-[#e8e8e8] text-[12px] text-[#3a3a3a] hover:border-[#4ABDE8]/40 hover:bg-[#f0f9fd] hover:text-[#1a8ab5] transition-all duration-200">
                     <Globe className="h-3.5 w-3.5" />{domain || "Website"}<ExternalLink className="h-3 w-3 text-[#9a9a9a]" />
                   </a>
                 ) : (
                   <AddFieldInline installerId={installerId} field="website" label="Website" icon={<Globe className="h-3.5 w-3.5" />} placeholder="example.co.uk" />
                 )}
+              {/* Social media links */}
+              {mktSignals && (mktSignals.facebookUrl || mktSignals.instagramUrl || mktSignals.linkedinUrl || mktSignals.twitterUrl || mktSignals.youtubeUrl) && (
+                <div className="flex flex-wrap items-center gap-2 mt-2">
+                  {mktSignals.linkedinUrl && (
+                    <a href={mktSignals.linkedinUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 h-[26px] px-2.5 rounded-lg bg-[#0a66c2]/5 border border-[#0a66c2]/15 text-[11px] font-medium text-[#0a66c2] hover:bg-[#0a66c2]/10 transition-colors">
+                      LinkedIn <ExternalLink className="h-2.5 w-2.5" />
+                    </a>
+                  )}
+                  {mktSignals.facebookUrl && (
+                    <a href={mktSignals.facebookUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 h-[26px] px-2.5 rounded-lg bg-[#1877f2]/5 border border-[#1877f2]/15 text-[11px] font-medium text-[#1877f2] hover:bg-[#1877f2]/10 transition-colors">
+                      Facebook <ExternalLink className="h-2.5 w-2.5" />
+                    </a>
+                  )}
+                  {mktSignals.instagramUrl && (
+                    <a href={mktSignals.instagramUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 h-[26px] px-2.5 rounded-lg bg-[#e4405f]/5 border border-[#e4405f]/15 text-[11px] font-medium text-[#e4405f] hover:bg-[#e4405f]/10 transition-colors">
+                      Instagram <ExternalLink className="h-2.5 w-2.5" />
+                    </a>
+                  )}
+                  {mktSignals.twitterUrl && (
+                    <a href={mktSignals.twitterUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 h-[26px] px-2.5 rounded-lg bg-[#1d9bf0]/5 border border-[#1d9bf0]/15 text-[11px] font-medium text-[#1d9bf0] hover:bg-[#1d9bf0]/10 transition-colors">
+                      X / Twitter <ExternalLink className="h-2.5 w-2.5" />
+                    </a>
+                  )}
+                  {mktSignals.youtubeUrl && (
+                    <a href={mktSignals.youtubeUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 h-[26px] px-2.5 rounded-lg bg-[#ff0000]/5 border border-[#ff0000]/15 text-[11px] font-medium text-[#ff0000] hover:bg-[#ff0000]/10 transition-colors">
+                      YouTube <ExternalLink className="h-2.5 w-2.5" />
+                    </a>
+                  )}
+                </div>
+              )}
               </div>
             </div>
             {score?.overallScore != null && (
-              <div className="text-center shrink-0 bg-[#FAFAF9] rounded-xl px-5 py-3 border border-[#e5e5e5]">
-                <div className="text-[28px] font-semibold tabular-nums tracking-tight text-[#1D1D1D] leading-none">{score.overallScore.toFixed(0)}</div>
-                <div className="text-[10px] text-[#9a9a9a] uppercase tracking-wider mt-1 font-medium">Score</div>
+              <div className="relative shrink-0">
+                <svg className="h-[80px] w-[80px]" viewBox="0 0 80 80">
+                  <circle cx="40" cy="40" r="34" stroke="#f0f0f0" strokeWidth="5" fill="none" />
+                  <circle cx="40" cy="40" r="34" stroke="url(#scoreGrad)" strokeWidth="5" fill="none"
+                    strokeDasharray={`${(score.overallScore / 100) * 213.6} 213.6`}
+                    strokeLinecap="round" transform="rotate(-90 40 40)" />
+                  <defs>
+                    <linearGradient id="scoreGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" stopColor="#4ABDE8" />
+                      <stop offset="100%" stopColor="#34d399" />
+                    </linearGradient>
+                  </defs>
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="text-[22px] font-bold tabular-nums tracking-tight text-[#1D1D1D]">{score.overallScore.toFixed(0)}</span>
+                  <span className="text-[9px] text-[#9a9a9a] uppercase tracking-[0.08em] font-medium">Score</span>
+                </div>
               </div>
             )}
           </div>
-          <div className="mt-4 pt-4 border-t border-[#f0f0f0]">
+          <div className="mt-5 pt-5 border-t border-[#f0f0f0]">
             <PipelineStageSelector installerId={installerId} currentStage={installer.pipelineStage} />
           </div>
         </div>
 
         {/* Quick stats bar */}
-        <div className="border-b border-[#e5e5e5] bg-[#FAFAF9] px-6 py-3">
+        <div className="border-b border-[#ebebeb] bg-[#fafafa] px-8 py-4">
           <div className="flex flex-wrap gap-3">
             {gReview?.rating != null && (
               <StatPill label="Google Rating" value={`${gReview.rating.toFixed(1)} (${gReview.reviewCount || 0})`} icon={<Star className="h-3.5 w-3.5 fill-[#e8b94a] text-[#e8b94a]" />} />
@@ -280,11 +332,101 @@ export default async function InstallerDetailPage({
         </div>
 
         {/* All content - single scrollable page */}
-        <div className="px-6 py-6 space-y-8 max-w-[1200px]">
+        <div className="px-8 py-8 space-y-10 max-w-[1200px]">
+
+          {/* ── Outreach Checklist ── */}
+          {(() => {
+            const flags: { label: string; status: "red" | "amber" | "green"; detail?: string }[] = [];
+            // Generic email
+            const genericDomains = ["gmail.com", "yahoo.com", "yahoo.co.uk", "hotmail.com", "hotmail.co.uk", "outlook.com", "aol.com", "live.com", "icloud.com", "btinternet.com"];
+            if (!installer.email) flags.push({ label: "No email address", status: "red" });
+            else if (genericDomains.some((d) => installer.email!.toLowerCase().endsWith(`@${d}`))) flags.push({ label: "Generic email", status: "red", detail: installer.email });
+            else flags.push({ label: "Business email", status: "green", detail: installer.email });
+            // Website
+            if (!installer.website) flags.push({ label: "No website", status: "red" });
+            else flags.push({ label: "Has website", status: "green" });
+            // Form quality
+            if (quality) {
+              if (quality.formType === "multi_step") flags.push({ label: "Multi-step quote form", status: "green" });
+              else if (quality.formType === "quote_form") flags.push({ label: "Quote form (single page)", status: "amber" });
+              else if (quality.formType === "basic_contact") flags.push({ label: "Basic contact form only", status: "red", detail: "No quote calculator" });
+              else flags.push({ label: "No lead capture form", status: "red" });
+            }
+            // CRM
+            if (mktSignals?.hasCrmTool) flags.push({ label: `Using ${mktSignals.crmToolName || "a CRM"}`, status: "green" });
+            else if (mktSignals) flags.push({ label: "No CRM detected", status: "red" });
+            // Reviews
+            if (gReview?.rating != null && gReview.rating >= 4.0 && (gReview.reviewCount ?? 0) >= 10) flags.push({ label: "Strong Google reviews", status: "green", detail: `${gReview.rating}/5 (${gReview.reviewCount})` });
+            else if (gReview?.rating != null) flags.push({ label: "Low Google reviews", status: "amber", detail: `${gReview.rating}/5 (${gReview.reviewCount ?? 0})` });
+            else flags.push({ label: "No Google reviews", status: "red" });
+            // PageSpeed
+            if (quality?.performanceScore != null) {
+              if (quality.performanceScore >= 70) flags.push({ label: "Good site speed", status: "green", detail: `${quality.performanceScore}/100` });
+              else if (quality.performanceScore >= 40) flags.push({ label: "Average site speed", status: "amber", detail: `${quality.performanceScore}/100` });
+              else flags.push({ label: "Slow website", status: "red", detail: `${quality.performanceScore}/100` });
+            }
+            // SSL
+            if (quality?.isHttps === false) flags.push({ label: "No HTTPS", status: "red" });
+            else if (quality?.isHttps) flags.push({ label: "HTTPS enabled", status: "green" });
+            // Mobile responsive
+            if (quality?.isMobileResponsive === false) flags.push({ label: "Not mobile responsive", status: "red" });
+            // Social
+            if (quality?.hasSocialLinks === false) flags.push({ label: "No social media links", status: "amber" });
+            // Copyright year
+            if (quality?.copyrightYear != null && quality.copyrightYear < 2024) flags.push({ label: "Outdated copyright", status: "amber", detail: `© ${quality.copyrightYear}` });
+            // Privacy / GDPR
+            if (quality?.hasPrivacyPolicy === false) flags.push({ label: "No privacy policy", status: "amber" });
+            if (quality?.hasCookieConsent === false) flags.push({ label: "No cookie consent", status: "amber" });
+            // Blog
+            if (quality?.hasBlog === false) flags.push({ label: "No blog / content", status: "amber" });
+            // Schema
+            if (quality?.hasSchemaMarkup === false) flags.push({ label: "No schema markup", status: "amber", detail: "Hurts local SEO" });
+            // WordPress version
+            if (quality?.wordpressVersion) {
+              const major = parseFloat(quality.wordpressVersion);
+              if (major > 0 && major < 6) flags.push({ label: "Outdated WordPress", status: "red", detail: `v${quality.wordpressVersion}` });
+            }
+            // Broken images
+            if (quality?.brokenImageCount != null && quality.brokenImageCount > 0) flags.push({ label: "Broken images", status: "red", detail: `${quality.brokenImageCount} found` });
+            // Trustpilot
+            if (!tpReview?.rating) flags.push({ label: "No Trustpilot profile", status: "amber" });
+
+            const redCount = flags.filter((f) => f.status === "red").length;
+            const amberCount = flags.filter((f) => f.status === "amber").length;
+            const greenCount = flags.filter((f) => f.status === "green").length;
+
+            return (
+              <Section title="Outreach Checklist">
+                <InfoCard>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center gap-1.5 text-[12px]">
+                      <span className="inline-flex items-center gap-1 text-red-600"><span className="h-2 w-2 rounded-full bg-red-500" />{redCount} issues</span>
+                      <span className="text-[#d5d5d5]">/</span>
+                      <span className="inline-flex items-center gap-1 text-amber-600"><span className="h-2 w-2 rounded-full bg-amber-400" />{amberCount} warnings</span>
+                      <span className="text-[#d5d5d5]">/</span>
+                      <span className="inline-flex items-center gap-1 text-emerald-600"><span className="h-2 w-2 rounded-full bg-emerald-500" />{greenCount} good</span>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1.5">
+                    {flags.map((f, i) => (
+                      <div key={i} className="flex items-center gap-2 py-1">
+                        {f.status === "red" && <XCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />}
+                        {f.status === "amber" && <AlertCircle className="h-3.5 w-3.5 text-amber-500 shrink-0" />}
+                        {f.status === "green" && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />}
+                        <span className="text-[13px] text-[#3a3a3a]">{f.label}</span>
+                        {f.detail && <span className="text-[11px] text-[#9a9a9a] ml-auto truncate max-w-[120px]">{f.detail}</span>}
+                      </div>
+                    ))}
+                  </div>
+                  {flags.length === 0 && <p className="text-[13px] text-[#9a9a9a]">Run Website Quality enrichment to populate checklist</p>}
+                </InfoCard>
+              </Section>
+            );
+          })()}
 
           {/* ── Scores & Certification ── */}
           <Section title="Scores & Certification">
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-3">
               {score && (
                 <InfoCard>
                   <p className="text-[11px] text-[#9a9a9a] uppercase tracking-wider mb-3">Scores</p>
@@ -317,15 +459,15 @@ export default async function InstallerDetailPage({
               </InfoCard>
             </div>
             {technologies.length > 0 && (
-              <div className="mt-3">
-                <p className="text-[11px] text-[#9a9a9a] uppercase tracking-wider mb-1.5">Technologies Certified</p>
-                <div className="flex flex-wrap gap-1.5">{technologies.map((t) => <Badge key={t} variant="outline" className="text-[11px]">{t}</Badge>)}</div>
+              <div className="mt-4">
+                <p className="text-[11px] text-[#9a9a9a] uppercase tracking-[0.06em] mb-2">Technologies Certified</p>
+                <div className="flex flex-wrap gap-1.5">{technologies.map((t) => <Badge key={t} variant="outline" className="text-[11px] rounded-full bg-[#f8f8f8] border-[#e8e8e8] text-[#5a5a5a] hover:bg-[#f0f0f0]">{t}</Badge>)}</div>
               </div>
             )}
             {regions.length > 0 && (
-              <div className="mt-3">
-                <p className="text-[11px] text-[#9a9a9a] uppercase tracking-wider mb-1.5">Regions Covered</p>
-                <div className="flex flex-wrap gap-1.5">{regions.map((r) => <Badge key={r} variant="outline" className="text-[11px]">{r}</Badge>)}</div>
+              <div className="mt-4">
+                <p className="text-[11px] text-[#9a9a9a] uppercase tracking-[0.06em] mb-2">Regions Covered</p>
+                <div className="flex flex-wrap gap-1.5">{regions.map((r) => <Badge key={r} variant="outline" className="text-[11px] rounded-full bg-[#f8f8f8] border-[#e8e8e8] text-[#5a5a5a] hover:bg-[#f0f0f0]">{r}</Badge>)}</div>
               </div>
             )}
           </Section>
@@ -346,8 +488,8 @@ export default async function InstallerDetailPage({
 
           {/* ── Reviews ── */}
           <Section title="Reviews">
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="bg-white rounded-xl border border-[#e5e5e5] p-4 hover:shadow-[0_2px_12px_rgba(0,0,0,0.04)] transition-shadow border-l-[3px] border-l-[#e8b94a]">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="bg-white rounded-2xl border border-[#ebebeb] p-5 shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_30px_rgba(0,0,0,0.06)] transition-all duration-300 border-l-[3px] border-l-[#e8b94a]">
                 <div className="flex items-center gap-2 mb-2">
                   <Star className="h-4 w-4 fill-[#e8b94a] text-[#e8b94a]" />
                   <p className="text-[13px] font-medium text-[#3a3a3a]">Google Reviews</p>
@@ -368,7 +510,7 @@ export default async function InstallerDetailPage({
                 ) : <p className="text-[13px] text-[#9a9a9a]">No Google review data yet</p>}
               </div>
 
-              <div className="bg-white rounded-xl border border-[#e5e5e5] p-4 hover:shadow-[0_2px_12px_rgba(0,0,0,0.04)] transition-shadow border-l-[3px] border-l-[#00b67a]">
+              <div className="bg-white rounded-2xl border border-[#ebebeb] p-5 shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_30px_rgba(0,0,0,0.06)] transition-all duration-300 border-l-[3px] border-l-[#00b67a]">
                 <div className="flex items-center gap-2 mb-2">
                   <Star className="h-4 w-4 fill-[#00b67a] text-[#00b67a]" />
                   <p className="text-[13px] font-medium text-[#3a3a3a]">Trustpilot</p>
@@ -388,7 +530,7 @@ export default async function InstallerDetailPage({
               </div>
             </div>
             {/* Individual reviews */}
-            <div className="mt-3 space-y-3">
+            <div className="mt-4 space-y-4">
               <ReviewDetails source="Google" reviews={googleReviewItems} icon={<Star className="h-3.5 w-3.5 text-[#e8b94a]" />} />
               <ReviewDetails source="Trustpilot" reviews={trustpilotReviewItems} icon={<Star className="h-3.5 w-3.5 text-[#00b67a]" />} />
             </div>
@@ -452,7 +594,7 @@ export default async function InstallerDetailPage({
                 <CorrectEnrichment installerId={installerId} source="companies_house" currentValue={chData.companyNumber} label="Companies House" placeholder="e.g. 12345678" helpText="Enter correct company number to re-fetch" />
               </InfoCard>
 
-              <div className="grid gap-3 md:grid-cols-2 mt-3">
+              <div className="grid gap-4 md:grid-cols-2 mt-3">
               {chData.officers && JSON.parse(chData.officers).length > 0 && (
                 <InfoCard>
                   <p className="text-[11px] text-[#9a9a9a] uppercase tracking-wider mb-2">Directors & Officers</p>
@@ -484,7 +626,7 @@ export default async function InstallerDetailPage({
 
           {/* ── Marketing & Tech ── */}
           <Section title="Marketing & Technology">
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-2">
               <InfoCard>
                 <p className="text-[11px] text-[#9a9a9a] uppercase tracking-wider mb-2">Marketing Signals</p>
                 {mktSignals ? (
@@ -503,6 +645,48 @@ export default async function InstallerDetailPage({
                       <div className="pt-2 border-t border-[#f0f0f0]">
                         <p className="text-[11px] text-[#9a9a9a] uppercase tracking-wider mb-1">Detected Technologies</p>
                         <div className="flex flex-wrap gap-1">{JSON.parse(mktSignals.detectedTechnologies).map((t: string) => <Badge key={t} variant="outline" className="text-[11px]">{t}</Badge>)}</div>
+                      </div>
+                    )}
+                    {(mktSignals.facebookUrl || mktSignals.instagramUrl || mktSignals.linkedinUrl || mktSignals.twitterUrl || mktSignals.youtubeUrl) && (
+                      <div className="pt-2 border-t border-[#f0f0f0]">
+                        <p className="text-[11px] text-[#9a9a9a] uppercase tracking-wider mb-1.5">Social Profiles</p>
+                        <div className="space-y-1.5">
+                          {mktSignals.linkedinUrl && (
+                            <a href={mktSignals.linkedinUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-[13px] text-[#3a3a3a] hover:text-[#0a66c2] transition-colors">
+                              <div className="h-5 w-5 rounded bg-[#0a66c2]/10 flex items-center justify-center shrink-0"><span className="text-[10px] font-bold text-[#0a66c2]">in</span></div>
+                              <span className="truncate">{mktSignals.linkedinUrl.replace(/https?:\/\/(www\.)?/, "")}</span>
+                              <ExternalLink className="h-3 w-3 text-[#9a9a9a] shrink-0" />
+                            </a>
+                          )}
+                          {mktSignals.facebookUrl && (
+                            <a href={mktSignals.facebookUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-[13px] text-[#3a3a3a] hover:text-[#1877f2] transition-colors">
+                              <div className="h-5 w-5 rounded bg-[#1877f2]/10 flex items-center justify-center shrink-0"><span className="text-[10px] font-bold text-[#1877f2]">f</span></div>
+                              <span className="truncate">{mktSignals.facebookUrl.replace(/https?:\/\/(www\.)?/, "")}</span>
+                              <ExternalLink className="h-3 w-3 text-[#9a9a9a] shrink-0" />
+                            </a>
+                          )}
+                          {mktSignals.instagramUrl && (
+                            <a href={mktSignals.instagramUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-[13px] text-[#3a3a3a] hover:text-[#e4405f] transition-colors">
+                              <div className="h-5 w-5 rounded bg-[#e4405f]/10 flex items-center justify-center shrink-0"><span className="text-[10px] font-bold text-[#e4405f]">ig</span></div>
+                              <span className="truncate">{mktSignals.instagramUrl.replace(/https?:\/\/(www\.)?/, "")}</span>
+                              <ExternalLink className="h-3 w-3 text-[#9a9a9a] shrink-0" />
+                            </a>
+                          )}
+                          {mktSignals.twitterUrl && (
+                            <a href={mktSignals.twitterUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-[13px] text-[#3a3a3a] hover:text-[#1d9bf0] transition-colors">
+                              <div className="h-5 w-5 rounded bg-[#1d9bf0]/10 flex items-center justify-center shrink-0"><span className="text-[10px] font-bold text-[#1d9bf0]">X</span></div>
+                              <span className="truncate">{mktSignals.twitterUrl.replace(/https?:\/\/(www\.)?/, "")}</span>
+                              <ExternalLink className="h-3 w-3 text-[#9a9a9a] shrink-0" />
+                            </a>
+                          )}
+                          {mktSignals.youtubeUrl && (
+                            <a href={mktSignals.youtubeUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-[13px] text-[#3a3a3a] hover:text-[#ff0000] transition-colors">
+                              <div className="h-5 w-5 rounded bg-[#ff0000]/10 flex items-center justify-center shrink-0"><span className="text-[9px] font-bold text-[#ff0000]">YT</span></div>
+                              <span className="truncate">{mktSignals.youtubeUrl.replace(/https?:\/\/(www\.)?/, "")}</span>
+                              <ExternalLink className="h-3 w-3 text-[#9a9a9a] shrink-0" />
+                            </a>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -534,10 +718,58 @@ export default async function InstallerDetailPage({
             </div>
           </Section>
 
+          {/* ── Website Quality ── */}
+          {quality && (
+            <Section title="Website Quality">
+              <div className="grid gap-4 md:grid-cols-2">
+                <InfoCard>
+                  <p className="text-[11px] text-[#9a9a9a] uppercase tracking-wider mb-3">PageSpeed Scores</p>
+                  <div className="space-y-3">
+                    <ScoreBar label="Performance" value={quality.performanceScore} />
+                    <ScoreBar label="Accessibility" value={quality.accessibilityScore} />
+                    <ScoreBar label="Best Practices" value={quality.bestPracticesScore} />
+                    <ScoreBar label="SEO" value={quality.seoScore} />
+                  </div>
+                  {quality.responseTimeMs != null && (
+                    <div className="mt-3 pt-3 border-t border-[#f0f0f0] text-[13px]">
+                      <span className="text-[#9a9a9a]">Response Time: </span>
+                      <span className={`font-medium tabular-nums ${quality.responseTimeMs > 3000 ? "text-red-600" : quality.responseTimeMs > 1500 ? "text-amber-600" : "text-emerald-600"}`}>
+                        {quality.responseTimeMs.toLocaleString()}ms
+                      </span>
+                    </div>
+                  )}
+                </InfoCard>
+
+                <InfoCard>
+                  <p className="text-[11px] text-[#9a9a9a] uppercase tracking-wider mb-2">Website Signals</p>
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-y-2">
+                      <Signal label="HTTPS" active={quality.isHttps} />
+                      <Signal label="Mobile Responsive" active={quality.isMobileResponsive} />
+                      <Signal label="Favicon" active={quality.hasFavicon} />
+                      <Signal label="Social Links" active={quality.hasSocialLinks} />
+                      <Signal label="Privacy Policy" active={quality.hasPrivacyPolicy} />
+                      <Signal label="Cookie Consent" active={quality.hasCookieConsent} />
+                      <Signal label="Schema Markup" active={quality.hasSchemaMarkup} />
+                      <Signal label="Blog / Content" active={quality.hasBlog} />
+                    </div>
+                    <div className="pt-2 border-t border-[#f0f0f0] grid grid-cols-2 gap-3">
+                      <Field label="Form Type" value={quality.formType === "multi_step" ? "Multi-step" : quality.formType === "quote_form" ? "Quote form" : quality.formType === "basic_contact" ? "Basic contact" : "None"} />
+                      <Field label="Site Builder" value={quality.siteBuilder} />
+                      {quality.wordpressVersion && <Field label="WordPress Version" value={`v${quality.wordpressVersion}`} />}
+                      <Field label="Copyright Year" value={quality.copyrightYear} />
+                      <Field label="Images" value={quality.imageCount != null ? `${quality.imageCount}${quality.brokenImageCount ? ` (${quality.brokenImageCount} broken)` : ""}` : null} />
+                    </div>
+                  </div>
+                </InfoCard>
+              </div>
+            </Section>
+          )}
+
           {/* ── SEO & Traffic ── */}
           {(seoInfo || trafficInfo) && (
             <Section title="SEO & Traffic">
-              <div className="grid gap-3 md:grid-cols-2">
+              <div className="grid gap-4 md:grid-cols-2">
                 {seoInfo && (
                   <InfoCard>
                     <p className="text-[11px] text-[#9a9a9a] uppercase tracking-wider mb-2">SEO</p>
@@ -619,7 +851,7 @@ export default async function InstallerDetailPage({
           {/* ── Source-specific data ── */}
           {(installer.novaYearStarted || installer.novaBatteryStorage || installer.trustmarkTmln || installer.trustmarkDescription) && (
             <Section title="Source Details">
-              <div className="grid gap-3 md:grid-cols-2">
+              <div className="grid gap-4 md:grid-cols-2">
                 {(installer.novaYearStarted || installer.novaBatteryStorage || installer.novaLocationArea || installer.novaEnfProfileUrl) && (
                   <InfoCard>
                     <p className="text-[11px] text-[#9a9a9a] uppercase tracking-wider mb-2">Nova</p>

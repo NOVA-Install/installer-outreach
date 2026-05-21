@@ -6,6 +6,7 @@ import {
   trustpilotReviews,
   marketingSignals,
   trafficData,
+  websiteQuality,
 } from "@/lib/db/schema";
 import { sql, eq, like, or, and, count, desc, asc, type SQL } from "drizzle-orm";
 
@@ -27,6 +28,9 @@ export interface InstallerFilters {
   scoreMax?: number;
   ratingMin?: number;
   isShortlisted?: boolean;
+  hasCrmTool?: boolean;
+  crmToolName?: string;
+  formType?: string;
   page?: number;
   pageSize?: number;
   sortBy?: string;
@@ -52,6 +56,9 @@ export async function getInstallers(filters: InstallerFilters = {}) {
     scoreMax,
     ratingMin,
     isShortlisted,
+    hasCrmTool,
+    crmToolName,
+    formType,
     page = 1,
     pageSize = 100,
     sortBy = "companyName",
@@ -133,6 +140,20 @@ export async function getInstallers(filters: InstallerFilters = {}) {
 
   if (isShortlisted === true) {
     conditions.push(eq(installers.isShortlisted, true));
+  }
+
+  if (hasCrmTool === true) {
+    conditions.push(eq(marketingSignals.hasCrmTool, true));
+  } else if (hasCrmTool === false) {
+    conditions.push(sql`(${marketingSignals.hasCrmTool} IS NULL OR ${marketingSignals.hasCrmTool} = false)`);
+  }
+
+  if (crmToolName) {
+    conditions.push(eq(marketingSignals.crmToolName, crmToolName));
+  }
+
+  if (formType) {
+    conditions.push(eq(websiteQuality.formType, formType));
   }
 
   const whereClause =
@@ -222,7 +243,14 @@ export async function getInstallers(filters: InstallerFilters = {}) {
       hasGoogleAds: marketingSignals.hasGoogleAds,
       hasMetaPixel: marketingSignals.hasMetaPixel,
       hasCrmTool: marketingSignals.hasCrmTool,
+      crmToolName: marketingSignals.crmToolName,
       hasLiveChat: marketingSignals.hasLiveChat,
+      // Social
+      facebookUrl: marketingSignals.facebookUrl,
+      instagramUrl: marketingSignals.instagramUrl,
+      linkedinUrl: marketingSignals.linkedinUrl,
+      twitterUrl: marketingSignals.twitterUrl,
+      youtubeUrl: marketingSignals.youtubeUrl,
       // Traffic
       googleOrganicEtv: trafficData.googleOrganicEtv,
       googlePaidEtv: trafficData.googlePaidEtv,
@@ -230,6 +258,10 @@ export async function getInstallers(filters: InstallerFilters = {}) {
       novaYearStarted: installers.novaYearStarted,
       trustmarkStatus: installers.trustmarkStatus,
       certificationBody: installers.certificationBody,
+      // Website quality
+      formType: websiteQuality.formType,
+      performanceScore: websiteQuality.performanceScore,
+      siteBuilder: websiteQuality.siteBuilder,
     })
     .from(installers)
     .leftJoin(installerScores, eq(installers.id, installerScores.installerId))
@@ -237,6 +269,7 @@ export async function getInstallers(filters: InstallerFilters = {}) {
     .leftJoin(trustpilotReviews, eq(installers.id, trustpilotReviews.installerId))
     .leftJoin(marketingSignals, eq(installers.id, marketingSignals.installerId))
     .leftJoin(trafficData, eq(installers.id, trafficData.installerId))
+    .leftJoin(websiteQuality, eq(installers.id, websiteQuality.installerId))
     .where(whereClause)
     .orderBy(orderDir)
     .limit(pageSize)
@@ -254,6 +287,12 @@ export async function getInstallers(filters: InstallerFilters = {}) {
   if (hasReviews !== undefined || ratingMin != null) {
     countQuery.leftJoin(googleReviews, eq(installers.id, googleReviews.installerId));
     countQuery.leftJoin(trustpilotReviews, eq(installers.id, trustpilotReviews.installerId));
+  }
+  if (hasCrmTool !== undefined || crmToolName) {
+    countQuery.leftJoin(marketingSignals, eq(installers.id, marketingSignals.installerId));
+  }
+  if (formType) {
+    countQuery.leftJoin(websiteQuality, eq(installers.id, websiteQuality.installerId));
   }
 
   const [totalResult] = await countQuery.where(whereClause);
@@ -275,6 +314,16 @@ export async function getInstallerById(id: number) {
     .limit(1);
 
   return installer ?? null;
+}
+
+export async function getDistinctCrmTools() {
+  const results = await db
+    .selectDistinct({ crmToolName: marketingSignals.crmToolName })
+    .from(marketingSignals)
+    .where(sql`${marketingSignals.crmToolName} IS NOT NULL AND ${marketingSignals.crmToolName} != ''`)
+    .orderBy(asc(marketingSignals.crmToolName));
+
+  return results.map((r) => r.crmToolName).filter(Boolean) as string[];
 }
 
 export async function getDistinctCounties() {

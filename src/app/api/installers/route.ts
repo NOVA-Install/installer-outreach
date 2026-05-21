@@ -30,6 +30,9 @@ export async function GET(request: NextRequest) {
     scoreMax: searchParams.get("scoreMax") ? Number(searchParams.get("scoreMax")) : undefined,
     ratingMin: searchParams.get("ratingMin") ? Number(searchParams.get("ratingMin")) : undefined,
     isShortlisted: boolParam(searchParams.get("isShortlisted")),
+    hasCrmTool: boolParam(searchParams.get("hasCrmTool")),
+    crmToolName: searchParams.get("crmToolName") || undefined,
+    formType: searchParams.get("formType") || undefined,
     page: searchParams.get("page") ? Number(searchParams.get("page")) : 1,
     pageSize: searchParams.get("pageSize")
       ? Number(searchParams.get("pageSize"))

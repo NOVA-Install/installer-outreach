@@ -6,6 +6,7 @@ import {
 } from "@/lib/db/schema";
 import { eq, isNull, sql } from "drizzle-orm";
 import { RateLimiter } from "./rate-limiter";
+import dns from "node:dns/promises";
 
 const TECH_PATTERNS: {
   name: string;
@@ -67,6 +68,103 @@ const TECH_PATTERNS: {
     field: "crm",
     patterns: ["activecampaign.com", "trackcmp.net"],
   },
+  // Solar / installer-specific CRM & sales tools
+  {
+    name: "Simplified Energy",
+    category: "crm",
+    field: "crm",
+    patterns: ["simplifiedenergy.co", "simplified.energy", "simplifiedenergy.com"],
+  },
+  {
+    name: "Autarc",
+    category: "crm",
+    field: "crm",
+    patterns: ["autarc.energy"],
+  },
+  {
+    name: "Reonic",
+    category: "crm",
+    field: "crm",
+    patterns: ["reonic.de", "reonic.com", "app.reonic"],
+  },
+  {
+    name: "Solar Edge",
+    category: "crm",
+    field: "crm",
+    patterns: ["solaredge.com", "monitoring.solaredge.com"],
+  },
+  {
+    name: "Enphase",
+    category: "crm",
+    field: "crm",
+    patterns: ["enphase.com", "enlighten.enphaseenergy.com"],
+  },
+  {
+    name: "EasySolar",
+    category: "crm",
+    field: "crm",
+    patterns: ["easysolar.com", "easysolar.io"],
+  },
+  {
+    name: "Pylon",
+    category: "crm",
+    field: "crm",
+    patterns: ["pylon.energy", "pylon-network.org"],
+  },
+  {
+    name: "OpenSolar",
+    category: "crm",
+    field: "crm",
+    patterns: ["opensolar.com", "app.opensolar"],
+  },
+  {
+    name: "Sunstak",
+    category: "crm",
+    field: "crm",
+    patterns: ["sunstak.com", "sunstak.co.uk"],
+  },
+  {
+    name: "JobNimbus",
+    category: "crm",
+    field: "crm",
+    patterns: ["jobnimbus.com", "app.jobnimbus.com"],
+  },
+  {
+    name: "Commusoft",
+    category: "crm",
+    field: "crm",
+    patterns: ["commusoft.co.uk", "commusoft.com"],
+  },
+  {
+    name: "SimPRO",
+    category: "crm",
+    field: "crm",
+    patterns: ["simpro.co", "simprogroup.com"],
+  },
+  {
+    name: "Tradify",
+    category: "crm",
+    field: "crm",
+    patterns: ["tradifyhq.com", "tradify.com"],
+  },
+  {
+    name: "Keap",
+    category: "crm",
+    field: "crm",
+    patterns: ["keap.com", "infusionsoft.com", "keap.app"],
+  },
+  {
+    name: "Monday.com",
+    category: "crm",
+    field: "crm",
+    patterns: ["monday.com"],
+  },
+  {
+    name: "Freshsales",
+    category: "crm",
+    field: "crm",
+    patterns: ["freshsales.io", "freshworks.com"],
+  },
   {
     name: "Tawk.to",
     category: "chat",
@@ -123,7 +221,132 @@ const TECH_PATTERNS: {
   },
 ];
 
-function detectTechnologies(html: string) {
+// DNS-based detection: patterns matched against TXT and CNAME records
+const DNS_PATTERNS: { name: string; category: string; field: string; patterns: string[] }[] = [
+  // CRM verification TXT records
+  { name: "HubSpot", category: "crm", field: "crm", patterns: ["hubspot", "hs-site-verification"] },
+  { name: "Salesforce", category: "crm", field: "crm", patterns: ["salesforce", "pardot"] },
+  { name: "Zoho", category: "crm", field: "crm", patterns: ["zoho"] },
+  { name: "ActiveCampaign", category: "crm", field: "crm", patterns: ["activecampaign"] },
+  { name: "Keap", category: "crm", field: "crm", patterns: ["infusionsoft", "keap"] },
+  { name: "Freshsales", category: "crm", field: "crm", patterns: ["freshworks", "freshsales"] },
+  // Solar / installer-specific tools
+  { name: "Simplified Energy", category: "crm", field: "crm", patterns: ["simplifiedenergy"] },
+  { name: "Autarc", category: "crm", field: "crm", patterns: ["autarc.energy", "autarc"] },
+  { name: "Reonic", category: "crm", field: "crm", patterns: ["reonic"] },
+  { name: "EasySolar", category: "crm", field: "crm", patterns: ["easysolar"] },
+  { name: "OpenSolar", category: "crm", field: "crm", patterns: ["opensolar"] },
+  { name: "Sunstak", category: "crm", field: "crm", patterns: ["sunstak"] },
+  { name: "JobNimbus", category: "crm", field: "crm", patterns: ["jobnimbus"] },
+  { name: "Commusoft", category: "crm", field: "crm", patterns: ["commusoft"] },
+  { name: "SimPRO", category: "crm", field: "crm", patterns: ["simpro"] },
+  { name: "Tradify", category: "crm", field: "crm", patterns: ["tradify"] },
+  // Email / marketing platforms (often show up in SPF/DKIM TXT records)
+  { name: "Mailchimp", category: "email", field: "tech", patterns: ["mailchimp", "mandrillapp", "mcsv.net"] },
+  { name: "SendGrid", category: "email", field: "tech", patterns: ["sendgrid"] },
+  { name: "Mailgun", category: "email", field: "tech", patterns: ["mailgun"] },
+];
+
+function extractDomain(websiteUrl: string): string | null {
+  try {
+    const url = websiteUrl.startsWith("http") ? websiteUrl : `https://${websiteUrl}`;
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+}
+
+async function lookupDnsRecords(domain: string): Promise<string[]> {
+  const records: string[] = [];
+  try {
+    const txt = await dns.resolveTxt(domain);
+    for (const entry of txt) records.push(entry.join(" "));
+  } catch {}
+  try {
+    const cnames = await dns.resolveCname(domain);
+    records.push(...cnames);
+  } catch {}
+  // Also check common subdomains that CRM tools create
+  for (const sub of ["crm", "app", "portal", "email", "tracking", "go"]) {
+    try {
+      const cnames = await dns.resolveCname(`${sub}.${domain}`);
+      records.push(...cnames);
+    } catch {}
+  }
+  return records;
+}
+
+function detectDnsPatterns(dnsRecords: string[]): { detected: string[]; crm: { name: string } | null } {
+  const lowerRecords = dnsRecords.map((r) => r.toLowerCase());
+  const detected: string[] = [];
+  let crm: { name: string } | null = null;
+
+  for (const tech of DNS_PATTERNS) {
+    const found = tech.patterns.some((p) => lowerRecords.some((r) => r.includes(p.toLowerCase())));
+    if (!found) continue;
+    detected.push(tech.name);
+    if (tech.field === "crm" && !crm) crm = { name: tech.name };
+  }
+
+  return { detected, crm };
+}
+
+// --- Social media link extraction ---
+
+const SOCIAL_PATTERNS: { platform: string; regex: RegExp; exclude: RegExp }[] = [
+  {
+    platform: "facebook",
+    regex: /href=["'](https?:\/\/(?:www\.)?facebook\.com\/[a-zA-Z0-9._-]+\/?)['"]/gi,
+    exclude: /facebook\.com\/(sharer|share|dialog|plugins|tr|hashtag|flx|watch|groups\/\d|pages\/category|login|help|policies)/i,
+  },
+  {
+    platform: "instagram",
+    regex: /href=["'](https?:\/\/(?:www\.)?instagram\.com\/[a-zA-Z0-9._]+\/?)['"]/gi,
+    exclude: /instagram\.com\/(explore|accounts|p\/|reel\/|stories\/|about|developer|legal)/i,
+  },
+  {
+    platform: "linkedin",
+    regex: /href=["'](https?:\/\/(?:www\.)?linkedin\.com\/(?:company|in)\/[a-zA-Z0-9._-]+\/?)['"]/gi,
+    exclude: /linkedin\.com\/(share|sharing|pulse|jobs|learning|feed)/i,
+  },
+  {
+    platform: "twitter",
+    regex: /href=["'](https?:\/\/(?:www\.)?(?:twitter\.com|x\.com)\/[a-zA-Z0-9_]+\/?)['"]/gi,
+    exclude: /(?:twitter|x)\.com\/(intent|share|hashtag|search|home|i\/|widgets)/i,
+  },
+  {
+    platform: "youtube",
+    regex: /href=["'](https?:\/\/(?:www\.)?youtube\.com\/(?:channel|c|user|@)[a-zA-Z0-9._-]+\/?)['"]/gi,
+    exclude: /youtube\.com\/(watch|embed|playlist|results|feed|shorts)/i,
+  },
+];
+
+export function extractSocialLinks(html: string): Record<string, string | null> {
+  const links: Record<string, string | null> = {
+    facebookUrl: null,
+    instagramUrl: null,
+    linkedinUrl: null,
+    twitterUrl: null,
+    youtubeUrl: null,
+  };
+
+  for (const { platform, regex, exclude } of SOCIAL_PATTERNS) {
+    regex.lastIndex = 0;
+    let match;
+    while ((match = regex.exec(html)) !== null) {
+      const url = match[1];
+      if (!exclude.test(url)) {
+        const key = `${platform}Url` as keyof typeof links;
+        links[key] = url.replace(/\/$/, ""); // normalize trailing slash
+        break; // take the first valid match
+      }
+    }
+  }
+
+  return links;
+}
+
+export function detectTechnologies(html: string, dnsResults?: { detected: string[]; crm: { name: string } | null }) {
   const detected: string[] = [];
   let hasGA = false;
   let hasGAds = false;
@@ -159,6 +382,17 @@ function detectTechnologies(html: string) {
         hasChat = true;
         chatName = tech.name;
         break;
+    }
+  }
+
+  // Merge DNS-based detections (avoid duplicates)
+  if (dnsResults) {
+    for (const name of dnsResults.detected) {
+      if (!detected.includes(name)) detected.push(name);
+    }
+    if (!hasCrm && dnsResults.crm) {
+      hasCrm = true;
+      crmName = dnsResults.crm.name;
     }
   }
 
@@ -233,20 +467,27 @@ export async function enrichTechDetection(
           ? installer.website!
           : `https://${installer.website}`;
 
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 8000);
+        // Run HTML fetch and DNS lookup in parallel
+        const domain = extractDomain(installer.website!);
+        const [htmlResult, dnsResult] = await Promise.allSettled([
+          (async () => {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 8000);
+            const res = await fetch(url, {
+              signal: controller.signal,
+              headers: { "User-Agent": "Mozilla/5.0 (compatible; InstallerCRM/1.0)" },
+              redirect: "follow",
+            });
+            clearTimeout(timeout);
+            return res.text();
+          })(),
+          domain ? lookupDnsRecords(domain).then(detectDnsPatterns) : Promise.resolve(null),
+        ]);
 
-        const res = await fetch(url, {
-          signal: controller.signal,
-          headers: {
-            "User-Agent": "Mozilla/5.0 (compatible; InstallerCRM/1.0)",
-          },
-          redirect: "follow",
-        });
-        clearTimeout(timeout);
-
-        const html = await res.text();
-        const tech = detectTechnologies(html);
+        const html = htmlResult.status === "fulfilled" ? htmlResult.value : "";
+        const dnsData = dnsResult.status === "fulfilled" ? dnsResult.value : null;
+        const tech = detectTechnologies(html, dnsData ?? undefined);
+        const social = extractSocialLinks(html);
 
         await db.insert(marketingSignals).values({
           installerId: installer.id,
@@ -263,6 +504,11 @@ export async function enrichTechDetection(
           detectedTechnologies: JSON.stringify(tech.detected),
           estimatedMonthlyTraffic: null,
           estimatedAdSpend: null,
+          facebookUrl: social.facebookUrl,
+          instagramUrl: social.instagramUrl,
+          linkedinUrl: social.linkedinUrl,
+          twitterUrl: social.twitterUrl,
+          youtubeUrl: social.youtubeUrl,
           fetchedAt: new Date().toISOString(),
         });
       })

@@ -239,31 +239,86 @@ serve(async (req) => {
 
           // Find best match by name or domain
           let bestMatch = null;
+          let matchReason = "";
           const instName = normalize(inst.company_name);
 
-          // Check domain match first
+          // Check domain match first (most reliable)
           if (inst.website) {
-            const instDomain = inst.website.replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0];
-            bestMatch = filtered.find((item: { domain?: string }) =>
-              item.domain && (item.domain.includes(instDomain) || instDomain.includes(item.domain.replace(/^www\./, "")))
-            );
+            const instDomain = inst.website.replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0].toLowerCase();
+            bestMatch = filtered.find((item: { domain?: string }) => {
+              if (!item.domain) return false;
+              const tpDomain = item.domain.replace(/^www\./, "").toLowerCase();
+              return tpDomain === instDomain || instDomain === tpDomain;
+            }) || null;
+            if (bestMatch) matchReason = "domain_exact";
           }
 
-          // Then name match
+          // Then strict name match
           if (!bestMatch) {
             for (const item of filtered) {
-              const itemName = normalize(item.name || item.display_name || item.domain || "");
-              if (instName === itemName || instName.includes(itemName) || itemName.includes(instName)) {
+              const itemName = normalize(item.name || item.display_name || "");
+              if (!itemName || itemName.length < 3) continue;
+
+              // Exact match after normalization
+              if (instName === itemName) {
                 bestMatch = item;
+                matchReason = "name_exact";
                 break;
               }
-              const words1 = instName.split(" ").filter((w: string) => w.length > 1);
-              const words2 = itemName.split(" ").filter((w: string) => w.length > 1);
-              const common = words1.filter((w: string) => words2.includes(w));
-              if (words1.length > 0 && common.length / words1.length >= 0.6) {
+
+              // Substring match only if the shorter string is substantial
+              // (at least 60% the length of the longer one - prevents "creation" matching "energy creation experts")
+              const shorter = instName.length < itemName.length ? instName : itemName;
+              const longer = instName.length < itemName.length ? itemName : instName;
+              if (shorter.length >= longer.length * 0.6 && longer.includes(shorter)) {
                 bestMatch = item;
+                matchReason = "name_substring";
                 break;
               }
+
+              // Word overlap - require both high overlap AND at least 2 common meaningful words
+              const words1 = instName.split(" ").filter((w: string) => w.length > 2);
+              const words2 = itemName.split(" ").filter((w: string) => w.length > 2);
+              // Exclude very common generic words from overlap calculation
+              const genericWords = new Set(["energy", "solar", "green", "power", "home", "homes", "services", "solutions", "group", "uk", "heating", "electrical", "renewables", "renewable", "installation", "installations", "systems"]);
+              const meaningfulCommon = words1.filter((w: string) => words2.includes(w) && !genericWords.has(w));
+              const allCommon = words1.filter((w: string) => words2.includes(w));
+
+              // Need at least 1 non-generic word in common, AND high overall overlap
+              if (meaningfulCommon.length >= 1 && words1.length > 0 && allCommon.length / words1.length >= 0.7) {
+                bestMatch = item;
+                matchReason = `word_overlap_${Math.round(allCommon.length / words1.length * 100)}%`;
+                break;
+              }
+            }
+          }
+
+          // For non-exact matches, use AI verification if available
+          if (bestMatch && matchReason !== "domain_exact" && matchReason !== "name_exact" && googleAiKey) {
+            try {
+              aiCalled++;
+              const tpName = bestMatch.name || bestMatch.display_name || bestMatch.domain || "";
+              const aiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${googleAiKey}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  contents: [{ parts: [{ text: `Is the Trustpilot profile "${tpName}" (domain: ${bestMatch.domain || "unknown"}) the same business as "${inst.company_name}" (a solar/energy installer in ${inst.postcode || "UK"})? Consider that many companies have similar names with words like "solar", "energy", "green" etc. Only say YES if you are confident they are the SAME company. Reply only YES or NO.` }] }],
+                }),
+              });
+              const aiData = await aiRes.json();
+              const answer = aiData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim().toUpperCase() || "";
+              if (!answer.startsWith("YES")) {
+                // AI rejected - clear the match
+                const rejectedName = tpName;
+                bestMatch = null;
+                matchReason = `ai_rejected: "${rejectedName}" != "${inst.company_name}"`;
+              } else {
+                matchReason = `ai_verified (${matchReason})`;
+              }
+            } catch {
+              // AI unavailable - reject uncertain matches to be safe
+              bestMatch = null;
+              matchReason = "ai_unavailable_rejected";
             }
           }
 
@@ -287,16 +342,17 @@ serve(async (req) => {
 
             await supabase.from("dataforseo_tasks").update({
               status: "completed",
-              result_summary: `Matched: ${bestMatch.domain}, rating: ${bestMatch.rating?.value}`,
+              result_summary: `${matchReason}: ${bestMatch.domain}, rating: ${bestMatch.rating?.value}`,
               raw_result: rawResult,
               completed_at: new Date().toISOString(),
             }).eq("id", task.id);
             collected++;
           } else {
             const topName = filtered[0]?.name || filtered[0]?.domain || "none";
+            const rejectReason = matchReason.startsWith("ai_rejected") ? matchReason : `No match. Top: "${topName}" doesn't match "${inst.company_name}"`;
             await supabase.from("dataforseo_tasks").update({
               status: "no_results",
-              result_summary: `No match. Top: "${topName}" doesn't match "${inst.company_name}"`,
+              result_summary: rejectReason,
               raw_result: rawResult,
               completed_at: new Date().toISOString(),
             }).eq("id", task.id);

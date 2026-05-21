@@ -7,6 +7,7 @@ import {
 import { eq, isNull, sql } from "drizzle-orm";
 import { RateLimiter } from "./rate-limiter";
 import { aiMatchCompaniesHouse } from "./ai-matcher";
+import { tieredCompanyMatch, type CompanyCandidate } from "./company-matcher";
 
 const BASE_URL = "https://api.company-information.service.gov.uk";
 
@@ -109,8 +110,8 @@ export async function enrichCompaniesHouse(
         return;
       }
 
-      // Use AI to find the correct Companies House match
-      const chCandidates = searchResult.items.map(
+      // Build candidate list for tiered matching
+      const chCandidates: CompanyCandidate[] = searchResult.items.map(
         (item: { title: string; company_number: string; company_status: string; address?: { postal_code?: string; address_line_1?: string; locality?: string }; sic_codes?: string[] }, idx: number) => ({
           index: idx,
           companyName: item.title,
@@ -122,30 +123,20 @@ export async function enrichCompaniesHouse(
         })
       );
 
+      // Tiered matching: exact → similarity → AI (only if ambiguous)
+      const matchResult = await tieredCompanyMatch(
+        { companyName: installer.companyName, postcode: installer.postcode },
+        chCandidates,
+        aiMatchCompaniesHouse
+      );
+
       let bestMatch;
-      try {
-        const aiResult = await aiMatchCompaniesHouse(
-          { companyName: installer.companyName, website: null, postcode: installer.postcode, county: null },
-          chCandidates
-        );
-        if (aiResult.matched && aiResult.matchIndex != null) {
-          bestMatch = searchResult.items[aiResult.matchIndex];
-        } else {
-          // AI rejected all candidates — skip this installer
-          processed++;
-          return;
-        }
-      } catch {
-        // AI unavailable — fall back to first result with postcode match
-        bestMatch = searchResult.items[0];
-        if (installer.postcode) {
-          const postcodePrefix = installer.postcode.split(" ")[0].toUpperCase();
-          const matchByPostcode = searchResult.items.find(
-            (item: { address?: { postal_code?: string } }) =>
-              item.address?.postal_code?.toUpperCase().startsWith(postcodePrefix)
-          );
-          if (matchByPostcode) bestMatch = matchByPostcode;
-        }
+      if (matchResult.matched && matchResult.matchIndex != null) {
+        bestMatch = searchResult.items[matchResult.matchIndex];
+      } else {
+        // No match found at any tier — skip this installer
+        processed++;
+        return;
       }
 
       const companyNumber = bestMatch.company_number;
