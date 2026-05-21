@@ -14,8 +14,10 @@ export async function POST(request: NextRequest) {
 
   const { data, errors: parseErrors } = Papa.parse(text, {
     header: true,
-    skipEmptyLines: true,
+    skipEmptyLines: "greedy",
     transformHeader: (header: string) => header.trim(),
+    quoteChar: '"',
+    escapeChar: '"',
   });
 
   if (parseErrors.length > 0 && parseErrors[0].type === "Delimiter") {

@@ -79,6 +79,10 @@ interface Installer {
   novaYearStarted: string | null;
   trustmarkStatus: string | null;
   certificationBody: string | null;
+  // Shortlist
+  isShortlisted: boolean | null;
+  priority: number | null;
+  priorityNote: string | null;
 }
 
 interface InstallerResponse {
@@ -106,11 +110,12 @@ interface Filters {
   scoreMin: string;
   scoreMax: string;
   ratingMin: string;
+  isShortlisted: string;
 }
 
 const EMPTY_FILTERS: Filters = {
   county: "", stage: "", tier: "", hasWebsite: "", hasEmail: "", hasReviews: "",
-  inMcs: "", inNova: "", inTrustMark: "", scoreMin: "", scoreMax: "", ratingMin: "",
+  inMcs: "", inNova: "", inTrustMark: "", scoreMin: "", scoreMax: "", ratingMin: "", isShortlisted: "",
 };
 
 function countActiveFilters(f: Filters): number {
@@ -519,6 +524,15 @@ const ALL_COLUMNS: ColumnDef[] = [
         : <span className="text-[#d5d5d5]">—</span>,
   },
   {
+    key: "estInstalls",
+    label: "Est. Installs/mo",
+    sortKey: "estimatedMonthlyInstalls",
+    render: (row) =>
+      row.estimatedMonthlyInstalls != null && row.estimatedMonthlyInstalls > 0
+        ? <span className="font-medium tabular-nums text-[#1D1D1D]">{Math.round(row.estimatedMonthlyInstalls).toLocaleString()}</span>
+        : <span className="text-[#d5d5d5]">—</span>,
+  },
+  {
     key: "website",
     label: "Website",
     sortKey: "website",
@@ -624,6 +638,70 @@ const ALL_COLUMNS: ColumnDef[] = [
     label: "Paid Traffic",
     render: (row) =>
       row.googlePaidEtv != null && row.googlePaidEtv > 0 ? <span className="tabular-nums text-[12px] text-[#4ABDE8]">{row.googlePaidEtv.toLocaleString()}</span> : <span className="text-[#d5d5d5]">—</span>,
+  },
+  {
+    key: "shortlist",
+    label: "Shortlist",
+    sortKey: "isShortlisted",
+    render: (row, onUpdate) => {
+      const isOn = row.isShortlisted === true;
+      return (
+        <button
+          onClick={async () => {
+            const newVal = !isOn;
+            onUpdate(row.id, "isShortlisted", String(newVal));
+            await fetch(`/api/installers/${row.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ isShortlisted: newVal }),
+            });
+          }}
+          className={`inline-flex items-center gap-1 h-[24px] px-2 rounded-md text-[11px] font-medium transition-colors ${
+            isOn
+              ? "bg-[#4ABDE8]/10 text-[#4ABDE8] border border-[#4ABDE8]/30"
+              : "bg-[#FAFAF9] text-[#9a9a9a] border border-[#e5e5e5] hover:border-[#4ABDE8] hover:text-[#4ABDE8]"
+          }`}
+          title={isOn ? "Remove from shortlist" : "Add to shortlist"}
+        >
+          <Star className={`h-3 w-3 ${isOn ? "fill-[#4ABDE8]" : ""}`} />
+          {isOn ? "Listed" : "Add"}
+        </button>
+      );
+    },
+  },
+  {
+    key: "priority",
+    label: "Priority",
+    sortKey: "priority",
+    render: (row, onUpdate) => {
+      const p = row.priority;
+      const colors: Record<number, string> = {
+        1: "bg-red-50 text-red-600 border-red-200",
+        2: "bg-orange-50 text-orange-600 border-orange-200",
+        3: "bg-yellow-50 text-yellow-700 border-yellow-200",
+        4: "bg-blue-50 text-blue-600 border-blue-200",
+        5: "bg-gray-50 text-gray-500 border-gray-200",
+      };
+      const labels: Record<number, string> = { 1: "Urgent", 2: "High", 3: "Medium", 4: "Low", 5: "Minimal" };
+      return (
+        <select
+          value={p ?? ""}
+          onChange={async (e) => {
+            const val = e.target.value ? Number(e.target.value) : null;
+            onUpdate(row.id, "priority", String(val));
+            await fetch(`/api/installers/${row.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ priority: val }),
+            });
+          }}
+          className={`h-[24px] rounded-md border text-[11px] font-medium px-1.5 outline-none cursor-pointer ${p ? colors[p] || "" : "border-[#e5e5e5] text-[#9a9a9a]"}`}
+        >
+          <option value="">—</option>
+          {[1,2,3,4,5].map((v) => <option key={v} value={v}>{labels[v]}</option>)}
+        </select>
+      );
+    },
   },
   {
     key: "sources",
@@ -886,8 +964,8 @@ export function InstallerTable({ counties }: InstallerTableProps) {
   const [pageSize, setPageSize] = useState(100);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
-  const [sortBy, setSortBy] = useState("companyName");
-  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+  const [sortBy, setSortBy] = useState("overallScore");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [visibleColumns, setVisibleColumns] = useState<string[]>(DEFAULT_VISIBLE);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
@@ -1065,6 +1143,23 @@ export function InstallerTable({ counties }: InstallerTableProps) {
           <input placeholder="Search..." value={searchInput} onChange={(e) => setSearchInput(e.target.value)} className="h-7 w-full sm:w-[180px] rounded-md border border-[#e5e5e5] bg-white pl-7 pr-2 text-[13px] text-[#1D1D1D] placeholder:text-[#9a9a9a] outline-none focus:border-[#4ABDE8] focus:ring-1 focus:ring-[#4ABDE8]/20 transition-colors" />
         </div>
 
+        {/* Shortlist quick toggle */}
+        <button
+          onClick={() => {
+            const next = filters.isShortlisted === "true" ? "" : "true";
+            setFilters({ ...filters, isShortlisted: next });
+            setPage(1);
+          }}
+          className={`h-7 flex items-center gap-1.5 rounded-md border px-2.5 text-[13px] font-medium transition-colors shrink-0 ${
+            filters.isShortlisted === "true"
+              ? "border-[#4ABDE8] bg-[#4ABDE8]/10 text-[#4ABDE8]"
+              : "border-[#e5e5e5] bg-white text-[#6a6a6a] hover:bg-[#FAFAF9]"
+          }`}
+        >
+          <Star className={`h-3.5 w-3.5 ${filters.isShortlisted === "true" ? "fill-[#4ABDE8]" : ""}`} />
+          <span className="hidden sm:inline">Shortlist</span>
+        </button>
+
         <button onClick={() => setShowFilters(!showFilters)} className={`h-7 flex items-center gap-1.5 rounded-md border px-2.5 text-[13px] font-medium transition-colors shrink-0 ${showFilters || activeFilterCount > 0 ? "border-[#4ABDE8] bg-[#FFF8F5] text-[#4ABDE8]" : "border-[#e5e5e5] bg-white text-[#6a6a6a] hover:bg-[#FAFAF9]"}`}>
           <Filter className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">Filter</span>
@@ -1128,7 +1223,7 @@ export function InstallerTable({ counties }: InstallerTableProps) {
                 </td>
               </tr>
             ) : (
-              data.map((row, rowIdx) => (
+              data.filter((row, idx, arr) => arr.findIndex((r) => r.id === row.id) === idx).map((row, rowIdx) => (
                 <tr key={row.id} className={`border-b border-[#f0f0f0] transition-colors ${selected.has(row.id) ? "bg-[#FFF8F5]" : rowIdx % 2 === 1 ? "bg-[#FAFAF9]/50" : "hover:bg-[#FAFAF9]"}`}>
                   <td className="px-2.5 py-[6px]">
                     <input type="checkbox" checked={selected.has(row.id)} onChange={() => toggleSelect(row.id)} className="h-3.5 w-3.5 rounded accent-[#4ABDE8]" />

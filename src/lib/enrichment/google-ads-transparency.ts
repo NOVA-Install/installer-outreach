@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import {
   installers,
   googleAdsData,
+  trafficData,
   enrichmentJobs,
 } from "@/lib/db/schema";
 import { eq, isNull, sql } from "drizzle-orm";
@@ -118,14 +119,28 @@ export async function fetchGoogleAdsTransparency(installerId: number): Promise<{
   };
 }
 
-// Batch enrichment
-export async function enrichGoogleAdsBatch(jobId: number) {
+// Batch enrichment with optional traffic filter
+export async function enrichGoogleAdsBatch(jobId: number, minTraffic = 0) {
   const auth = getAuth();
-  const toEnrich = await db
-    .select({ id: installers.id, website: installers.website })
-    .from(installers)
-    .leftJoin(googleAdsData, eq(installers.id, googleAdsData.installerId))
-    .where(sql`${googleAdsData.id} IS NULL AND ${installers.website} IS NOT NULL AND ${installers.website} != ''`);
+
+  let query;
+  if (minTraffic > 0) {
+    // Only process installers above the traffic threshold
+    query = db
+      .select({ id: installers.id, website: installers.website })
+      .from(installers)
+      .leftJoin(googleAdsData, eq(installers.id, googleAdsData.installerId))
+      .leftJoin(trafficData, eq(installers.id, trafficData.installerId))
+      .where(sql`${googleAdsData.id} IS NULL AND ${installers.website} IS NOT NULL AND ${installers.website} != '' AND ${trafficData.googleOrganicEtv} >= ${minTraffic}`);
+  } else {
+    query = db
+      .select({ id: installers.id, website: installers.website })
+      .from(installers)
+      .leftJoin(googleAdsData, eq(installers.id, googleAdsData.installerId))
+      .where(sql`${googleAdsData.id} IS NULL AND ${installers.website} IS NOT NULL AND ${installers.website} != ''`);
+  }
+
+  const toEnrich = await query;
 
   await db.update(enrichmentJobs).set({
     totalItems: toEnrich.length, processedItems: 0, status: "running", startedAt: new Date().toISOString(),

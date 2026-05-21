@@ -29,6 +29,7 @@ export async function GET(request: NextRequest) {
     scoreMin: searchParams.get("scoreMin") ? Number(searchParams.get("scoreMin")) : undefined,
     scoreMax: searchParams.get("scoreMax") ? Number(searchParams.get("scoreMax")) : undefined,
     ratingMin: searchParams.get("ratingMin") ? Number(searchParams.get("ratingMin")) : undefined,
+    isShortlisted: boolParam(searchParams.get("isShortlisted")),
     page: searchParams.get("page") ? Number(searchParams.get("page")) : 1,
     pageSize: searchParams.get("pageSize")
       ? Number(searchParams.get("pageSize"))
@@ -37,8 +38,23 @@ export async function GET(request: NextRequest) {
     sortOrder: (searchParams.get("sortOrder") || "asc") as "asc" | "desc",
   };
 
-  const result = await getInstallers(filters);
-  return NextResponse.json(result);
+  try {
+    const result = await getInstallers(filters);
+    // Deduplicate rows (LEFT JOINs can produce duplicates if enrichment tables have multiple records)
+    const seen = new Set<number>();
+    result.data = result.data.filter((row) => {
+      if (seen.has(row.id)) return false;
+      seen.add(row.id);
+      return true;
+    });
+    return NextResponse.json(result);
+  } catch (err) {
+    console.error("Installers API error:", err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Internal error", data: [], total: 0, page: 1, pageSize: 100, totalPages: 0 },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(request: NextRequest) {

@@ -123,10 +123,6 @@ export function MergeDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) reset(); }}>
-      <DialogTrigger className="inline-flex shrink-0 items-center justify-center rounded-lg border border-border bg-background px-2.5 h-8 gap-1.5 text-sm font-medium hover:bg-muted transition-colors">
-        <Merge className="h-3.5 w-3.5" />
-        Merge
-      </DialogTrigger>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="text-[15px]">Merge Installers</DialogTitle>

@@ -65,8 +65,31 @@ export async function GET() {
     else if (row.status === "no_results") entry.noResults += row.count;
   }
 
+  // Match method breakdown for completed tasks
+  const matchBreakdown = await db.execute(sql`
+    SELECT
+      source,
+      CASE
+        WHEN result_summary LIKE 'Auto-matched%' OR result_summary LIKE 'exact:%' OR result_summary LIKE 'close:%' OR result_summary LIKE 'overlap%' THEN 'auto_matched'
+        WHEN result_summary LIKE 'AI verified%' OR result_summary LIKE 'ai_verified:%' THEN 'ai_verified'
+        WHEN result_summary LIKE 'AI rejected%' OR result_summary LIKE 'Rejected%' THEN 'ai_rejected'
+        WHEN result_summary LIKE 'AI matched%' OR result_summary LIKE 'Matched%' THEN 'matched'
+        WHEN result_summary LIKE 'Saved (AI unavailable)%' OR result_summary LIKE 'ai_unavailable:%' THEN 'ai_unavailable'
+        WHEN result_summary LIKE 'No results found' OR result_summary LIKE 'No UK results' OR result_summary LIKE 'No match%' THEN 'no_results'
+        WHEN result_summary LIKE 'No rating%' THEN 'no_rating'
+        WHEN result_summary LIKE 'name_mismatch%' THEN 'ai_rejected'
+        ELSE 'other'
+      END as match_method,
+      COUNT(*) as cnt
+    FROM dataforseo_tasks
+    WHERE status IN ('completed', 'no_results')
+    GROUP BY source, match_method
+    ORDER BY source, cnt DESC
+  `);
+
   return NextResponse.json({
     total,
+    matchBreakdown: matchBreakdown as unknown as Record<string, unknown>[],
     coverage: {
       google_reviews: googleCount?.count ?? 0,
       trustpilot: trustpilotCount?.count ?? 0,

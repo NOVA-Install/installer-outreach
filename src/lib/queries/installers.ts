@@ -26,6 +26,7 @@ export interface InstallerFilters {
   scoreMin?: number;
   scoreMax?: number;
   ratingMin?: number;
+  isShortlisted?: boolean;
   page?: number;
   pageSize?: number;
   sortBy?: string;
@@ -50,6 +51,7 @@ export async function getInstallers(filters: InstallerFilters = {}) {
     scoreMin,
     scoreMax,
     ratingMin,
+    isShortlisted,
     page = 1,
     pageSize = 100,
     sortBy = "companyName",
@@ -129,6 +131,10 @@ export async function getInstallers(filters: InstallerFilters = {}) {
     conditions.push(sql`${googleReviews.rating} >= ${ratingMin}`);
   }
 
+  if (isShortlisted === true) {
+    conditions.push(eq(installers.isShortlisted, true));
+  }
+
   const whereClause =
     conditions.length > 0 ? and(...conditions) : undefined;
 
@@ -140,6 +146,8 @@ export async function getInstallers(filters: InstallerFilters = {}) {
     email: installers.email,
     telephone: installers.telephone,
     pipelineStage: installers.pipelineStage,
+    priority: installers.priority,
+    isShortlisted: installers.isShortlisted,
     overallScore: installerScores.overallScore,
     googleRating: googleReviews.rating,
     googleReviewCount: googleReviews.reviewCount,
@@ -147,6 +155,7 @@ export async function getInstallers(filters: InstallerFilters = {}) {
     trustpilotReviewCount: trustpilotReviews.reviewCount,
     legalEntityName: installers.legalEntityName,
     website: installers.website,
+    estimatedMonthlyInstalls: installerScores.estimatedMonthlyInstalls,
   } as unknown as Record<string, typeof installers.companyName>;
 
   // totalReviews is a computed column — handle separately
@@ -192,6 +201,9 @@ export async function getInstallers(filters: InstallerFilters = {}) {
       address: installers.address,
       country: installers.country,
       alternativeNames: installers.alternativeNames,
+      isShortlisted: installers.isShortlisted,
+      priority: installers.priority,
+      priorityNote: installers.priorityNote,
       websiteStatus: installers.websiteStatus,
       // Scores
       overallScore: installerScores.overallScore,
@@ -230,15 +242,21 @@ export async function getInstallers(filters: InstallerFilters = {}) {
     .limit(pageSize)
     .offset((page - 1) * pageSize);
 
-  const [totalResult] = await db
+  // Simplified count - only join tables that are used in the WHERE clause
+  const countQuery = db
     .select({ count: count() })
-    .from(installers)
-    .leftJoin(installerScores, eq(installers.id, installerScores.installerId))
-    .leftJoin(googleReviews, eq(installers.id, googleReviews.installerId))
-    .leftJoin(trustpilotReviews, eq(installers.id, trustpilotReviews.installerId))
-    .leftJoin(marketingSignals, eq(installers.id, marketingSignals.installerId))
-    .leftJoin(trafficData, eq(installers.id, trafficData.installerId))
-    .where(whereClause);
+    .from(installers);
+
+  // Only add joins needed for active filters
+  if (tier || scoreMin != null || scoreMax != null) {
+    countQuery.leftJoin(installerScores, eq(installers.id, installerScores.installerId));
+  }
+  if (hasReviews !== undefined || ratingMin != null) {
+    countQuery.leftJoin(googleReviews, eq(installers.id, googleReviews.installerId));
+    countQuery.leftJoin(trustpilotReviews, eq(installers.id, trustpilotReviews.installerId));
+  }
+
+  const [totalResult] = await countQuery.where(whereClause);
 
   return {
     data: results,

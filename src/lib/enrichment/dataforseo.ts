@@ -420,14 +420,17 @@ export async function collectPendingResults() {
   let collected = 0;
   let stillPending = 0;
   let errored = 0;
+  let autoMatched = 0;
+  let aiVerified = 0;
+  let aiRejected = 0;
   let rejected = 0;
   const rejectedMatches: string[] = [];
 
-  // Process in parallel batches of 130 (API limit: 2000 calls/min)
+  // Process in parallel batches of 50 (most skip AI via name pre-check, only ambiguous names call AI)
   let timedOut = false;
-  for (let batchStart = 0; batchStart < pendingTasks.length; batchStart += 130) {
+  for (let batchStart = 0; batchStart < pendingTasks.length; batchStart += 50) {
     if (Date.now() - startTime > MAX_DURATION_MS) { timedOut = true; break; }
-    const batch = pendingTasks.slice(batchStart, batchStart + 130);
+    const batch = pendingTasks.slice(batchStart, batchStart + 50);
 
     await Promise.allSettled(batch.map(async (task) => {
     try {
@@ -488,7 +491,68 @@ export async function collectPendingResults() {
         const businessCategory = result.category || result.type || "";
 
         if (ratingVal && inst) {
-          // Use AI to verify this Google Business result is the correct installer
+          // Quick name similarity check before calling AI
+          const normalize = (s: string) =>
+            s.toLowerCase()
+              .replace(/\b(ltd|limited|llp|plc|inc|t\/a|trading as)\b/g, "")
+              .replace(/&amp;/g, "&")
+              .replace(/[^a-z0-9&\s]/g, "")
+              .trim()
+              .replace(/\s+/g, " ");
+
+          const instName = normalize(inst.companyName);
+          const bizName = normalize(businessTitle);
+
+          // Calculate match: exact, or one contains the other
+          const isExactMatch = instName === bizName;
+          const isCloseMatch = instName.includes(bizName) || bizName.includes(instName);
+          const wordsInst = instName.split(" ").filter((w) => w.length > 1);
+          const wordsBiz = bizName.split(" ").filter((w) => w.length > 1);
+          const commonWords = wordsInst.filter((w) => wordsBiz.includes(w));
+          const wordOverlap = wordsInst.length > 0 ? commonWords.length / wordsInst.length : 0;
+          const isHighOverlap = wordOverlap >= 0.6;
+
+          let matchMethod = "";
+          let shouldAccept = false;
+          let shouldCallAi = false;
+
+          if (isExactMatch) {
+            shouldAccept = true;
+            matchMethod = "exact name match";
+          } else if (isCloseMatch) {
+            shouldAccept = true;
+            matchMethod = `close name match (${Math.round(wordOverlap * 100)}%)`;
+          } else if (isHighOverlap) {
+            shouldAccept = true;
+            matchMethod = `word overlap ${Math.round(wordOverlap * 100)}%`;
+          } else {
+            // Names don't match well - call AI to decide
+            shouldCallAi = true;
+          }
+
+          if (shouldAccept) {
+            // Skip AI - name match is strong enough
+            const existing = await db.select({ id: googleReviews.id }).from(googleReviews)
+              .where(eq(googleReviews.installerId, task.installerId)).limit(1);
+            if (existing.length === 0) {
+              await db.insert(googleReviews).values({
+                installerId: task.installerId,
+                placeId: result.place_id || null,
+                rating: ratingVal,
+                reviewCount: reviewsCount,
+                reviewsPerMonth: reviewsCount > 0 ? reviewsCount / 36 : null,
+                businessStatus: null,
+                fetchedAt: new Date().toISOString(),
+              });
+            }
+
+            await db.update(dataforseoTasks).set({
+              status: "completed",
+              resultSummary: `Auto-matched (${matchMethod}): "${businessTitle}", rating: ${ratingVal}, ${reviewsCount} reviews`,
+              rawResult, completedAt: new Date().toISOString(),
+            }).where(eq(dataforseoTasks.id, task.id));
+          } else if (shouldCallAi) {
+          // Names are ambiguous - use AI to decide
           try {
             const aiResult = await aiMatchGoogleReview(
               { companyName: inst.companyName, website: inst.website, postcode: inst.postcode, county: inst.county },
@@ -504,7 +568,6 @@ export async function collectPendingResults() {
             );
 
             if (aiResult.matched) {
-              // AI confirmed — save the review data
               const existing = await db.select({ id: googleReviews.id }).from(googleReviews)
                 .where(eq(googleReviews.installerId, task.installerId)).limit(1);
               if (existing.length === 0) {
@@ -525,7 +588,6 @@ export async function collectPendingResults() {
                 rawResult, completedAt: new Date().toISOString(),
               }).where(eq(dataforseoTasks.id, task.id));
             } else {
-              // AI rejected — don't save wrong data
               await db.update(dataforseoTasks).set({
                 status: "no_results",
                 resultSummary: `AI rejected: "${businessTitle}" (${businessAddress}). ${aiResult.reasoning}`,
@@ -556,6 +618,7 @@ export async function collectPendingResults() {
               rawResult, completedAt: new Date().toISOString(),
             }).where(eq(dataforseoTasks.id, task.id));
           }
+          } // end shouldCallAi
         } else {
           await db.update(dataforseoTasks).set({
             status: "completed",

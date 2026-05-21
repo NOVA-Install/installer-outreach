@@ -160,7 +160,15 @@ const SOURCES = [
     key: "scores",
     label: "Recalculate Scores",
     endpoint: "/api/enrichment/scores",
-    description: "Compute reputation, volume, marketing, and overall scores",
+    description: `Overall = (Reputation x 0.35) + (Volume x 0.25) + (Marketing x 0.40).
+
+REPUTATION (0-100): Google rating/5 x 100 (weight 0.35) + Google review count capped at 200 (weight 0.25) + Trustpilot rating/5 x 100 (weight 0.20) + Trustpilot reviews capped at 100 (weight 0.10) + company age capped at 15yrs (weight 0.10). Divided by sum of available weights.
+
+VOLUME (0-100): reviews/month x 15 = est. monthly installs. If employee count exists: employees x 4, averaged with review estimate. Then: min(installs/50, 1) x 100.
+
+MARKETING (0-100): Website +5, Google Analytics +10, Google Ads +15, Meta Pixel +15, CRM tool +15, Live Chat +10, organic traffic (scaled 0-15 based on ETV up to 1000), paid traffic +15. Capped at 100.
+
+TIERS: High = 65+, Medium = 35-64, Low = under 35.`,
     cost: "Free",
   },
 ];
@@ -185,6 +193,121 @@ function CostEstimator({ total, coverage }: { total: number; coverage: Record<st
             <span className={`tabular-nums font-medium ${cost === "Free" ? "text-green-600" : "text-[#1D1D1D]"}`}>{cost}</span>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+const METHOD_LABELS: Record<string, { label: string; color: string }> = {
+  auto_matched: { label: "Auto-matched (name)", color: "text-emerald-600" },
+  ai_verified: { label: "AI verified", color: "text-blue-600" },
+  ai_matched: { label: "AI matched", color: "text-blue-600" },
+  ai_rejected: { label: "AI rejected", color: "text-red-500" },
+  ai_unavailable: { label: "Saved (AI unavailable)", color: "text-amber-600" },
+  no_results: { label: "No results from API", color: "text-gray-500" },
+  no_rating: { label: "No rating found", color: "text-gray-400" },
+  other: { label: "Other", color: "text-gray-400" },
+};
+
+const SOURCE_LABELS: Record<string, string> = {
+  google_reviews: "Google Reviews",
+  trustpilot_search: "Trustpilot",
+  google_business_info: "Google Business",
+  job_postings: "Job Postings",
+};
+
+function MatchBreakdown({ data }: { data: { source: string; match_method: string; cnt: number }[] }) {
+  const [expanded, setExpanded] = useState(false);
+  if (!data || data.length === 0) return null;
+
+  // Group by source
+  const bySource: Record<string, { method: string; count: number }[]> = {};
+  for (const row of data) {
+    if (!bySource[row.source]) bySource[row.source] = [];
+    bySource[row.source].push({ method: row.match_method, count: Number(row.cnt) });
+  }
+
+  return (
+    <div className="pt-2 border-t border-[#f0f0f0]">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="text-[11px] text-primary hover:underline font-medium"
+      >
+        {expanded ? "Hide" : "Show"} match breakdown
+      </button>
+      {expanded && (
+        <div className="mt-2 space-y-3">
+          {Object.entries(bySource).map(([source, methods]) => (
+            <div key={source}>
+              <p className="text-[11px] font-semibold text-[#3a3a3a] uppercase tracking-wider mb-1">
+                {SOURCE_LABELS[source] || source}
+              </p>
+              <div className="space-y-0.5">
+                {methods.map((m) => {
+                  const config = METHOD_LABELS[m.method] || METHOD_LABELS.other;
+                  return (
+                    <div key={m.method} className="flex justify-between text-[12px]">
+                      <span className={config.color}>{config.label}</span>
+                      <span className="tabular-nums text-[#6a6a6a]">{m.count}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GoogleAdsFilter({ onRun, disabled }: { onRun: (minTraffic: number) => void; disabled: boolean }) {
+  const [minTraffic, setMinTraffic] = useState(50);
+  const [preview, setPreview] = useState<{ eligible: number; estimatedCost: string } | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+
+  const fetchPreview = useCallback(async (val: number) => {
+    setLoadingPreview(true);
+    try {
+      const res = await fetch(`/api/enrichment/google-ads/preview?minTraffic=${val}`);
+      const data = await res.json();
+      setPreview(data);
+    } catch { /* ignore */ }
+    setLoadingPreview(false);
+  }, []);
+
+  useEffect(() => {
+    fetchPreview(minTraffic);
+  }, []);
+
+  return (
+    <div className="space-y-2 mt-2 pt-2 border-t border-[#f0f0f0]">
+      <div className="flex items-center gap-3">
+        <label className="text-[11px] text-muted-foreground whitespace-nowrap">Min organic traffic:</label>
+        <input
+          type="range"
+          min={0}
+          max={500}
+          step={10}
+          value={minTraffic}
+          onChange={(e) => setMinTraffic(Number(e.target.value))}
+          onMouseUp={() => fetchPreview(minTraffic)}
+          onTouchEnd={() => fetchPreview(minTraffic)}
+          className="flex-1 h-1.5 accent-primary"
+        />
+        <span className="text-[12px] font-medium tabular-nums w-[40px] text-right">{minTraffic}</span>
+      </div>
+      <div className="flex items-center justify-between text-[12px]">
+        <span className="text-muted-foreground">
+          {loadingPreview ? "..." : preview ? `${preview.eligible} installers · est. ${preview.estimatedCost}` : ""}
+        </span>
+        <Button
+          size="sm"
+          onClick={() => onRun(minTraffic)}
+          disabled={disabled || !preview || preview.eligible === 0}
+        >
+          <Play className="h-3.5 w-3.5" /> Run ({preview?.eligible || 0})
+        </Button>
       </div>
     </div>
   );
@@ -221,16 +344,87 @@ export function EnrichmentPanel() {
     setLastErrors((prev) => { const next = { ...prev }; delete next[source.key]; return next; });
 
     try {
-      const res = await fetch(source.endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ priority, reviewMode }),
-      });
+      // Use Supabase Edge Function for tech_detection (runs server-side, no browser timeout)
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      const edgeFunctions: Record<string, string> = {
+        tech_detection: "tech-detection",
+        companies_house: "companies-house-enrich",
+        traffic_bulk: "traffic-bulk",
+        google_ads_transparency: "google-ads-transparency",
+      };
+      const edgeFn = edgeFunctions[source.key];
+      const useEdge = edgeFn && supabaseUrl && supabaseKey;
+
+      const res = useEdge
+        ? await fetch(`${supabaseUrl}/functions/v1/${edgeFn}`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${supabaseKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ priority, reviewMode }),
+          })
+        : await fetch(source.endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ priority, reviewMode }),
+          });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(data.error || `Failed: ${res.status}`);
       }
-      toast.success(`${source.label}: tasks submitted. Click "Collect Results" to retrieve data.`);
+      const needsCollect = ["google_reviews", "trustpilot", "trustpilot_domain", "google_business", "job_postings"].includes(source.key);
+
+      // Auto-retry loop if Edge Function reports remaining items
+      if (useEdge && data.remaining > 0) {
+        let rem = data.remaining;
+        let totalProcessed = data.processed || 0;
+        toast.info(`${source.label}: ${totalProcessed} processed, ${rem} remaining. Running...`, { duration: 5000 });
+        fetchStatus();
+
+        let stuckCount = 0;
+        while (rem > 0) {
+          await new Promise((r) => setTimeout(r, 2000));
+          try {
+            const retryRes = await fetch(`${supabaseUrl}/functions/v1/${edgeFn}`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ priority, reviewMode }),
+            });
+            const retryData = await retryRes.json().catch(() => ({}));
+            if (!retryRes.ok) break;
+            const batchProcessed = retryData.processed || 0;
+            totalProcessed += batchProcessed;
+            rem = retryData.remaining ?? 0;
+
+            // Break if no progress (stuck on unfixable items)
+            if (batchProcessed === 0) {
+              stuckCount++;
+              if (stuckCount >= 2) {
+                toast.info(`${source.label}: ${rem} items could not be processed (likely invalid data). Stopping.`, { duration: 8000 });
+                break;
+              }
+            } else {
+              stuckCount = 0;
+              toast.info(`${source.label}: ${totalProcessed} processed, ${rem} remaining...`, { duration: 3000 });
+            }
+            fetchStatus();
+          } catch {
+            break;
+          }
+        }
+
+        toast.success(`${source.label}: complete. ${totalProcessed} total processed.`);
+        fetchStatus();
+        return;
+      }
+
+      toast.success(
+        needsCollect
+          ? `${source.label}: tasks submitted. Click "Collect Results" to retrieve data.`
+          : `${source.label}: ${data.message || "enrichment complete."}`
+      );
       fetchStatus();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
@@ -313,7 +507,19 @@ export function EnrichmentPanel() {
               onClick={async () => {
                 setRunning((prev) => new Set([...prev, "__collect"]));
                 try {
-                  const res = await fetch("/api/enrichment/collect", { method: "POST" });
+                  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+                  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+                  const useEdge = supabaseUrl && supabaseKey;
+
+                  const res = useEdge
+                    ? await fetch(`${supabaseUrl}/functions/v1/collect-results`, {
+                        method: "POST",
+                        headers: {
+                          Authorization: `Bearer ${supabaseKey}`,
+                          "Content-Type": "application/json",
+                        },
+                      })
+                    : await fetch("/api/enrichment/collect", { method: "POST" });
                   const data = await res.json();
                   const parts = [`${data.collected} collected`];
                   if (data.stillPending > 0) parts.push(`${data.stillPending} still pending`);
@@ -383,6 +589,11 @@ export function EnrichmentPanel() {
                 );
               })}
             </div>
+          )}
+
+          {/* Match method breakdown */}
+          {status && "matchBreakdown" in (status as object) && (
+            <MatchBreakdown data={(status as unknown as { matchBreakdown: { source: string; match_method: string; cnt: number }[] }).matchBreakdown} />
           )}
         </CardContent>
       </Card>
@@ -548,6 +759,68 @@ export function EnrichmentPanel() {
                   </Button>
                 </div>
               </div>
+
+              {/* Google Ads filter */}
+              {source.key === "google_ads_transparency" && (
+                <GoogleAdsFilter
+                  disabled={isRunning || (status?.total ?? 0) === 0}
+                  onRun={async (minTraffic) => {
+                    setRunning((prev) => new Set([...prev, source.key]));
+                    try {
+                      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+                      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+                      const useEdge = supabaseUrl && supabaseKey;
+
+                      const endpoint = useEdge
+                        ? `${supabaseUrl}/functions/v1/google-ads-transparency`
+                        : source.endpoint;
+                      const headers: Record<string, string> = { "Content-Type": "application/json" };
+                      if (useEdge) headers["Authorization"] = `Bearer ${supabaseKey}`;
+
+                      const res = await fetch(endpoint, {
+                        method: "POST",
+                        headers,
+                        body: JSON.stringify({ minTraffic }),
+                      });
+
+                      const data = await res.json().catch(() => ({}));
+                      if (!res.ok) throw new Error(data.error || "Failed");
+
+                      // Auto-retry if remaining
+                      if (data.remaining > 0) {
+                        let rem = data.remaining;
+                        let totalProcessed = data.processed || 0;
+                        toast.info(`Google Ads: ${totalProcessed} processed, ${rem} remaining. Running...`, { duration: 5000 });
+                        fetchStatus();
+
+                        let stuckCount = 0;
+                        while (rem > 0) {
+                          await new Promise((r) => setTimeout(r, 2000));
+                          try {
+                            const retryRes = await fetch(endpoint, { method: "POST", headers, body: JSON.stringify({ minTraffic }) });
+                            const retryData = await retryRes.json().catch(() => ({}));
+                            if (!retryRes.ok) break;
+                            const batchProcessed = retryData.processed || 0;
+                            totalProcessed += batchProcessed;
+                            rem = retryData.remaining ?? 0;
+                            if (batchProcessed === 0) { stuckCount++; if (stuckCount >= 2) { toast.info(`Google Ads: ${rem} items could not be processed. Stopping.`, { duration: 8000 }); break; } }
+                            else { stuckCount = 0; toast.info(`Google Ads: ${totalProcessed} processed, ${rem} remaining...`, { duration: 3000 }); }
+                            fetchStatus();
+                          } catch { break; }
+                        }
+                        toast.success(`Google Ads: complete. ${totalProcessed} total processed.`);
+                      } else {
+                        toast.success(`Google Ads: ${data.processed || 0} processed.`);
+                      }
+                      fetchStatus();
+                    } catch (err) {
+                      toast.error(`Google Ads: ${err instanceof Error ? err.message : "Failed"}`, { duration: 8000 });
+                    } finally {
+                      setRunning((prev) => { const next = new Set(prev); next.delete(source.key); return next; });
+                    }
+                  }}
+                />
+              )}
             </CardContent>
           </Card>
         );

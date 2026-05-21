@@ -58,7 +58,7 @@ export function MapPageClient({
   return (
     <div className="flex h-[calc(100vh-3.5rem)] flex-col">
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-[#e5e5e5] bg-white px-4 py-2">
+      <div className="flex flex-wrap items-center gap-2 border-b border-[#e5e5e5] bg-white px-4 py-2 relative z-[1000]">
         <div className="relative min-w-[180px]">
           <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9a9a9a]" />
           <input

@@ -86,11 +86,16 @@ function CompaniesHouseTab() {
   const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0, autoMatched: 0 });
 
   const fetchData = useCallback(async () => {
-    const res = await fetch("/api/cleanup/companies-house");
-    const data = await res.json();
-    setInstallers(data.unmatched);
-    setStats(data.stats);
-    setLoading(false);
+    try {
+      const res = await fetch("/api/cleanup/companies-house");
+      const data = await res.json();
+      setInstallers(data.unmatched || []);
+      setStats(data.stats || { unmatchedCount: 0, matchedCount: 0 });
+    } catch {
+      // silently handle
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -269,11 +274,16 @@ function WebsiteLookupTab() {
   const [suggestions, setSuggestions] = useState<Record<number, WebsiteSuggestion[]>>({});
 
   const fetchData = useCallback(async () => {
-    const res = await fetch("/api/cleanup/website-lookup");
-    const data = await res.json();
-    setInstallers(data.missing);
-    setStats(data.stats);
-    setLoading(false);
+    try {
+      const res = await fetch("/api/cleanup/website-lookup");
+      const data = await res.json();
+      setInstallers(data.missing || []);
+      setStats(data.stats || {});
+    } catch {
+      // silently handle
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);

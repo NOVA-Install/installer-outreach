@@ -57,24 +57,33 @@ function createIcon(tier: string | null) {
   });
 }
 
-// Cluster markers for performance
-function MarkerClusterGroup({ installers }: { installers: MapInstaller[] }) {
+// Use CircleMarkers with Canvas renderer for fast rendering of thousands of points
+function MarkerLayer({ installers }: { installers: MapInstaller[] }) {
   const map = useMap();
-  const clusterRef = useRef<L.LayerGroup | null>(null);
+  const layerRef = useRef<L.LayerGroup | null>(null);
 
   useEffect(() => {
-    if (clusterRef.current) {
-      map.removeLayer(clusterRef.current);
+    if (layerRef.current) {
+      map.removeLayer(layerRef.current);
     }
 
+    // Canvas renderer is much faster than SVG for thousands of markers
+    const renderer = L.canvas({ padding: 0.5 });
     const group = L.layerGroup();
 
     installers.forEach((installer) => {
       if (installer.latitude == null || installer.longitude == null) return;
 
-      const icon = createIcon(installer.tier);
-      const marker = L.marker([installer.latitude, installer.longitude], {
-        icon,
+      const color = tierColors[installer.tier || ""] || "#4ABDE8";
+
+      const marker = L.circleMarker([installer.latitude, installer.longitude], {
+        renderer,
+        radius: 5,
+        fillColor: color,
+        color: "#fff",
+        weight: 1.5,
+        opacity: 0.9,
+        fillOpacity: 0.85,
       });
 
       const popupContent = `
@@ -93,7 +102,7 @@ function MarkerClusterGroup({ installers }: { installers: MapInstaller[] }) {
               ? `<div style="margin-top:4px;font-size:12px;">Score: ${installer.overallScore.toFixed(0)}</div>`
               : ""
           }
-          <a href="/installers/${installer.id}" style="display:inline-block;margin-top:8px;font-size:12px;color:#2563eb;text-decoration:underline;">View Details</a>
+          <a href="/installers/${installer.id}" style="display:inline-block;margin-top:8px;font-size:12px;color:#4ABDE8;text-decoration:underline;">View Details</a>
         </div>
       `;
 
@@ -102,11 +111,11 @@ function MarkerClusterGroup({ installers }: { installers: MapInstaller[] }) {
     });
 
     group.addTo(map);
-    clusterRef.current = group;
+    layerRef.current = group;
 
     return () => {
-      if (clusterRef.current) {
-        map.removeLayer(clusterRef.current);
+      if (layerRef.current) {
+        map.removeLayer(layerRef.current);
       }
     };
   }, [installers, map]);
@@ -130,7 +139,7 @@ export function MapInner({ installers }: { installers: MapInstaller[] }) {
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        <MarkerClusterGroup installers={installers} />
+        <MarkerLayer installers={installers} />
       </MapContainer>
 
       {/* Legend */}

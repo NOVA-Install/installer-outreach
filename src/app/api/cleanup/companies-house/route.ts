@@ -6,37 +6,44 @@ import { aiMatchCompaniesHouse } from "@/lib/enrichment/ai-matcher";
 
 // GET: list installers without a legal entity name
 export async function GET() {
-  const unmatched = await db
-    .select({
-      id: installers.id,
-      companyName: installers.companyName,
-      alternativeNames: installers.alternativeNames,
-      postcode: installers.postcode,
-      legalEntityName: installers.legalEntityName,
-      legalEntityNumber: installers.legalEntityNumber,
-    })
-    .from(installers)
-    .where(isNull(installers.legalEntityName))
-    .orderBy(installers.companyName)
-    .limit(100);
+  try {
+    const unmatched = await db
+      .select({
+        id: installers.id,
+        companyName: installers.companyName,
+        alternativeNames: installers.alternativeNames,
+        postcode: installers.postcode,
+        legalEntityName: installers.legalEntityName,
+        legalEntityNumber: installers.legalEntityNumber,
+      })
+      .from(installers)
+      .where(isNull(installers.legalEntityName))
+      .orderBy(installers.companyName)
+      .limit(100);
 
-  const total = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(installers)
-    .where(isNull(installers.legalEntityName));
+    const total = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(installers)
+      .where(isNull(installers.legalEntityName));
 
-  const matched = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(installers)
-    .where(sql`${installers.legalEntityName} IS NOT NULL`);
+    const matched = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(installers)
+      .where(sql`${installers.legalEntityName} IS NOT NULL`);
 
-  return NextResponse.json({
-    unmatched,
-    stats: {
-      unmatchedCount: total[0]?.count ?? 0,
-      matchedCount: matched[0]?.count ?? 0,
-    },
-  });
+    return NextResponse.json({
+      unmatched,
+      stats: {
+        unmatchedCount: total[0]?.count ?? 0,
+        matchedCount: matched[0]?.count ?? 0,
+      },
+    });
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Failed to fetch data", unmatched: [], stats: { unmatchedCount: 0, matchedCount: 0 } },
+      { status: 500 }
+    );
+  }
 }
 
 // POST: lookup a single installer on Companies House and store result

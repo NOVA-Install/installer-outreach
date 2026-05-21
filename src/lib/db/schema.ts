@@ -52,6 +52,10 @@ export const installers = pgTable("installers", {
   trustmarkDescription: text("trustmark_description"),
   trustmarkProfileUrl: text("trustmark_profile_url"),
   trustmarkStatus: text("trustmark_status"),
+  // Shortlist & priority
+  isShortlisted: boolean("is_shortlisted").default(false),
+  priority: integer("priority"), // 1=highest, 2, 3, 4, 5=lowest. null=unset
+  priorityNote: text("priority_note"), // optional note about why this priority
   // CRM
   pipelineStage: text("pipeline_stage").default("uncontacted"),
   pipelineStageUpdatedAt: text("pipeline_stage_updated_at"),

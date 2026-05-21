@@ -40,8 +40,10 @@ export async function POST(request: NextRequest) {
 
   const { data, errors: parseErrors } = Papa.parse(text, {
     header: true,
-    skipEmptyLines: true,
+    skipEmptyLines: "greedy",
     transformHeader: (header: string) => header.trim(),
+    quoteChar: '"',
+    escapeChar: '"',
   });
 
   if (parseErrors.length > 0 && parseErrors[0].type === "Delimiter") {
@@ -77,6 +79,15 @@ export async function POST(request: NextRequest) {
 
         if (!companyName?.trim()) {
           validationErrors.push({ row: rowIndex, issues: ["No company name found"] });
+          continue;
+        }
+
+        // Skip rows that have no source flags - these are likely leaked multi-line text
+        const hasAnySource =
+          toBool(row["In_MCS"]) || toBool(row["In_Nova"]) || toBool(row["In_TrustMark"]);
+        const hasSourceCount = parseInt(row["Source Count"] || "0") > 0;
+        if (!hasAnySource && !hasSourceCount) {
+          validationErrors.push({ row: rowIndex, issues: [`Skipped: "${companyName}" has no source flags (likely a multi-line field overflow)`] });
           continue;
         }
 

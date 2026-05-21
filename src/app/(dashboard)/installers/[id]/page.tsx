@@ -44,6 +44,8 @@ import { ActivityTimeline } from "@/components/installers/activity-timeline";
 import { ReviewDetails } from "@/components/installers/review-details";
 import { InstallerActionsMenu } from "@/components/installers/installer-actions-menu";
 import { CorrectEnrichment } from "@/components/installers/correct-enrichment";
+import { ShortlistButton } from "@/components/installers/shortlist-button";
+import { AddFieldInline } from "@/components/installers/add-field-inline";
 
 const tierStyles: Record<string, string> = {
   high: "bg-green-50 text-green-700 border-green-200",
@@ -181,7 +183,8 @@ export default async function InstallerDetailPage({
         </Link>
         <div className="h-4 w-px bg-[#e5e5e5] mx-1" />
         <span className="text-[13px] text-[#1D1D1D] font-medium truncate">{installer.companyName}</span>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <ShortlistButton installerId={installerId} initialValue={installer.isShortlisted === true} />
           <InstallerActionsMenu installerId={installerId} installerName={installer.companyName} hasGoogleReviews={gReview !== null} hasTrustpilotProfile={tpReview !== null} />
         </div>
       </div>
@@ -213,20 +216,26 @@ export default async function InstallerDetailPage({
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-3 mt-2.5">
-                {installer.email && (
+                {installer.email ? (
                   <a href={`mailto:${installer.email}`} className="inline-flex items-center gap-1.5 h-[28px] px-3 rounded-lg bg-[#FAFAF9] border border-[#e5e5e5] text-[12px] text-[#3a3a3a] hover:border-primary hover:text-primary transition-colors">
                     <Mail className="h-3.5 w-3.5" />{installer.email}
                   </a>
+                ) : (
+                  <AddFieldInline installerId={installerId} field="email" label="Email" icon={<Mail className="h-3.5 w-3.5" />} placeholder="email@company.com" />
                 )}
-                {installer.telephone && (
+                {installer.telephone ? (
                   <a href={`tel:${installer.telephone}`} className="inline-flex items-center gap-1.5 h-[28px] px-3 rounded-lg bg-[#FAFAF9] border border-[#e5e5e5] text-[12px] text-[#3a3a3a] hover:border-primary hover:text-primary transition-colors">
                     <Phone className="h-3.5 w-3.5" />{installer.telephone}
                   </a>
+                ) : (
+                  <AddFieldInline installerId={installerId} field="telephone" label="Phone" icon={<Phone className="h-3.5 w-3.5" />} placeholder="01onal 123456" />
                 )}
-                {installer.website && (
+                {installer.website ? (
                   <a href={installer.website.startsWith("http") ? installer.website : `https://${installer.website}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 h-[28px] px-3 rounded-lg bg-[#FAFAF9] border border-[#e5e5e5] text-[12px] text-[#3a3a3a] hover:border-primary hover:text-primary transition-colors">
                     <Globe className="h-3.5 w-3.5" />{domain || "Website"}<ExternalLink className="h-3 w-3 text-[#9a9a9a]" />
                   </a>
+                ) : (
+                  <AddFieldInline installerId={installerId} field="website" label="Website" icon={<Globe className="h-3.5 w-3.5" />} placeholder="example.co.uk" />
                 )}
               </div>
             </div>

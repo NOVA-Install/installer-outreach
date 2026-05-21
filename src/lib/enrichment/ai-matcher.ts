@@ -122,12 +122,13 @@ GOOGLE BUSINESS CANDIDATES:
 ${candidateList}
 
 Rules:
-- Only match if genuinely confident this is the same business at the same location
-- The business name should closely match the installer name
-- Address/postcode proximity is important — same town or nearby area is good, different city is a red flag
-- Business category should be related to solar/energy/electrical/construction — reject restaurants, shops, etc.
-- If the installer name is very generic (e.g. "Solar Solutions"), be extra cautious — require strong address match
-- False positive is worse than a missed match
+- If the business name is an exact or very close match (e.g. "Ltd" vs "Limited", minor abbreviations), ACCEPT IT even if the address is unknown. Many service-area businesses hide their address on Google.
+- An unknown address is NOT a reason to reject an otherwise strong name match.
+- The search was already location-specific (included the postcode), so the result is likely in the right area.
+- Only reject if the names clearly refer to different businesses (e.g. "ABC Solar" vs "ABC Restaurant").
+- If the candidate is clearly in a completely unrelated industry (restaurant, shop, hotel), reject it.
+- IGNORE the "category" field if it says "google_reviews" — that is a DataForSEO artefact, NOT an actual business category. It tells you nothing about the business type.
+- Generic names like "Solar Solutions" or "Green Energy" need slightly more caution, but still accept if it's the only candidate with a relevant name.
 
 Respond ONLY with JSON:
 {"matched": true/false, "matchIndex": <index or null>, "confidence": "high"/"medium"/"low", "reasoning": "<one sentence>"}`);

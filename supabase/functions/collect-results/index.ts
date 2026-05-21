@@ -1,0 +1,418 @@
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const DATAFORSEO_BASE = "https://api.dataforseo.com/v3";
+
+serve(async (req) => {
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  };
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const dfsLogin = Deno.env.get("DATAFORSEO_LOGIN")!;
+  const dfsPassword = Deno.env.get("DATAFORSEO_PASSWORD")!;
+  const googleAiKey = Deno.env.get("GOOGLE_AI_API_KEY");
+
+  const supabase = createClient(supabaseUrl, supabaseKey);
+  const dfsAuth = "Basic " + btoa(`${dfsLogin}:${dfsPassword}`);
+
+  // Get all pending tasks
+  const { data: pendingTasks, error: fetchErr } = await supabase
+    .from("dataforseo_tasks")
+    .select("*")
+    .eq("status", "pending")
+    .limit(2000);
+
+  if (fetchErr) {
+    return new Response(JSON.stringify({ error: fetchErr.message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
+
+  const total = pendingTasks?.length || 0;
+  let collected = 0;
+  let stillPending = 0;
+  let errored = 0;
+  let autoMatched = 0;
+  let aiCalled = 0;
+  let noResults = 0;
+
+  // Helper: normalize name for comparison
+  function normalize(s: string): string {
+    return s.toLowerCase()
+      .replace(/\b(ltd|limited|llp|plc|inc|t\/a|trading as)\b/g, "")
+      .replace(/&amp;/g, "&")
+      .replace(/[^a-z0-9&\s]/g, "")
+      .trim()
+      .replace(/\s+/g, " ");
+  }
+
+  // Process in batches of 50
+  for (let i = 0; i < total; i += 50) {
+    const batch = pendingTasks!.slice(i, i + 50);
+
+    await Promise.allSettled(batch.map(async (task) => {
+      try {
+        const res = await fetch(`${DATAFORSEO_BASE}/${task.endpoint}/task_get/${task.task_id}`, {
+          headers: { Authorization: dfsAuth },
+        });
+        const data = await res.json();
+        const dfsTask = data?.tasks?.[0];
+        const rawResult = dfsTask?.result?.[0] ? JSON.stringify(dfsTask.result[0]) : null;
+
+        // Still in queue
+        if (dfsTask?.status_code === 40601 || dfsTask?.status_code === 40602) {
+          stillPending++;
+          return;
+        }
+
+        // No results from API
+        if (dfsTask?.status_code === 40102) {
+          await supabase.from("dataforseo_tasks").update({
+            status: "no_results",
+            result_summary: "No results found",
+            raw_result: rawResult,
+            completed_at: new Date().toISOString(),
+          }).eq("id", task.id);
+          noResults++;
+          return;
+        }
+
+        // Error
+        if (dfsTask?.status_code && dfsTask.status_code >= 40000) {
+          await supabase.from("dataforseo_tasks").update({
+            status: "failed",
+            result_summary: `${dfsTask.status_code}: ${dfsTask.status_message}`,
+            raw_result: rawResult,
+            completed_at: new Date().toISOString(),
+          }).eq("id", task.id);
+          errored++;
+          return;
+        }
+
+        const result = dfsTask?.result?.[0];
+
+        // ─── Google Reviews ───
+        if (task.source === "google_reviews" && result) {
+          const ratingObj = result.rating;
+          const ratingVal = typeof ratingObj === "object" ? ratingObj?.value : ratingObj;
+          const reviewsCount = result.reviews_count || 0;
+          const businessTitle = result.title || result.name || "";
+
+          if (!ratingVal) {
+            await supabase.from("dataforseo_tasks").update({
+              status: "completed",
+              result_summary: "No rating found in result",
+              raw_result: rawResult,
+              completed_at: new Date().toISOString(),
+            }).eq("id", task.id);
+            collected++;
+            return;
+          }
+
+          // Get installer name for matching
+          const { data: inst } = await supabase
+            .from("installers")
+            .select("company_name, website, postcode, county")
+            .eq("id", task.installer_id)
+            .single();
+
+          if (!inst) {
+            await supabase.from("dataforseo_tasks").update({
+              status: "failed", result_summary: "Installer not found",
+              raw_result: rawResult, completed_at: new Date().toISOString(),
+            }).eq("id", task.id);
+            errored++;
+            return;
+          }
+
+          // Name similarity pre-check
+          const instName = normalize(inst.company_name);
+          const bizName = normalize(businessTitle);
+          const isExact = instName === bizName;
+          const isClose = instName.includes(bizName) || bizName.includes(instName);
+          const wordsInst = instName.split(" ").filter((w: string) => w.length > 1);
+          const wordsBiz = bizName.split(" ").filter((w: string) => w.length > 1);
+          const overlap = wordsInst.length > 0
+            ? wordsInst.filter((w: string) => wordsBiz.includes(w)).length / wordsInst.length
+            : 0;
+          const isHighOverlap = overlap >= 0.6;
+
+          let accepted = isExact || isClose || isHighOverlap;
+          let matchMethod = isExact ? "exact" : isClose ? "close" : isHighOverlap ? `overlap ${Math.round(overlap * 100)}%` : "";
+
+          // If names don't match, try AI (if available)
+          if (!accepted && googleAiKey) {
+            try {
+              aiCalled++;
+              const aiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${googleAiKey}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  contents: [{ parts: [{ text: `Is "${businessTitle}" the same business as "${inst.company_name}" (solar installer in ${inst.postcode || "UK"})? Reply only YES or NO.` }] }],
+                }),
+              });
+              const aiData = await aiRes.json();
+              const answer = aiData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim().toUpperCase() || "";
+              if (answer.startsWith("YES")) {
+                accepted = true;
+                matchMethod = "ai_verified";
+              } else {
+                matchMethod = "ai_rejected";
+              }
+            } catch {
+              // AI failed, skip
+              accepted = true;
+              matchMethod = "ai_unavailable";
+            }
+          } else if (!accepted) {
+            matchMethod = "name_mismatch";
+          }
+
+          if (accepted) {
+            // Check for existing record
+            const { data: existing } = await supabase
+              .from("google_reviews")
+              .select("id")
+              .eq("installer_id", task.installer_id)
+              .limit(1);
+
+            if (!existing || existing.length === 0) {
+              await supabase.from("google_reviews").insert({
+                installer_id: task.installer_id,
+                place_id: result.place_id || null,
+                rating: ratingVal,
+                review_count: reviewsCount,
+                reviews_per_month: reviewsCount > 0 ? reviewsCount / 36 : null,
+                business_status: null,
+                fetched_at: new Date().toISOString(),
+              });
+            }
+
+            await supabase.from("dataforseo_tasks").update({
+              status: "completed",
+              result_summary: `${matchMethod}: "${businessTitle}", rating: ${ratingVal}, ${reviewsCount} reviews`,
+              raw_result: rawResult,
+              completed_at: new Date().toISOString(),
+            }).eq("id", task.id);
+            autoMatched++;
+          } else {
+            await supabase.from("dataforseo_tasks").update({
+              status: "no_results",
+              result_summary: `Rejected (${matchMethod}): "${businessTitle}" doesn't match "${inst.company_name}"`,
+              raw_result: rawResult,
+              completed_at: new Date().toISOString(),
+            }).eq("id", task.id);
+            noResults++;
+          }
+
+          collected++;
+          return;
+        }
+
+        // ─── Trustpilot Search ───
+        if (task.source === "trustpilot_search" && result) {
+          const items = result.items || [];
+          // Filter non-UK
+          const nonUkTlds = [".dk", ".de", ".fr", ".nl", ".se", ".no", ".fi", ".es", ".it", ".pl", ".pt", ".at", ".ch", ".be", ".au", ".nz", ".ca", ".us", ".in", ".za", ".br"];
+          const filtered = items.filter((item: { domain?: string }) =>
+            item.domain && !nonUkTlds.some((tld: string) => item.domain!.endsWith(tld))
+          );
+
+          const { data: inst } = await supabase
+            .from("installers")
+            .select("company_name, website, postcode")
+            .eq("id", task.installer_id)
+            .single();
+
+          if (!inst || filtered.length === 0) {
+            await supabase.from("dataforseo_tasks").update({
+              status: "no_results",
+              result_summary: filtered.length === 0 ? "No UK results" : "Installer not found",
+              raw_result: rawResult,
+              completed_at: new Date().toISOString(),
+            }).eq("id", task.id);
+            noResults++;
+            return;
+          }
+
+          // Find best match by name or domain
+          let bestMatch = null;
+          const instName = normalize(inst.company_name);
+
+          // Check domain match first
+          if (inst.website) {
+            const instDomain = inst.website.replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0];
+            bestMatch = filtered.find((item: { domain?: string }) =>
+              item.domain && (item.domain.includes(instDomain) || instDomain.includes(item.domain.replace(/^www\./, "")))
+            );
+          }
+
+          // Then name match
+          if (!bestMatch) {
+            for (const item of filtered) {
+              const itemName = normalize(item.name || item.display_name || item.domain || "");
+              if (instName === itemName || instName.includes(itemName) || itemName.includes(instName)) {
+                bestMatch = item;
+                break;
+              }
+              const words1 = instName.split(" ").filter((w: string) => w.length > 1);
+              const words2 = itemName.split(" ").filter((w: string) => w.length > 1);
+              const common = words1.filter((w: string) => words2.includes(w));
+              if (words1.length > 0 && common.length / words1.length >= 0.6) {
+                bestMatch = item;
+                break;
+              }
+            }
+          }
+
+          if (bestMatch) {
+            const { data: existing } = await supabase
+              .from("trustpilot_reviews")
+              .select("id")
+              .eq("installer_id", task.installer_id)
+              .limit(1);
+
+            if (!existing || existing.length === 0) {
+              await supabase.from("trustpilot_reviews").insert({
+                installer_id: task.installer_id,
+                trustpilot_url: bestMatch.domain ? `https://www.trustpilot.com/review/${bestMatch.domain}` : null,
+                rating: bestMatch.rating?.value || null,
+                review_count: bestMatch.reviews_count || 0,
+                trust_score: bestMatch.trust_score || null,
+                fetched_at: new Date().toISOString(),
+              });
+            }
+
+            await supabase.from("dataforseo_tasks").update({
+              status: "completed",
+              result_summary: `Matched: ${bestMatch.domain}, rating: ${bestMatch.rating?.value}`,
+              raw_result: rawResult,
+              completed_at: new Date().toISOString(),
+            }).eq("id", task.id);
+            collected++;
+          } else {
+            const topName = filtered[0]?.name || filtered[0]?.domain || "none";
+            await supabase.from("dataforseo_tasks").update({
+              status: "no_results",
+              result_summary: `No match. Top: "${topName}" doesn't match "${inst.company_name}"`,
+              raw_result: rawResult,
+              completed_at: new Date().toISOString(),
+            }).eq("id", task.id);
+            noResults++;
+          }
+          return;
+        }
+
+        // ─── Google Business Info ───
+        if (task.source === "google_business_info" && result) {
+          const { data: existing } = await supabase
+            .from("google_business_info")
+            .select("id")
+            .eq("installer_id", task.installer_id)
+            .limit(1);
+
+          const bizData = {
+            installer_id: task.installer_id,
+            place_id: result.place_id || null,
+            title: result.title || null,
+            phone: result.phone || null,
+            website_domain: result.domain || null,
+            main_category: result.category || null,
+            address: result.address || null,
+            city: result.address_info?.city || null,
+            postal_code: result.address_info?.zip || null,
+            latitude: result.latitude || null,
+            longitude: result.longitude || null,
+            total_photos: result.total_photos || null,
+            is_claimed: result.is_claimed ?? null,
+            current_status: result.current_status || null,
+            work_hours: result.work_hours ? JSON.stringify(result.work_hours) : null,
+            price_level: result.price_level || null,
+            additional_categories: result.additional_categories ? JSON.stringify(result.additional_categories) : null,
+            fetched_at: new Date().toISOString(),
+          };
+
+          if (existing && existing.length > 0) {
+            await supabase.from("google_business_info").update(bizData).eq("installer_id", task.installer_id);
+          } else {
+            await supabase.from("google_business_info").insert(bizData);
+          }
+
+          await supabase.from("dataforseo_tasks").update({
+            status: "completed",
+            result_summary: `${result.title} | ${result.phone || "no phone"} | ${result.domain || "no website"}`,
+            raw_result: rawResult,
+            completed_at: new Date().toISOString(),
+          }).eq("id", task.id);
+          collected++;
+          return;
+        }
+
+        // ─── Job Postings ───
+        if (task.source === "job_postings" && result) {
+          const jobDomains = ["indeed.co.uk", "indeed.com", "linkedin.com", "reed.co.uk", "totaljobs.com", "glassdoor.co.uk", "glassdoor.com", "cv-library.co.uk", "adzuna.co.uk"];
+          const postings = (result.items || [])
+            .filter((item: { type?: string; domain?: string }) =>
+              item.type === "organic" && item.domain && jobDomains.some((jd: string) => item.domain!.includes(jd))
+            )
+            .map((item: { title?: string; domain?: string; url?: string; description?: string }) => ({
+              title: item.title || "", source: item.domain || "", url: item.url || "",
+              snippet: item.description?.substring(0, 200) || "",
+            }))
+            .slice(0, 20);
+
+          const jobData = {
+            installer_id: task.installer_id,
+            total_postings: postings.length,
+            postings: postings.length > 0 ? JSON.stringify(postings) : null,
+            is_hiring: postings.length > 0,
+            fetched_at: new Date().toISOString(),
+          };
+
+          const { data: existing } = await supabase
+            .from("job_postings")
+            .select("id")
+            .eq("installer_id", task.installer_id)
+            .limit(1);
+
+          if (existing && existing.length > 0) {
+            await supabase.from("job_postings").update(jobData).eq("installer_id", task.installer_id);
+          } else {
+            await supabase.from("job_postings").insert(jobData);
+          }
+
+          await supabase.from("dataforseo_tasks").update({
+            status: "completed",
+            result_summary: postings.length > 0 ? `Hiring: ${postings.length} postings` : "Not hiring",
+            raw_result: rawResult,
+            completed_at: new Date().toISOString(),
+          }).eq("id", task.id);
+          collected++;
+          return;
+        }
+
+        // Unknown source - mark complete
+        collected++;
+      } catch (err) {
+        errored++;
+      }
+    }));
+  }
+
+  const response = {
+    total,
+    collected,
+    stillPending,
+    errored,
+    autoMatched,
+    aiCalled,
+    noResults,
+    message: `Processed ${collected + noResults + errored} of ${total} tasks`,
+  };
+
+  return new Response(JSON.stringify(response), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+});

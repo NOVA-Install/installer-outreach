@@ -40,21 +40,27 @@ export async function POST() {
     return NextResponse.json({ jobId: job.id, status: "completed", message: "No installers need traffic data" });
   }
 
-  // Extract domains
+  // Extract domains - map both with and without www for matching
   const domainMap = new Map<string, number>(); // domain → installerId
+  const allInstallerDomains = new Map<number, string>(); // installerId → domain (for zero-traffic records)
   for (const inst of toEnrich) {
     if (!inst.website) continue;
     try {
-      const domain = inst.website.startsWith("http")
-        ? new URL(inst.website).hostname.replace(/^www\./, "")
-        : inst.website.replace(/^www\./, "");
-      domainMap.set(domain, inst.id);
+      const hostname = inst.website.startsWith("http")
+        ? new URL(inst.website).hostname
+        : inst.website.split("/")[0];
+      const withoutWww = hostname.replace(/^www\./, "");
+      // Map both variants to catch API responses with either format
+      domainMap.set(withoutWww, inst.id);
+      domainMap.set(hostname, inst.id);
+      allInstallerDomains.set(inst.id, withoutWww);
     } catch {
       // skip invalid URLs
     }
   }
 
-  const domains = Array.from(domainMap.keys());
+  // Use deduplicated domains (without www) for the API call
+  const domains = Array.from(new Set(allInstallerDomains.values()));
   let processed = 0;
   let errors = 0;
   const errorLog: string[] = [];
@@ -105,23 +111,35 @@ export async function POST() {
         if (item.target) bingByTarget.set(item.target, item);
       }
 
+      // Index Google results by target
+      const googleByTarget = new Map<string, Record<string, unknown>>();
       for (const gItem of googleItems) {
-        const domain = gItem.target;
-        const instId = domainMap.get(domain);
-        if (!instId) continue;
+        if (gItem.target) googleByTarget.set(gItem.target, gItem);
+      }
 
+      // Process ALL domains in this batch (not just ones with results)
+      const processedIds = new Set<number>();
+      for (const domain of batch) {
+        const instId = domainMap.get(domain);
+        if (!instId || processedIds.has(instId)) continue;
+        processedIds.add(instId);
+
+        const gItem = googleByTarget.get(domain) as Record<string, unknown> | undefined;
         const bItem = bingByTarget.get(domain);
+
+        const gMetrics = gItem?.metrics as Record<string, { etv?: number; count?: number }> | undefined;
+        const bMetrics = bItem?.metrics;
 
         await db.insert(trafficData).values({
           installerId: instId,
-          googleOrganicEtv: gItem.metrics?.organic?.etv ?? null,
-          googleOrganicCount: gItem.metrics?.organic?.count ?? null,
+          googleOrganicEtv: gMetrics?.organic?.etv ?? null,
+          googleOrganicCount: gMetrics?.organic?.count ?? null,
           googleOrganicTrafficCost: null,
-          googlePaidEtv: gItem.metrics?.paid?.etv ?? null,
-          googlePaidCount: gItem.metrics?.paid?.count ?? null,
+          googlePaidEtv: gMetrics?.paid?.etv ?? null,
+          googlePaidCount: gMetrics?.paid?.count ?? null,
           googlePaidTrafficCost: null,
-          googleFeaturedSnippetEtv: gItem.metrics?.featured_snippet?.etv ?? null,
-          googleLocalPackEtv: gItem.metrics?.local_pack?.etv ?? null,
+          googleFeaturedSnippetEtv: gMetrics?.featured_snippet?.etv ?? null,
+          googleLocalPackEtv: gMetrics?.local_pack?.etv ?? null,
           googleOrganicPos1: null,
           googleOrganicPos2_3: null,
           googleOrganicPos4_10: null,
@@ -133,10 +151,10 @@ export async function POST() {
           googlePaidPos1: null,
           googlePaidPos2_3: null,
           googlePaidPos4_10: null,
-          bingOrganicEtv: bItem?.metrics?.organic?.etv ?? null,
-          bingOrganicCount: bItem?.metrics?.organic?.count ?? null,
-          bingPaidEtv: bItem?.metrics?.paid?.etv ?? null,
-          bingPaidCount: bItem?.metrics?.paid?.count ?? null,
+          bingOrganicEtv: bMetrics?.organic?.etv ?? null,
+          bingOrganicCount: bMetrics?.organic?.count ?? null,
+          bingPaidEtv: bMetrics?.paid?.etv ?? null,
+          bingPaidCount: bMetrics?.paid?.count ?? null,
           source: "bulk",
           fetchedAt: new Date().toISOString(),
         });
