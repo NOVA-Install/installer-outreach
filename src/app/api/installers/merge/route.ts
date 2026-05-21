@@ -14,6 +14,7 @@ import {
   activities,
   dataforseoTasks,
   installerTags,
+  installerSources,
 } from "@/lib/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 
@@ -179,6 +180,12 @@ export async function POST(request: NextRequest) {
       await db.update(installerTags).set({ installerId: primaryId }).where(eq(installerTags.id, tag.id));
     }
   }
+
+  // Reassign installer_sources from secondary to primary
+  await db
+    .update(installerSources)
+    .set({ installerId: primaryId })
+    .where(eq(installerSources.installerId, secondaryId));
 
   // --- 3. Log the merge as an activity ---
   await db.insert(activities).values({

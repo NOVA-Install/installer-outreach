@@ -1,4 +1,4 @@
-import { pgTable, text, integer, real, serial, boolean, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, real, serial, boolean, timestamp, unique } from "drizzle-orm/pg-core";
 
 // Core installer data
 export const installers = pgTable("installers", {
@@ -396,3 +396,22 @@ export const installerTags = pgTable("installer_tags", {
     .notNull()
     .references(() => tags.id),
 });
+
+// Source tracking junction table
+export const installerSources = pgTable(
+  "installer_sources",
+  {
+    id: serial("id").primaryKey(),
+    installerId: integer("installer_id")
+      .notNull()
+      .references(() => installers.id),
+    source: text("source").notNull(), // "mcs" | "enf" | "trustmark"
+    sourceIdentifier: text("source_identifier").notNull(),
+    sourceCompanyName: text("source_company_name"),
+    sourcePostcode: text("source_postcode"),
+    importedAt: text("imported_at")
+      .notNull()
+      .$defaultFn(() => new Date().toISOString()),
+  },
+  (t) => [unique("uq_source_identifier").on(t.source, t.sourceIdentifier)]
+);

@@ -93,6 +93,73 @@ export function detectFormQuality(html: string): {
 
 // --- HTML-based website quality signals ---
 
+// --- Agency / "designed by" detection ---
+
+const AGENCY_PATTERNS: { name: string; patterns: string[] }[] = [
+  { name: "Nera Marketing", patterns: ["nera marketing", "neramarketing"] },
+  { name: "We Build Trades", patterns: ["we build trades", "webuildtrades"] },
+  { name: "Yell", patterns: ["yell.com", "yell business", "powered by yell"] },
+  { name: "Jeeves Media", patterns: ["jeeves media", "jeevesmedia"] },
+  { name: "SolarSites", patterns: ["solarsites.co", "solar sites"] },
+  { name: "Trade Magnet", patterns: ["trade magnet", "trademagnet"] },
+  { name: "Green Jeeves", patterns: ["green jeeves", "greenjeeves"] },
+  { name: "Lead Jeeves", patterns: ["lead jeeves", "leadjeeves"] },
+  { name: "Jeeves Plus", patterns: ["jeeves plus", "jeevesplus"] },
+  { name: "Jeeves Group", patterns: ["jeeves group", "thejeevesgroup"] },
+  { name: "Jeeves.Plus", patterns: ["jeeves.plus"] },
+  { name: "The Jeeves Group", patterns: ["thejeevesgroup.com"] },
+  { name: "TradesmanSEO", patterns: ["tradesmanseo", "tradesman seo"] },
+  { name: "Contractor Gorilla", patterns: ["contractor gorilla", "contractorgorilla"] },
+  { name: "Contractor Marketing", patterns: ["contractor marketing"] },
+  { name: "Blue Starter", patterns: ["blue starter", "bluestarter"] },
+  { name: "Active Digital", patterns: ["active digital", "activedigital.co"] },
+  { name: "MiHi Digital", patterns: ["mihi digital", "mihidigital"] },
+  { name: "Tradie Digital", patterns: ["tradie digital", "tradiedigital"] },
+  { name: "Leads 2 Trade", patterns: ["leads2trade", "leads 2 trade"] },
+  { name: "Torchlight Digital", patterns: ["torchlight digital", "torchlightdigital"] },
+  { name: "GorillaDesk", patterns: ["gorilladesk"] },
+  { name: "ServiceTitan", patterns: ["servicetitan"] },
+  { name: "Scorpion", patterns: ["scorpion.co", "scorpiondesign"] },
+  { name: "KickCharge", patterns: ["kickcharge"] },
+  { name: "WorkWave", patterns: ["workwave"] },
+];
+
+export function detectAgency(html: string): string | null {
+  const lower = html.toLowerCase();
+
+  // Check for common "designed by" / "built by" / "powered by" patterns
+  const creditPatterns = [
+    /(?:designed|built|developed|created|made|powered)\s+by\s+([^<"'.]{2,40})/gi,
+    /website\s+by\s+([^<"'.]{2,40})/gi,
+    /web\s+design\s+by\s+([^<"'.]{2,40})/gi,
+  ];
+
+  // First check known agencies
+  for (const agency of AGENCY_PATTERNS) {
+    if (agency.patterns.some((p) => lower.includes(p))) {
+      return agency.name;
+    }
+  }
+
+  // Then look for generic "designed by" credits in the footer area
+  // Try to find the footer section (last 20% of HTML)
+  const footerHtml = html.slice(Math.floor(html.length * 0.7));
+  for (const pattern of creditPatterns) {
+    pattern.lastIndex = 0;
+    const match = pattern.exec(footerHtml);
+    if (match) {
+      const name = match[1].trim().replace(/[<>"]/g, "");
+      // Filter out generic words that aren't agency names
+      const skipWords = ["us", "our", "the", "a", "an", "your", "my", "me", "we", "them", "this", "that", "it", "all"];
+      if (name.length >= 3 && name.length <= 40 && !skipWords.includes(name.toLowerCase())) {
+        return name;
+      }
+    }
+  }
+
+  return null;
+}
+
 export interface WebsiteSignals {
   siteBuilder: string | null;
   hasSocialLinks: boolean;
@@ -107,6 +174,7 @@ export interface WebsiteSignals {
   brokenImageCount: number;
   imageCount: number;
   hasGenericEmail: boolean;
+  agencyName: string | null;
 }
 
 export function detectWebsiteSignals(html: string, email?: string | null): WebsiteSignals {
@@ -178,7 +246,9 @@ export function detectWebsiteSignals(html: string, email?: string | null): Websi
   const genericDomains = ["gmail.com", "yahoo.com", "yahoo.co.uk", "hotmail.com", "hotmail.co.uk", "outlook.com", "aol.com", "live.com", "icloud.com", "mail.com", "btinternet.com", "sky.com", "virginmedia.com"];
   const hasGenericEmail = email ? genericDomains.some((d) => email.toLowerCase().endsWith(`@${d}`)) : false;
 
-  return { siteBuilder, hasSocialLinks, hasFavicon, isMobileResponsive, hasPrivacyPolicy, hasCookieConsent, copyrightYear, hasSchemaMarkup, hasBlog, wordpressVersion, brokenImageCount, imageCount, hasGenericEmail };
+  const agencyName = detectAgency(html);
+
+  return { siteBuilder, hasSocialLinks, hasFavicon, isMobileResponsive, hasPrivacyPolicy, hasCookieConsent, copyrightYear, hasSchemaMarkup, hasBlog, wordpressVersion, brokenImageCount, imageCount, hasGenericEmail, agencyName };
 }
 
 // --- PageSpeed Insights API ---

@@ -26,6 +26,16 @@ import {
   Loader2,
   ExternalLink,
   CheckCircle2,
+  Sun,
+  Thermometer,
+  Battery,
+  Wind,
+  TreePine,
+  Globe,
+  Droplets,
+  Flame,
+  Zap,
+  RefreshCw,
 } from "lucide-react";
 import Link from "next/link";
 import { PIPELINE_STAGES } from "@/lib/constants";
@@ -356,7 +366,26 @@ const ALL_COLUMNS: ColumnDef[] = [
     sortKey: "companyName",
     render: (row) => {
       const domain = getDomain(row.website);
-      const techs = row.technologiesCertified?.split(",").map((t) => t.trim()).filter(Boolean) || [];
+      const techs = row.technologiesCertified?.split(/[;,|]/).map((t) => t.trim()).filter(Boolean) || [];
+      // Deduplicate techs by their icon category
+      const seen = new Set<string>();
+      const uniqueTechs = techs.filter((t) => {
+        const lower = t.toLowerCase();
+        let key = lower;
+        if (lower.includes("solar") && !lower.includes("heat")) key = "solar";
+        else if (lower.includes("air source") || lower.includes("ashp") || lower.includes("exhaust air")) key = "ashp";
+        else if (lower.includes("water source")) key = "wshp";
+        else if (lower.includes("ground source") || lower.includes("gshp")) key = "gshp";
+        else if (lower.includes("heat pump") && !lower.includes("air") && !lower.includes("water") && !lower.includes("ground") && !lower.includes("exhaust")) key = "heat_pump";
+        else if (lower.includes("battery") || lower.includes("storage")) key = "battery";
+        else if (lower.includes("wind")) key = "wind";
+        else if (lower.includes("biomass")) key = "biomass";
+        else if (lower.includes("boiler")) key = "boiler";
+        else if (lower.includes("micro chp") || lower.includes("chp")) key = "chp";
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
       return (
         <div className="flex items-center gap-2.5">
           <CompanyLogo domain={domain} name={row.companyName} />
@@ -372,20 +401,23 @@ const ALL_COLUMNS: ColumnDef[] = [
               )}
             </div>
             <div className="flex items-center gap-1 mt-0.5">
-              {techs.length > 0 ? techs.map((t) => {
+              {uniqueTechs.length > 0 && uniqueTechs.map((t) => {
                 const lower = t.toLowerCase();
-                if (lower.includes("solar") || lower.includes("pv")) return <span key={t} title={t} className="inline-flex items-center justify-center h-[18px] w-[18px] rounded bg-amber-50 text-[11px]" aria-label={t}>☀️</span>;
-                if (lower.includes("heat pump") || lower.includes("ashp") || lower.includes("air source")) return <span key={t} title={t} className="inline-flex items-center justify-center h-[18px] w-[18px] rounded bg-sky-50 text-[11px]" aria-label={t}>🌡️</span>;
-                if (lower.includes("battery") || lower.includes("storage")) return <span key={t} title={t} className="inline-flex items-center justify-center h-[18px] w-[18px] rounded bg-emerald-50 text-[11px]" aria-label={t}>🔋</span>;
-                if (lower.includes("wind")) return <span key={t} title={t} className="inline-flex items-center justify-center h-[18px] w-[18px] rounded bg-blue-50 text-[11px]" aria-label={t}>💨</span>;
-                if (lower.includes("biomass")) return <span key={t} title={t} className="inline-flex items-center justify-center h-[18px] w-[18px] rounded bg-orange-50 text-[11px]" aria-label={t}>🪵</span>;
-                if (lower.includes("ground source") || lower.includes("gshp")) return <span key={t} title={t} className="inline-flex items-center justify-center h-[18px] w-[18px] rounded bg-green-50 text-[11px]" aria-label={t}>🌍</span>;
-                if (lower.includes("ev") || lower.includes("charger") || lower.includes("charging")) return <span key={t} title={t} className="inline-flex items-center justify-center h-[18px] w-[18px] rounded bg-violet-50 text-[11px]" aria-label={t}>⚡</span>;
-                if (lower.includes("boiler")) return <span key={t} title={t} className="inline-flex items-center justify-center h-[18px] w-[18px] rounded bg-red-50 text-[11px]" aria-label={t}>🔥</span>;
-                return <span key={t} title={t} className="inline-flex items-center justify-center h-[18px] px-1 rounded bg-gray-50 text-[9px] text-[#9a9a9a] font-medium">{t.slice(0, 3).toUpperCase()}</span>;
-              }) : (
-                <span className="text-[11px] text-[#b0b0b0]">{row.county || ""}</span>
-              )}
+                const ico = "h-[14px] w-[14px] text-[#6a6a6a]";
+                const box = "inline-flex items-center justify-center h-[20px] w-[20px] rounded-md bg-[#f5f5f5] group/tip relative";
+                const tip = "pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-1.5 py-0.5 rounded bg-[#1D1D1D] text-[10px] text-white whitespace-nowrap opacity-0 group-hover/tip:opacity-100 transition-opacity z-20";
+                if (lower.includes("solar") && !lower.includes("heat")) return <span key={t} className={box}><Sun className={ico} /><span className={tip}>Solar PV</span></span>;
+                if (lower.includes("air source") || lower.includes("ashp") || lower.includes("exhaust air")) return <span key={t} className={box}><Thermometer className={ico} /><span className={tip}>Air Source Heat Pump</span></span>;
+                if (lower.includes("water source")) return <span key={t} className={box}><Droplets className={ico} /><span className={tip}>Water Source Heat Pump</span></span>;
+                if (lower.includes("ground source") || lower.includes("gshp")) return <span key={t} className={box}><Globe className={ico} /><span className={tip}>Ground Source Heat Pump</span></span>;
+                if (lower.includes("gas absorption") || (lower.includes("heat pump") && !lower.includes("air") && !lower.includes("water") && !lower.includes("ground") && !lower.includes("exhaust"))) return <span key={t} className={box}><RefreshCw className={ico} /><span className={tip}>Gas Absorption Heat Pump</span></span>;
+                if (lower.includes("battery") || lower.includes("storage")) return <span key={t} className={box}><Battery className={ico} /><span className={tip}>Battery Storage</span></span>;
+                if (lower.includes("wind")) return <span key={t} className={box}><Wind className={ico} /><span className={tip}>Wind Turbine</span></span>;
+                if (lower.includes("biomass")) return <span key={t} className={box}><TreePine className={ico} /><span className={tip}>Biomass</span></span>;
+                if (lower.includes("boiler")) return <span key={t} className={box}><Flame className={ico} /><span className={tip}>Boiler</span></span>;
+                if (lower.includes("micro chp") || lower.includes("chp")) return <span key={t} className={box}><Zap className={ico} /><span className={tip}>Micro CHP</span></span>;
+                return <span key={t} title={t} className="inline-flex items-center justify-center h-[20px] px-1.5 rounded-md bg-[#f5f5f5] text-[9px] text-[#9a9a9a] font-medium">{t.slice(0, 3).toUpperCase()}</span>;
+              })}
             </div>
           </div>
         </div>
@@ -405,12 +437,16 @@ const ALL_COLUMNS: ColumnDef[] = [
     key: "county",
     label: "Location",
     sortKey: "county",
-    render: (row) => row.county ? (
-      <div className="flex items-center gap-1.5">
-        <span className="text-[12px] shrink-0">🇬🇧</span>
-        <span className="text-[13px] text-[#3a3a3a]">{row.county}{row.country ? `, ${row.country}` : ", England"}</span>
-      </div>
-    ) : <span className="text-[#d5d5d5]">—</span>,
+    render: (row) => {
+      const county = row.county && !row.county.toLowerCase().includes("unspecified") ? row.county : null;
+      if (!county) return <span className="text-[#d5d5d5]">—</span>;
+      return (
+        <div className="flex items-center gap-1.5">
+          <span className="text-[12px] shrink-0">🇬🇧</span>
+          <span className="text-[13px] text-[#3a3a3a]">{county}</span>
+        </div>
+      );
+    },
   },
   {
     key: "postcode",
@@ -693,14 +729,14 @@ const ALL_COLUMNS: ColumnDef[] = [
     label: "Organic Traffic",
     sortKey: "googleOrganicEtv",
     render: (row) =>
-      row.googleOrganicEtv != null ? <span className="tabular-nums text-[12px] text-[#6a6a6a]">{row.googleOrganicEtv.toLocaleString()}</span> : <span className="text-[#d5d5d5]">—</span>,
+      row.googleOrganicEtv != null ? <span className="tabular-nums text-[12px] text-[#6a6a6a]">{Math.round(row.googleOrganicEtv).toLocaleString()}</span> : <span className="text-[#d5d5d5]">—</span>,
   },
   {
     key: "paidTraffic",
     label: "Paid Traffic",
     sortKey: "googlePaidEtv",
     render: (row) =>
-      row.googlePaidEtv != null && row.googlePaidEtv > 0 ? <span className="tabular-nums text-[12px] text-[#4ABDE8]">{row.googlePaidEtv.toLocaleString()}</span> : <span className="text-[#d5d5d5]">—</span>,
+      row.googlePaidEtv != null && row.googlePaidEtv > 0 ? <span className="tabular-nums text-[12px] text-[#4ABDE8]">{Math.round(row.googlePaidEtv).toLocaleString()}</span> : <span className="text-[#d5d5d5]">—</span>,
   },
   {
     key: "shortlist",

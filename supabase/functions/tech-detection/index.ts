@@ -104,26 +104,54 @@ serve(async (req) => {
 
     await Promise.allSettled(
       batch.map(async (inst: { id: number; website: string }) => {
-        const url = inst.website.startsWith("http") ? inst.website : `https://${inst.website}`;
-
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 8000);
-
-        try {
-          const res = await fetch(url, {
-            signal: controller.signal,
-            headers: { "User-Agent": "Mozilla/5.0 (compatible; InstallerCRM/1.0)" },
-            redirect: "follow",
+        let raw = inst.website.trim();
+        // Clean up bad URLs
+        if (raw.includes("|")) raw = raw.split("|")[0].trim();
+        if (raw.includes(";")) raw = raw.split(";")[0].trim();
+        if (/\s/.test(raw) || raw === "****" || !raw.includes(".")) {
+          // Skip obviously invalid URLs, but still mark as processed
+          await supabase.from("marketing_signals").insert({
+            installer_id: inst.id,
+            has_google_analytics: false, has_google_ads: false, has_meta_pixel: false,
+            has_crm_tool: false, has_live_chat: false,
+            detected_technologies: JSON.stringify(["error:invalid_url"]),
+            fetched_at: new Date().toISOString(),
           });
-          clearTimeout(timeout);
+          errors++;
+          return;
+        }
 
-          const html = (await res.text()).toLowerCase();
+        const urls = raw.startsWith("http")
+          ? [raw, raw.replace("https://", "http://")]
+          : [`https://${raw}`, `http://${raw}`];
 
-          const detected: string[] = [];
-          let hasGA = false, hasGAds = false, hasMetaPixel = false;
-          let hasCrm = false, crmName: string | null = null;
-          let hasChat = false, chatName: string | null = null;
+        let html = "";
+        let fetched = false;
 
+        for (const url of urls) {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 8000);
+          try {
+            const res = await fetch(url, {
+              signal: controller.signal,
+              headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" },
+              redirect: "follow",
+            });
+            clearTimeout(timeout);
+            html = (await res.text()).toLowerCase();
+            fetched = true;
+            break;
+          } catch {
+            clearTimeout(timeout);
+          }
+        }
+
+        const detected: string[] = [];
+        let hasGA = false, hasGAds = false, hasMetaPixel = false;
+        let hasCrm = false, crmName: string | null = null;
+        let hasChat = false, chatName: string | null = null;
+
+        if (fetched && html.length > 0) {
           for (const tech of TECH_PATTERNS) {
             if (tech.patterns.some((p) => html.includes(p.toLowerCase()))) {
               detected.push(tech.name);
@@ -134,24 +162,25 @@ serve(async (req) => {
               if (tech.field === "chat" && !hasChat) { hasChat = true; chatName = tech.name; }
             }
           }
-
-          await supabase.from("marketing_signals").insert({
-            installer_id: inst.id,
-            has_google_analytics: hasGA,
-            has_google_ads: hasGAds,
-            has_meta_pixel: hasMetaPixel,
-            has_crm_tool: hasCrm,
-            crm_tool_name: crmName,
-            has_live_chat: hasChat,
-            live_chat_tool: chatName,
-            detected_technologies: JSON.stringify(detected),
-            fetched_at: new Date().toISOString(),
-          });
-          processed++;
-        } catch {
-          clearTimeout(timeout);
+        } else {
+          detected.push("error:fetch_failed");
           errors++;
         }
+
+        // Always create a row so this installer doesn't get retried
+        await supabase.from("marketing_signals").insert({
+          installer_id: inst.id,
+          has_google_analytics: hasGA,
+          has_google_ads: hasGAds,
+          has_meta_pixel: hasMetaPixel,
+          has_crm_tool: hasCrm,
+          crm_tool_name: crmName,
+          has_live_chat: hasChat,
+          live_chat_tool: chatName,
+          detected_technologies: JSON.stringify(detected),
+          fetched_at: new Date().toISOString(),
+        });
+        processed++;
       })
     );
 

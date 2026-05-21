@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { installers } from "@/lib/db/schema";
-import { sql, or, like } from "drizzle-orm";
+import { installers, installerSources } from "@/lib/db/schema";
+import { sql, or, like, eq, and } from "drizzle-orm";
 import { aiCheckDuplicate } from "@/lib/enrichment/ai-matcher";
 
 interface IncomingRow {
@@ -9,6 +9,10 @@ interface IncomingRow {
   companyName: string;
   postcode: string;
   installerId: string;
+  // Source-specific identifiers
+  trustmarkTmln?: string;
+  novaEnfProfileUrl?: string;
+  source?: "mcs" | "enf" | "trustmark";
 }
 
 // Step 2: Check for duplicates against existing database
@@ -58,6 +62,67 @@ export async function POST(request: NextRequest) {
     for (const row of batch) {
       if (!row.companyName) continue;
 
+      // --- FIRST: Check installer_sources for an exact source_id match ---
+      let sourceIdent: string | null = null;
+      let sourceType: string | null = null;
+
+      if (row.source === "mcs" && row.installerId) {
+        sourceIdent = row.installerId;
+        sourceType = "mcs";
+      } else if (row.source === "trustmark" && row.trustmarkTmln) {
+        sourceIdent = row.trustmarkTmln;
+        sourceType = "trustmark";
+      } else if (row.source === "enf" && row.novaEnfProfileUrl) {
+        sourceIdent = row.novaEnfProfileUrl;
+        sourceType = "enf";
+      } else if (row.installerId) {
+        // Fallback: if installerId looks like MCS format, treat as MCS
+        sourceIdent = row.installerId;
+        sourceType = "mcs";
+      }
+
+      if (sourceIdent && sourceType) {
+        const sourceMatch = await db
+          .select({
+            installerId: installerSources.installerId,
+          })
+          .from(installerSources)
+          .where(
+            and(
+              eq(installerSources.source, sourceType),
+              eq(installerSources.sourceIdentifier, sourceIdent)
+            )
+          )
+          .limit(1);
+
+        if (sourceMatch.length > 0) {
+          // Found via source tracking — strongest signal
+          const [installer] = await db
+            .select({
+              id: installers.id,
+              companyName: installers.companyName,
+              postcode: installers.postcode,
+            })
+            .from(installers)
+            .where(eq(installers.id, sourceMatch[0].installerId))
+            .limit(1);
+
+          if (installer) {
+            duplicates.push({
+              rowIndex: row._rowIndex,
+              incomingName: row.companyName,
+              incomingPostcode: row.postcode,
+              existingId: installer.id,
+              existingName: installer.companyName,
+              existingPostcode: installer.postcode,
+              matchType: "source_id",
+            });
+            continue; // Skip further matching for this row
+          }
+        }
+      }
+
+      // --- SECOND: Fall through to name/postcode matching and AI ---
       const conditions = [];
 
       // Match by installer ID (exact)

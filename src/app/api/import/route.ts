@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Papa from "papaparse";
 import { db } from "@/lib/db";
-import { installers } from "@/lib/db/schema";
+import { installers, installerSources } from "@/lib/db/schema";
 import { sql } from "drizzle-orm";
 
 // Helper: pick first non-empty value from multiple fields
@@ -224,15 +224,82 @@ export async function POST(request: NextRequest) {
         .where(matchField)
         .limit(1);
 
+      let installerId: number;
+
       if (existing.length > 0) {
+        installerId = existing[0].id;
         await db
           .update(installers)
           .set({ ...values, updatedAt: new Date().toISOString() })
-          .where(sql`${installers.id} = ${existing[0].id}`);
+          .where(sql`${installers.id} = ${installerId}`);
         updated++;
       } else {
-        await db.insert(installers).values(values);
+        const [inserted] = await db.insert(installers).values(values).returning({ id: installers.id });
+        installerId = inserted.id;
         imported++;
+      }
+
+      // Track source identifiers in installer_sources
+      const sourceEntries: {
+        installerId: number;
+        source: string;
+        sourceIdentifier: string;
+        sourceCompanyName: string | null;
+        sourcePostcode: string | null;
+      }[] = [];
+
+      if (isMergedFormat) {
+        // MCS source
+        if (values.installerId || values.inMcs) {
+          const ident = values.installerId || `${values.companyName}|${values.postcode || ""}`;
+          sourceEntries.push({
+            installerId,
+            source: "mcs",
+            sourceIdentifier: ident,
+            sourceCompanyName: values.companyName,
+            sourcePostcode: values.postcode ?? null,
+          });
+        }
+        // ENF/Nova source
+        if (values.novaEnfProfileUrl || values.inNova) {
+          const ident = values.novaEnfProfileUrl || `${values.companyName}|${values.postcode || ""}`;
+          sourceEntries.push({
+            installerId,
+            source: "enf",
+            sourceIdentifier: ident,
+            sourceCompanyName: values.companyName,
+            sourcePostcode: values.postcode ?? null,
+          });
+        }
+        // TrustMark source
+        if (values.trustmarkTmln || values.inTrustMark) {
+          const ident = values.trustmarkTmln || `${values.companyName}|${values.postcode || ""}`;
+          sourceEntries.push({
+            installerId,
+            source: "trustmark",
+            sourceIdentifier: ident,
+            sourceCompanyName: values.companyName,
+            sourcePostcode: values.postcode ?? null,
+          });
+        }
+      } else {
+        // Simple MCS-only format
+        if (values.installerId) {
+          sourceEntries.push({
+            installerId,
+            source: "mcs",
+            sourceIdentifier: values.installerId,
+            sourceCompanyName: values.companyName,
+            sourcePostcode: values.postcode ?? null,
+          });
+        }
+      }
+
+      for (const entry of sourceEntries) {
+        await db
+          .insert(installerSources)
+          .values(entry)
+          .onConflictDoNothing({ target: [installerSources.source, installerSources.sourceIdentifier] });
       }
     } catch (err) {
       validationErrors.push({

@@ -353,8 +353,14 @@ export default async function InstallerDetailPage({
               else flags.push({ label: "No lead capture form", status: "red" });
             }
             // CRM
-            if (mktSignals?.hasCrmTool) flags.push({ label: `Using ${mktSignals.crmToolName || "a CRM"}`, status: "green" });
-            else if (mktSignals) flags.push({ label: "No CRM detected", status: "red" });
+            const unfitCrms = ["hubspot", "salesforce", "zoho", "pipedrive", "monday.com", "freshsales"];
+            if (mktSignals?.hasCrmTool && mktSignals.crmToolName && unfitCrms.some((c) => mktSignals.crmToolName!.toLowerCase().includes(c))) {
+              flags.push({ label: `Using ${mktSignals.crmToolName}`, status: "amber", detail: "Not built for installers" });
+            } else if (mktSignals?.hasCrmTool) {
+              flags.push({ label: `Using ${mktSignals.crmToolName || "a CRM"}`, status: "green" });
+            } else if (mktSignals) {
+              flags.push({ label: "No CRM detected", status: "red" });
+            }
             // Reviews
             if (gReview?.rating != null && gReview.rating >= 4.0 && (gReview.reviewCount ?? 0) >= 10) flags.push({ label: "Strong Google reviews", status: "green", detail: `${gReview.rating}/5 (${gReview.reviewCount})` });
             else if (gReview?.rating != null) flags.push({ label: "Low Google reviews", status: "amber", detail: `${gReview.rating}/5 (${gReview.reviewCount ?? 0})` });
