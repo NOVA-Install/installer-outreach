@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { getSicDescription } from "@/lib/sic-codes";
+import { FaLinkedinIn, FaFacebookF, FaInstagram, FaXTwitter, FaYoutube } from "react-icons/fa6";
 import { db } from "@/lib/db";
 import {
   installers,
@@ -250,27 +251,27 @@ export default async function InstallerDetailPage({
                 <div className="flex flex-wrap items-center gap-2 mt-2">
                   {mktSignals.linkedinUrl && (
                     <a href={mktSignals.linkedinUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 h-[26px] px-2.5 rounded-lg bg-[#0a66c2]/5 border border-[#0a66c2]/15 text-[11px] font-medium text-[#0a66c2] hover:bg-[#0a66c2]/10 transition-colors">
-                      LinkedIn <ExternalLink className="h-2.5 w-2.5" />
+                      <FaLinkedinIn className="h-3 w-3" /> LinkedIn
                     </a>
                   )}
                   {mktSignals.facebookUrl && (
                     <a href={mktSignals.facebookUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 h-[26px] px-2.5 rounded-lg bg-[#1877f2]/5 border border-[#1877f2]/15 text-[11px] font-medium text-[#1877f2] hover:bg-[#1877f2]/10 transition-colors">
-                      Facebook <ExternalLink className="h-2.5 w-2.5" />
+                      <FaFacebookF className="h-3 w-3" /> Facebook
                     </a>
                   )}
                   {mktSignals.instagramUrl && (
                     <a href={mktSignals.instagramUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 h-[26px] px-2.5 rounded-lg bg-[#e4405f]/5 border border-[#e4405f]/15 text-[11px] font-medium text-[#e4405f] hover:bg-[#e4405f]/10 transition-colors">
-                      Instagram <ExternalLink className="h-2.5 w-2.5" />
+                      <FaInstagram className="h-3 w-3" /> Instagram
                     </a>
                   )}
                   {mktSignals.twitterUrl && (
                     <a href={mktSignals.twitterUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 h-[26px] px-2.5 rounded-lg bg-[#1d9bf0]/5 border border-[#1d9bf0]/15 text-[11px] font-medium text-[#1d9bf0] hover:bg-[#1d9bf0]/10 transition-colors">
-                      X / Twitter <ExternalLink className="h-2.5 w-2.5" />
+                      <FaXTwitter className="h-3 w-3" /> X
                     </a>
                   )}
                   {mktSignals.youtubeUrl && (
                     <a href={mktSignals.youtubeUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 h-[26px] px-2.5 rounded-lg bg-[#ff0000]/5 border border-[#ff0000]/15 text-[11px] font-medium text-[#ff0000] hover:bg-[#ff0000]/10 transition-colors">
-                      YouTube <ExternalLink className="h-2.5 w-2.5" />
+                      <FaYoutube className="h-3 w-3" /> YouTube
                     </a>
                   )}
                 </div>
@@ -661,37 +662,32 @@ export default async function InstallerDetailPage({
                         <div className="space-y-1.5">
                           {mktSignals.linkedinUrl && (
                             <a href={mktSignals.linkedinUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-[13px] text-[#3a3a3a] hover:text-[#0a66c2] transition-colors">
-                              <div className="h-5 w-5 rounded bg-[#0a66c2]/10 flex items-center justify-center shrink-0"><span className="text-[10px] font-bold text-[#0a66c2]">in</span></div>
+                              <div className="h-5 w-5 rounded bg-[#0a66c2]/10 flex items-center justify-center shrink-0 text-[#0a66c2]"><FaLinkedinIn className="h-3 w-3" /></div>
                               <span className="truncate">{mktSignals.linkedinUrl.replace(/https?:\/\/(www\.)?/, "")}</span>
-                              <ExternalLink className="h-3 w-3 text-[#9a9a9a] shrink-0" />
                             </a>
                           )}
                           {mktSignals.facebookUrl && (
                             <a href={mktSignals.facebookUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-[13px] text-[#3a3a3a] hover:text-[#1877f2] transition-colors">
-                              <div className="h-5 w-5 rounded bg-[#1877f2]/10 flex items-center justify-center shrink-0"><span className="text-[10px] font-bold text-[#1877f2]">f</span></div>
+                              <div className="h-5 w-5 rounded bg-[#1877f2]/10 flex items-center justify-center shrink-0 text-[#1877f2]"><FaFacebookF className="h-3 w-3" /></div>
                               <span className="truncate">{mktSignals.facebookUrl.replace(/https?:\/\/(www\.)?/, "")}</span>
-                              <ExternalLink className="h-3 w-3 text-[#9a9a9a] shrink-0" />
                             </a>
                           )}
                           {mktSignals.instagramUrl && (
                             <a href={mktSignals.instagramUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-[13px] text-[#3a3a3a] hover:text-[#e4405f] transition-colors">
-                              <div className="h-5 w-5 rounded bg-[#e4405f]/10 flex items-center justify-center shrink-0"><span className="text-[10px] font-bold text-[#e4405f]">ig</span></div>
+                              <div className="h-5 w-5 rounded bg-[#e4405f]/10 flex items-center justify-center shrink-0 text-[#e4405f]"><FaInstagram className="h-3 w-3" /></div>
                               <span className="truncate">{mktSignals.instagramUrl.replace(/https?:\/\/(www\.)?/, "")}</span>
-                              <ExternalLink className="h-3 w-3 text-[#9a9a9a] shrink-0" />
                             </a>
                           )}
                           {mktSignals.twitterUrl && (
                             <a href={mktSignals.twitterUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-[13px] text-[#3a3a3a] hover:text-[#1d9bf0] transition-colors">
-                              <div className="h-5 w-5 rounded bg-[#1d9bf0]/10 flex items-center justify-center shrink-0"><span className="text-[10px] font-bold text-[#1d9bf0]">X</span></div>
+                              <div className="h-5 w-5 rounded bg-[#1d9bf0]/10 flex items-center justify-center shrink-0 text-[#1d9bf0]"><FaXTwitter className="h-3 w-3" /></div>
                               <span className="truncate">{mktSignals.twitterUrl.replace(/https?:\/\/(www\.)?/, "")}</span>
-                              <ExternalLink className="h-3 w-3 text-[#9a9a9a] shrink-0" />
                             </a>
                           )}
                           {mktSignals.youtubeUrl && (
                             <a href={mktSignals.youtubeUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-[13px] text-[#3a3a3a] hover:text-[#ff0000] transition-colors">
-                              <div className="h-5 w-5 rounded bg-[#ff0000]/10 flex items-center justify-center shrink-0"><span className="text-[9px] font-bold text-[#ff0000]">YT</span></div>
+                              <div className="h-5 w-5 rounded bg-[#ff0000]/10 flex items-center justify-center shrink-0 text-[#ff0000]"><FaYoutube className="h-3 w-3" /></div>
                               <span className="truncate">{mktSignals.youtubeUrl.replace(/https?:\/\/(www\.)?/, "")}</span>
-                              <ExternalLink className="h-3 w-3 text-[#9a9a9a] shrink-0" />
                             </a>
                           )}
                         </div>

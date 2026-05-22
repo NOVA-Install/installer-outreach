@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
+import { FaLinkedinIn, FaFacebookF, FaInstagram, FaXTwitter, FaYoutube } from "react-icons/fa6";
 import {
   Select,
   SelectContent,
@@ -876,26 +877,26 @@ const ALL_COLUMNS: ColumnDef[] = [
     label: "Social",
     render: (row) => {
       const links = [
-        row.linkedinUrl && { label: "in", color: "#0a66c2", url: row.linkedinUrl },
-        row.facebookUrl && { label: "f", color: "#1877f2", url: row.facebookUrl },
-        row.instagramUrl && { label: "ig", color: "#e4405f", url: row.instagramUrl },
-        row.twitterUrl && { label: "X", color: "#1d9bf0", url: row.twitterUrl },
-        row.youtubeUrl && { label: "YT", color: "#ff0000", url: row.youtubeUrl },
-      ].filter(Boolean) as { label: string; color: string; url: string }[];
+        row.linkedinUrl && { icon: <FaLinkedinIn className="h-3 w-3" />, color: "#0a66c2", url: row.linkedinUrl, name: "LinkedIn" },
+        row.facebookUrl && { icon: <FaFacebookF className="h-3 w-3" />, color: "#1877f2", url: row.facebookUrl, name: "Facebook" },
+        row.instagramUrl && { icon: <FaInstagram className="h-3 w-3" />, color: "#e4405f", url: row.instagramUrl, name: "Instagram" },
+        row.twitterUrl && { icon: <FaXTwitter className="h-3 w-3" />, color: "#1d9bf0", url: row.twitterUrl, name: "X" },
+        row.youtubeUrl && { icon: <FaYoutube className="h-3 w-3" />, color: "#ff0000", url: row.youtubeUrl, name: "YouTube" },
+      ].filter(Boolean) as { icon: ReactNode; color: string; url: string; name: string }[];
       if (links.length === 0) return <span className="text-[#d5d5d5]">—</span>;
       return (
         <div className="flex items-center gap-1">
           {links.map((l) => (
             <a
-              key={l.label}
+              key={l.name}
               href={l.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="h-5 w-5 rounded flex items-center justify-center text-[8px] font-bold transition-opacity hover:opacity-70"
-              style={{ backgroundColor: `${l.color}12`, color: l.color }}
-              title={l.url}
+              className="h-[22px] w-[22px] rounded-md flex items-center justify-center transition-opacity hover:opacity-70"
+              style={{ backgroundColor: `${l.color}15`, color: l.color }}
+              title={l.name}
             >
-              {l.label}
+              {l.icon}
             </a>
           ))}
         </div>
