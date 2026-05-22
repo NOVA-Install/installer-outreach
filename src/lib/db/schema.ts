@@ -340,6 +340,7 @@ export const websiteQuality = pgTable("website_quality", {
   brokenImageCount: integer("broken_image_count"),
   imageCount: integer("image_count"),
   hasGenericEmail: boolean("has_generic_email"),
+  agencyName: text("agency_name"),
   responseTimeMs: integer("response_time_ms"),
   isHttps: boolean("is_https"),
   fetchedAt: text("fetched_at").notNull(),

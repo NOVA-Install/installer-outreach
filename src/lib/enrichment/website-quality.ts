@@ -379,6 +379,7 @@ export async function enrichWebsiteQuality(
           brokenImageCount: signals?.brokenImageCount ?? null,
           imageCount: signals?.imageCount ?? null,
           hasGenericEmail: signals?.hasGenericEmail ?? null,
+          agencyName: signals?.agencyName ?? null,
           responseTimeMs: htmlData?.responseTimeMs ?? null,
           isHttps: htmlData?.isHttps ?? null,
           fetchedAt: new Date().toISOString(),

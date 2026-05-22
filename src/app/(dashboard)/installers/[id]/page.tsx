@@ -394,6 +394,8 @@ export default async function InstallerDetailPage({
             }
             // Broken images
             if (quality?.brokenImageCount != null && quality.brokenImageCount > 0) flags.push({ label: "Broken images", status: "red", detail: `${quality.brokenImageCount} found` });
+            // Agency-built website
+            if (quality?.agencyName) flags.push({ label: "Agency-built website", status: "amber", detail: quality.agencyName });
             // Trustpilot
             if (!tpReview?.rating) flags.push({ label: "No Trustpilot profile", status: "amber" });
 
@@ -762,6 +764,7 @@ export default async function InstallerDetailPage({
                     <div className="pt-2 border-t border-[#f0f0f0] grid grid-cols-2 gap-3">
                       <Field label="Form Type" value={quality.formType === "multi_step" ? "Multi-step" : quality.formType === "quote_form" ? "Quote form" : quality.formType === "basic_contact" ? "Basic contact" : "None"} />
                       <Field label="Site Builder" value={quality.siteBuilder} />
+                      <Field label="Agency / Built By" value={quality.agencyName} />
                       {quality.wordpressVersion && <Field label="WordPress Version" value={`v${quality.wordpressVersion}`} />}
                       <Field label="Copyright Year" value={quality.copyrightYear} />
                       <Field label="Images" value={quality.imageCount != null ? `${quality.imageCount}${quality.brokenImageCount ? ` (${quality.brokenImageCount} broken)` : ""}` : null} />
