@@ -351,86 +351,21 @@ export function EnrichmentPanel() {
     setLastErrors((prev) => { const next = { ...prev }; delete next[source.key]; return next; });
 
     try {
-      // Use Supabase Edge Function for tech_detection (runs server-side, no browser timeout)
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-      const edgeFunctions: Record<string, string> = {
-        tech_detection: "tech-detection",
-        companies_house: "companies-house-enrich",
-        traffic_bulk: "traffic-bulk",
-        google_ads_transparency: "google-ads-transparency",
-      };
-      const edgeFn = edgeFunctions[source.key];
-      const useEdge = edgeFn && supabaseUrl && supabaseKey;
-
-      const res = useEdge
-        ? await fetch(`${supabaseUrl}/functions/v1/${edgeFn}`, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${supabaseKey}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ priority, reviewMode }),
-          })
-        : await fetch(source.endpoint, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ priority, reviewMode }),
-          });
+      const res = await fetch(source.endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ priority, reviewMode }),
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(data.error || `Failed: ${res.status}`);
       }
       const needsCollect = ["google_reviews", "trustpilot", "trustpilot_domain", "google_business", "job_postings"].includes(source.key);
 
-      // Auto-retry loop if Edge Function reports remaining items
-      if (useEdge && data.remaining > 0) {
-        let rem = data.remaining;
-        let totalProcessed = data.processed || 0;
-        toast.info(`${source.label}: ${totalProcessed} processed, ${rem} remaining. Running...`, { duration: 5000 });
-        fetchStatus();
-
-        let stuckCount = 0;
-        while (rem > 0) {
-          await new Promise((r) => setTimeout(r, 2000));
-          try {
-            const retryRes = await fetch(`${supabaseUrl}/functions/v1/${edgeFn}`, {
-              method: "POST",
-              headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
-              body: JSON.stringify({ priority, reviewMode }),
-            });
-            const retryData = await retryRes.json().catch(() => ({}));
-            if (!retryRes.ok) break;
-            const batchProcessed = retryData.processed || 0;
-            totalProcessed += batchProcessed;
-            rem = retryData.remaining ?? 0;
-
-            // Break if no progress (stuck on unfixable items)
-            if (batchProcessed === 0) {
-              stuckCount++;
-              if (stuckCount >= 2) {
-                toast.info(`${source.label}: ${rem} items could not be processed (likely invalid data). Stopping.`, { duration: 8000 });
-                break;
-              }
-            } else {
-              stuckCount = 0;
-              toast.info(`${source.label}: ${totalProcessed} processed, ${rem} remaining...`, { duration: 3000 });
-            }
-            fetchStatus();
-          } catch {
-            break;
-          }
-        }
-
-        toast.success(`${source.label}: complete. ${totalProcessed} total processed.`);
-        fetchStatus();
-        return;
-      }
-
       toast.success(
         needsCollect
           ? `${source.label}: tasks submitted. Click "Collect Results" to retrieve data.`
-          : `${source.label}: ${data.message || "enrichment complete."}`
+          : `${source.label}: job started. Running in background via Inngest.`
       );
       fetchStatus();
     } catch (err) {
