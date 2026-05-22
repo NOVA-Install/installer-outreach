@@ -488,7 +488,7 @@ export async function enrichTechDetection(
           const tech = detectTechnologies(html, dnsData ?? undefined);
           const social = extractSocialLinks(html);
 
-          await db.insert(marketingSignals).values({
+          const values = {
             installerId: installer.id,
             hasMetaAds: null,
             metaAdCount: null,
@@ -509,7 +509,12 @@ export async function enrichTechDetection(
             twitterUrl: social.twitterUrl,
             youtubeUrl: social.youtubeUrl,
             fetchedAt: new Date().toISOString(),
-          });
+          };
+          await db.insert(marketingSignals).values(values)
+            .onConflictDoUpdate({
+              target: marketingSignals.installerId,
+              set: values,
+            });
         } catch (err) {
           throw new Error(`[${installer.website}] ${err instanceof Error ? err.message : String(err)}`);
         }
