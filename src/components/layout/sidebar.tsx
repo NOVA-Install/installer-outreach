@@ -37,7 +37,7 @@ export function Sidebar() {
             alt="NOVA"
             width={80}
             height={20}
-            className="shrink-0"
+            className="shrink-0 h-auto"
           />
         </div>
       </div>

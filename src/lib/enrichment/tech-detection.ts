@@ -266,13 +266,6 @@ async function lookupDnsRecords(domain: string): Promise<string[]> {
     const cnames = await dns.resolveCname(domain);
     records.push(...cnames);
   } catch {}
-  // Also check common subdomains that CRM tools create
-  for (const sub of ["crm", "app", "portal", "email", "tracking", "go"]) {
-    try {
-      const cnames = await dns.resolveCname(`${sub}.${domain}`);
-      records.push(...cnames);
-    } catch {}
-  }
   return records;
 }
 
@@ -459,7 +452,7 @@ export async function enrichTechDetection(
       .limit(1);
     if (currentJob?.status === "cancelled") break;
 
-    const batch = toEnrich.slice(i, i + 20).filter((inst) => inst.website);
+    const batch = toEnrich.slice(i, i + 50).filter((inst) => inst.website);
 
     const results = await Promise.allSettled(
       batch.map(async (installer) => {
@@ -467,50 +460,59 @@ export async function enrichTechDetection(
           ? installer.website!
           : `https://${installer.website}`;
 
-        // Run HTML fetch and DNS lookup in parallel
-        const domain = extractDomain(installer.website!);
-        const [htmlResult, dnsResult] = await Promise.allSettled([
-          (async () => {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 8000);
-            const res = await fetch(url, {
-              signal: controller.signal,
-              headers: { "User-Agent": "Mozilla/5.0 (compatible; InstallerCRM/1.0)" },
-              redirect: "follow",
-            });
-            clearTimeout(timeout);
-            return res.text();
-          })(),
-          domain ? lookupDnsRecords(domain).then(detectDnsPatterns) : Promise.resolve(null),
-        ]);
+        try {
+          // Run HTML fetch and DNS lookup in parallel
+          const domain = extractDomain(installer.website!);
+          const [htmlResult, dnsResult] = await Promise.allSettled([
+            (async () => {
+              const controller = new AbortController();
+              const timeout = setTimeout(() => controller.abort(), 5000);
+              const res = await fetch(url, {
+                signal: controller.signal,
+                headers: { "User-Agent": "Mozilla/5.0 (compatible; InstallerCRM/1.0)" },
+                redirect: "follow",
+              });
+              clearTimeout(timeout);
+              return res.text();
+            })(),
+            domain ? lookupDnsRecords(domain).then(detectDnsPatterns) : Promise.resolve(null),
+          ]);
 
-        const html = htmlResult.status === "fulfilled" ? htmlResult.value : "";
-        const dnsData = dnsResult.status === "fulfilled" ? dnsResult.value : null;
-        const tech = detectTechnologies(html, dnsData ?? undefined);
-        const social = extractSocialLinks(html);
+          const html = htmlResult.status === "fulfilled" ? htmlResult.value : "";
+          const dnsData = dnsResult.status === "fulfilled" ? dnsResult.value : null;
 
-        await db.insert(marketingSignals).values({
-          installerId: installer.id,
-          hasMetaAds: null,
-          metaAdCount: null,
-          metaAdLastSeen: null,
-          hasGoogleAnalytics: tech.hasGoogleAnalytics,
-          hasGoogleAds: tech.hasGoogleAds,
-          hasMetaPixel: tech.hasMetaPixel,
-          hasCrmTool: tech.hasCrmTool,
-          crmToolName: tech.crmToolName,
-          hasLiveChat: tech.hasLiveChat,
-          liveChatTool: tech.liveChatTool,
-          detectedTechnologies: JSON.stringify(tech.detected),
-          estimatedMonthlyTraffic: null,
-          estimatedAdSpend: null,
-          facebookUrl: social.facebookUrl,
-          instagramUrl: social.instagramUrl,
-          linkedinUrl: social.linkedinUrl,
-          twitterUrl: social.twitterUrl,
-          youtubeUrl: social.youtubeUrl,
-          fetchedAt: new Date().toISOString(),
-        });
+          if (!html && htmlResult.status === "rejected") {
+            throw new Error(`Fetch failed: ${htmlResult.reason?.message || htmlResult.reason}`);
+          }
+
+          const tech = detectTechnologies(html, dnsData ?? undefined);
+          const social = extractSocialLinks(html);
+
+          await db.insert(marketingSignals).values({
+            installerId: installer.id,
+            hasMetaAds: null,
+            metaAdCount: null,
+            metaAdLastSeen: null,
+            hasGoogleAnalytics: tech.hasGoogleAnalytics,
+            hasGoogleAds: tech.hasGoogleAds,
+            hasMetaPixel: tech.hasMetaPixel,
+            hasCrmTool: tech.hasCrmTool,
+            crmToolName: tech.crmToolName,
+            hasLiveChat: tech.hasLiveChat,
+            liveChatTool: tech.liveChatTool,
+            detectedTechnologies: JSON.stringify(tech.detected),
+            estimatedMonthlyTraffic: null,
+            estimatedAdSpend: null,
+            facebookUrl: social.facebookUrl,
+            instagramUrl: social.instagramUrl,
+            linkedinUrl: social.linkedinUrl,
+            twitterUrl: social.twitterUrl,
+            youtubeUrl: social.youtubeUrl,
+            fetchedAt: new Date().toISOString(),
+          });
+        } catch (err) {
+          throw new Error(`[${installer.website}] ${err instanceof Error ? err.message : String(err)}`);
+        }
       })
     );
 
@@ -524,7 +526,11 @@ export async function enrichTechDetection(
 
     await db
       .update(enrichmentJobs)
-      .set({ processedItems: processed, errorCount: errors })
+      .set({
+        processedItems: processed,
+        errorCount: errors,
+        errorLog: errorLog.length > 0 ? JSON.stringify(errorLog.slice(0, 100)) : null,
+      })
       .where(eq(enrichmentJobs.id, jobId));
   }
 
