@@ -237,6 +237,28 @@ export const trustpilotFn = inngest.createFunction(
   }
 );
 
+// ── Trustpilot Domain Fallback ──────────────────────────────────
+
+export const trustpilotDomainFn = inngest.createFunction(
+  { id: "enrich-trustpilot-domain", retries: 3, triggers: [{ event: "enrichment/trustpilot-domain" }] },
+  async ({ event, step }) => {
+    const priority = (event.data?.priority ?? 2) as 1 | 2;
+    const jobId = await step.run("create-job", () => createJob("trustpilot_domain"));
+
+    await step.run("run-enrichment", async () => {
+      const { enrichTrustpilotDomainFallback } = await import("@/lib/enrichment/dataforseo");
+      try {
+        await enrichTrustpilotDomainFallback(jobId, priority);
+      } catch (err) {
+        await failJob(jobId, err);
+        throw err;
+      }
+    });
+
+    return { jobId };
+  }
+);
+
 // ── Collect Results ────────────────────────────────────────────
 
 export const collectResults = inngest.createFunction(
@@ -390,6 +412,7 @@ export const allFunctions = [
   websiteQuality,
   googleReviews,
   trustpilotFn,
+  trustpilotDomainFn,
   collectResults,
   seoDataFn,
   googleBusiness,

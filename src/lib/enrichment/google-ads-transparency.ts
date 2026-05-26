@@ -2,11 +2,8 @@ import { db } from "@/lib/db";
 import {
   installers,
   googleAdsData,
-  trafficData,
-  enrichmentJobs,
 } from "@/lib/db/schema";
-import { eq, isNull, sql } from "drizzle-orm";
-import { RateLimiter } from "./rate-limiter";
+import { eq } from "drizzle-orm";
 
 const BASE_URL = "https://api.dataforseo.com/v3";
 
@@ -137,91 +134,5 @@ export async function fetchGoogleAdsTransparency(installerId: number): Promise<{
 
 // ─── Batch enrichment with optional traffic filter ───
 
-export async function enrichGoogleAdsBatch(jobId: number, minTraffic = 0) {
-  const auth = getAuth();
-
-  let query;
-  if (minTraffic > 0) {
-    query = db
-      .select({ id: installers.id, website: installers.website })
-      .from(installers)
-      .leftJoin(googleAdsData, eq(installers.id, googleAdsData.installerId))
-      .leftJoin(trafficData, eq(installers.id, trafficData.installerId))
-      .where(sql`${googleAdsData.id} IS NULL AND ${installers.website} IS NOT NULL AND ${installers.website} != '' AND ${trafficData.googleOrganicEtv} >= ${minTraffic}`);
-  } else {
-    query = db
-      .select({ id: installers.id, website: installers.website })
-      .from(installers)
-      .leftJoin(googleAdsData, eq(installers.id, googleAdsData.installerId))
-      .where(sql`${googleAdsData.id} IS NULL AND ${installers.website} IS NOT NULL AND ${installers.website} != ''`);
-  }
-
-  const toEnrich = await query;
-
-  await db.update(enrichmentJobs).set({
-    totalItems: toEnrich.length, processedItems: 0, status: "running", startedAt: new Date().toISOString(),
-  }).where(eq(enrichmentJobs.id, jobId));
-
-  let processed = 0;
-  let errors = 0;
-  const errorLog: string[] = [];
-
-  // Process in parallel batches of 10
-  for (let i = 0; i < toEnrich.length; i += 10) {
-    const [currentJob] = await db.select({ status: enrichmentJobs.status }).from(enrichmentJobs).where(eq(enrichmentJobs.id, jobId)).limit(1);
-    if (currentJob?.status === "cancelled") break;
-
-    const batch = toEnrich.slice(i, i + 10).filter((inst) => inst.website);
-
-    const results = await Promise.allSettled(
-      batch.map(async (inst) => {
-        const website = inst.website!;
-        const domain = website.startsWith("http")
-          ? new URL(website).hostname.replace(/^www\./, "")
-          : website.replace(/^www\./, "");
-
-        const res = await fetch(`${BASE_URL}/serp/google/ads_search/live/advanced`, {
-          method: "POST",
-          headers: { Authorization: auth, "Content-Type": "application/json" },
-          body: JSON.stringify([{
-            target: domain,
-            location_name: "United Kingdom",
-            language_name: "English",
-            depth: 20,
-          }]),
-        });
-
-        const data = await res.json();
-        if (data.status_code !== 20000) throw new Error(`API ${data.status_code}: ${data.status_message}`);
-
-        const task = data.tasks?.[0];
-        if (task?.status_code !== 20000 && task?.status_code !== 40102) {
-          throw new Error(`Task ${task?.status_code}: ${task?.status_message}`);
-        }
-
-        const items = task?.result?.[0]?.items || [];
-        const parsed = parseGoogleAdsItems(items);
-
-        const adsValues = { installerId: inst.id, ...parsed, fetchedAt: new Date().toISOString() };
-        await db.insert(googleAdsData).values(adsValues)
-          .onConflictDoUpdate({ target: googleAdsData.installerId, set: adsValues });
-      })
-    );
-
-    for (const r of results) {
-      processed++;
-      if (r.status === "rejected") {
-        errors++;
-        errorLog.push(r.reason?.message || String(r.reason));
-      }
-    }
-
-    await db.update(enrichmentJobs).set({ processedItems: processed, errorCount: errors }).where(eq(enrichmentJobs.id, jobId));
-  }
-
-  await db.update(enrichmentJobs).set({
-    processedItems: processed, errorCount: errors,
-    errorLog: errorLog.length > 0 ? JSON.stringify(errorLog.slice(0, 50)) : null,
-    status: "completed", completedAt: new Date().toISOString(),
-  }).where(sql`${enrichmentJobs.id} = ${jobId} AND ${enrichmentJobs.status} != 'cancelled'`);
-}
+// Batch enrichment (enrichGoogleAdsBatch) removed — now handled by Supabase Edge Function
+// Only fetchGoogleAdsTransparency() is kept for individual installer enrichment

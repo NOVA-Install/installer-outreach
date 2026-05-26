@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Card,
   CardContent,
@@ -291,22 +291,30 @@ function GoogleAdsFilter({ onRun, disabled }: { onRun: (minTraffic: number) => v
   const [minTraffic, setMinTraffic] = useState(50);
   const [preview, setPreview] = useState<{ eligible: number; estimatedCost: string } | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
 
-  const fetchPreview = useCallback(async (val: number) => {
-    setLoadingPreview(true);
-    try {
-      const res = await fetch(`/api/enrichment/google-ads/preview?minTraffic=${val}`);
-      if (res.ok) {
-        const data = await res.json();
-        setPreview(data);
-      }
-    } catch { /* ignore - preview is non-critical */ }
-    setLoadingPreview(false);
+  // Debounced preview fetch - triggers 500ms after user stops dragging
+  const handleChange = useCallback((val: number) => {
+    setMinTraffic(val);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      setLoadingPreview(true);
+      try {
+        const res = await fetch(`/api/enrichment/google-ads/preview?minTraffic=${val}`);
+        if (res.ok) {
+          const data = await res.json();
+          setPreview(data);
+        }
+      } catch { /* preview is non-critical */ }
+      setLoadingPreview(false);
+    }, 500);
   }, []);
 
+  // Initial fetch
   useEffect(() => {
-    fetchPreview(minTraffic);
-  }, [fetchPreview]);
+    handleChange(minTraffic);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="space-y-2 mt-2 pt-2 border-t border-[#f0f0f0]">
@@ -318,9 +326,7 @@ function GoogleAdsFilter({ onRun, disabled }: { onRun: (minTraffic: number) => v
           max={500}
           step={10}
           value={minTraffic}
-          onChange={(e) => setMinTraffic(Number(e.target.value))}
-          onMouseUp={() => fetchPreview(minTraffic)}
-          onTouchEnd={() => fetchPreview(minTraffic)}
+          onChange={(e) => handleChange(Number(e.target.value))}
           className="flex-1 h-1.5 accent-primary"
         />
         <span className="text-[12px] font-medium tabular-nums w-[40px] text-right">{minTraffic}</span>
@@ -383,6 +389,9 @@ export function EnrichmentPanel() {
       }
 
       const needsCollect = ["google_reviews", "trustpilot", "trustpilot_domain", "google_business", "job_postings"].includes(source.key);
+
+      // Clear any previous error for this source
+      setLastErrors((prev) => { const next = { ...prev }; delete next[source.key]; return next; });
 
       toast.success(
         needsCollect
@@ -471,36 +480,12 @@ export function EnrichmentPanel() {
               onClick={async () => {
                 setRunning((prev) => new Set([...prev, "__collect"]));
                 try {
-                  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-                  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-                  const useEdge = supabaseUrl && supabaseKey;
-
-                  const res = useEdge
-                    ? await fetch(`${supabaseUrl}/functions/v1/collect-results`, {
-                        method: "POST",
-                        headers: {
-                          Authorization: `Bearer ${supabaseKey}`,
-                          "Content-Type": "application/json",
-                        },
-                      })
-                    : await fetch("/api/enrichment/collect", { method: "POST" });
-                  const data = await res.json();
-                  const parts = [`${data.collected} collected`];
-                  if (data.stillPending > 0) parts.push(`${data.stillPending} still pending`);
-                  if (data.rejected > 0) parts.push(`${data.rejected} rejected (wrong match)`);
-                  if (data.errored > 0) parts.push(`${data.errored} errors`);
-                  if (data.timedOut) parts.push("(timed out - click again for more)");
-                  toast.success(parts.join(", "), { duration: 8000 });
-
-                  if (data.rejectedMatches?.length > 0) {
-                    toast.info(
-                      `Rejected matches:\n${data.rejectedMatches.slice(0, 5).join("\n")}${data.rejectedMatches.length > 5 ? `\n...and ${data.rejectedMatches.length - 5} more` : ""}`,
-                      { duration: 15000 }
-                    );
-                  }
+                  const res = await fetch("/api/enrichment/collect", { method: "POST" });
+                  if (!res.ok) throw new Error("Failed to start collection");
+                  toast.success("Collecting results in background — you can close this page.");
                   fetchStatus();
                 } catch {
-                  toast.error("Failed to collect results");
+                  toast.error("Failed to start result collection");
                 } finally {
                   setRunning((prev) => { const next = new Set(prev); next.delete("__collect"); return next; });
                 }

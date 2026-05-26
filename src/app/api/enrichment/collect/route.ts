@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { collectPendingResults } from "@/lib/enrichment/dataforseo";
+import { inngest } from "@/inngest/client";
 
 export async function POST() {
-  const result = await collectPendingResults();
-  return NextResponse.json(result);
+  await inngest.send({ name: "enrichment/collect-results", data: {} });
+  return NextResponse.json({ status: "started" });
 }
