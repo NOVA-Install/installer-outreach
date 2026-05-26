@@ -627,21 +627,27 @@ export function EnrichmentPanel() {
                     <div className="mt-2 space-y-1.5">
                       <div className="flex items-center gap-2 text-[12px]">
                         <Loader2 className="h-3 w-3 animate-spin" />
-                        <span className="tabular-nums">
-                          {job.processedItems} / {job.totalItems} ({progress}%)
-                        </span>
+                        {job.totalItems > 0 ? (
+                          <span className="tabular-nums">
+                            {job.processedItems} / {job.totalItems} ({progress}%)
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">Starting...</span>
+                        )}
                         {job.errorCount > 0 && (
                           <span className="text-amber-600">
                             {job.errorCount} errors
                           </span>
                         )}
                       </div>
-                      <div className="h-1 rounded-full bg-muted overflow-hidden">
-                        <div
-                          className="h-full bg-primary rounded-full transition-all"
-                          style={{ width: `${progress}%` }}
-                        />
-                      </div>
+                      {job.totalItems > 0 && (
+                        <div className="h-1 rounded-full bg-muted overflow-hidden">
+                          <div
+                            className="h-full bg-primary rounded-full transition-all"
+                            style={{ width: `${progress}%` }}
+                          />
+                        </div>
+                      )}
                     </div>
                   )}
 
