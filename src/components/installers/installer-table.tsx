@@ -43,7 +43,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { PIPELINE_STAGES } from "@/lib/constants";
 import { AddInstallerDialog } from "@/components/installers/add-installer-dialog";
 import { toast } from "sonner";
-import { FilterSidebar, countActiveFilters, EMPTY_FILTERS, type Filters, type DistanceOrigin } from "@/components/filters/filter-sidebar";
+import { FilterSidebar, countActiveFilters, EMPTY_FILTERS, loadFilters, saveFilters, type Filters, type DistanceOrigin } from "@/components/filters/filter-sidebar";
 
 // --- Types ---
 
@@ -438,12 +438,11 @@ const ALL_COLUMNS: ColumnDef[] = [
     key: "distance",
     label: "Distance",
     sortKey: "distance",
-    render: (row) =>
-      row.distance != null ? (
-        <span className="tabular-nums text-[12px] text-[#6a6a6a]">{row.distance < 1 ? "<1 mi" : `${Math.round(row.distance)} mi`}</span>
-      ) : (
-        <span className="text-[#d5d5d5]">—</span>
-      ),
+    render: (row) => {
+      if (row.distance == null) return <span className="text-[#d5d5d5]">—</span>;
+      const km = row.distance * 1.60934;
+      return <span className="tabular-nums text-[12px] text-[#6a6a6a]">{km < 1 ? "<1 km" : `${Math.round(km)} km`}</span>;
+    },
   },
   {
     key: "email",
@@ -1052,7 +1051,8 @@ export function InstallerTable({ counties: initialCounties, crmTools: initialCrm
   const [data, setData] = useState<Installer[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+  const [filters, setFiltersRaw] = useState<Filters>(EMPTY_FILTERS);
+  const setFilters = useCallback((f: Filters) => { setFiltersRaw(f); saveFilters(f); }, []);
   const [showFilters, setShowFilters] = useState(false);
   const [counties, setCounties] = useState<string[]>(initialCounties ?? []);
   const [crmTools, setCrmTools] = useState<string[]>(initialCrmTools ?? []);
@@ -1072,7 +1072,7 @@ export function InstallerTable({ counties: initialCounties, crmTools: initialCrm
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  useEffect(() => { setVisibleColumns(loadColumns()); setPageSize(loadPageSize()); }, []);
+  useEffect(() => { setVisibleColumns(loadColumns()); setPageSize(loadPageSize()); setFiltersRaw(loadFilters()); }, []);
 
   // Fetch filter dropdown options client-side (non-blocking)
   useEffect(() => {
@@ -1158,8 +1158,14 @@ export function InstallerTable({ counties: initialCounties, crmTools: initialCrm
       if (distanceOrigin) {
         params.set("originLat", String(distanceOrigin.lat));
         params.set("originLng", String(distanceOrigin.lng));
-        params.set("sortBy", "distance");
-        params.set("sortOrder", "asc");
+        if (distanceOrigin.maxKm) {
+          params.set("maxDistanceKm", String(distanceOrigin.maxKm));
+          params.set("sortBy", sortBy);
+          params.set("sortOrder", sortOrder);
+        } else {
+          params.set("sortBy", "distance");
+          params.set("sortOrder", "asc");
+        }
       } else {
         params.set("sortBy", sortBy);
         params.set("sortOrder", sortOrder);

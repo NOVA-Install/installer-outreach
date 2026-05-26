@@ -583,10 +583,13 @@ export default async function InstallerDetailPage({
           <Section title="Companies House">
             {chData ? (<>
               <InfoCard>
-                {installer.legalEntityName && installer.legalEntityName !== "__no_match__" && installer.legalEntityName.toLowerCase() !== installer.companyName.toLowerCase() && (
-                  <div className="rounded-md bg-[#FAFAF9] px-3 py-2 mb-3">
+                {installer.legalEntityName && installer.legalEntityName !== "__no_match__" && (
+                  <div className={`rounded-md px-3 py-2 mb-3 ${installer.legalEntityName.toLowerCase() !== installer.companyName.toLowerCase() ? "bg-amber-50/50" : "bg-[#FAFAF9]"}`}>
                     <p className="text-[11px] text-[#9a9a9a] uppercase tracking-wider">Registered Name</p>
                     <p className="text-[13px] font-medium mt-0.5">{installer.legalEntityName}</p>
+                    {installer.legalEntityName.toLowerCase() !== installer.companyName.toLowerCase() && (
+                      <p className="text-[11px] text-amber-600 mt-0.5">Different from trading name</p>
+                    )}
                   </div>
                 )}
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
