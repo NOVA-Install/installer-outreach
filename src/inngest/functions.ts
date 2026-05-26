@@ -24,6 +24,29 @@ async function failJob(jobId: number, error: unknown) {
     .where(eq(enrichmentJobs.id, jobId));
 }
 
+// Helper: update job progress
+async function updateJobProgress(jobId: number, processed: number, errors: number, total?: number) {
+  const update: Record<string, unknown> = {
+    processedItems: processed,
+    errorCount: errors,
+  };
+  if (total != null) update.totalItems = total;
+  await db.update(enrichmentJobs).set(update).where(eq(enrichmentJobs.id, jobId));
+}
+
+// Helper: mark a job as completed
+async function completeJob(jobId: number, processed: number, errors: number) {
+  await db
+    .update(enrichmentJobs)
+    .set({
+      processedItems: processed,
+      errorCount: errors,
+      status: "completed",
+      completedAt: new Date().toISOString(),
+    })
+    .where(eq(enrichmentJobs.id, jobId));
+}
+
 // Helper: call a Supabase Edge Function and return parsed response
 async function callEdgeFunction(name: string, body: Record<string, unknown> = {}) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -56,7 +79,9 @@ const MAX_BATCHES = 50;
 export const techDetection = inngest.createFunction(
   { id: "enrich-tech-detection", retries: 3, triggers: [{ event: "enrichment/tech-detection" }] },
   async ({ step }) => {
+    const jobId = await step.run("create-job", () => createJob("tech_detection"));
     let totalProcessed = 0;
+    let totalErrors = 0;
     let batch = 0;
 
     while (batch < MAX_BATCHES) {
@@ -65,12 +90,19 @@ export const techDetection = inngest.createFunction(
       );
 
       totalProcessed += result.processed || 0;
+      totalErrors += result.errors || 0;
       const remaining = result.remaining ?? 0;
+
+      await step.run(`update-progress-${batch}`, () =>
+        updateJobProgress(jobId, totalProcessed, totalErrors, totalProcessed + remaining)
+      );
+
       if (remaining <= 0) break;
       batch++;
     }
 
-    return { totalProcessed, batches: batch + 1 };
+    await step.run("complete-job", () => completeJob(jobId, totalProcessed, totalErrors));
+    return { jobId, totalProcessed, batches: batch + 1 };
   }
 );
 
@@ -80,7 +112,9 @@ export const techDetection = inngest.createFunction(
 export const companiesHouse = inngest.createFunction(
   { id: "enrich-companies-house", retries: 3, triggers: [{ event: "enrichment/companies-house" }] },
   async ({ step }) => {
+    const jobId = await step.run("create-job", () => createJob("companies_house"));
     let totalProcessed = 0;
+    let totalErrors = 0;
     let batch = 0;
 
     while (batch < MAX_BATCHES) {
@@ -89,12 +123,19 @@ export const companiesHouse = inngest.createFunction(
       );
 
       totalProcessed += result.processed || 0;
+      totalErrors += result.errors || 0;
       const remaining = result.remaining ?? 0;
+
+      await step.run(`update-progress-${batch}`, () =>
+        updateJobProgress(jobId, totalProcessed, totalErrors, totalProcessed + remaining)
+      );
+
       if (remaining <= 0) break;
       batch++;
     }
 
-    return { totalProcessed, batches: batch + 1 };
+    await step.run("complete-job", () => completeJob(jobId, totalProcessed, totalErrors));
+    return { jobId, totalProcessed, batches: batch + 1 };
   }
 );
 
@@ -104,7 +145,9 @@ export const companiesHouse = inngest.createFunction(
 export const trafficBulk = inngest.createFunction(
   { id: "enrich-traffic-bulk", retries: 3, triggers: [{ event: "enrichment/traffic-bulk" }] },
   async ({ step }) => {
+    const jobId = await step.run("create-job", () => createJob("traffic_bulk"));
     let totalProcessed = 0;
+    let totalErrors = 0;
     let batch = 0;
 
     while (batch < MAX_BATCHES) {
@@ -113,12 +156,19 @@ export const trafficBulk = inngest.createFunction(
       );
 
       totalProcessed += result.processed || 0;
+      totalErrors += result.errors || 0;
       const remaining = result.remaining ?? 0;
+
+      await step.run(`update-progress-${batch}`, () =>
+        updateJobProgress(jobId, totalProcessed, totalErrors, totalProcessed + remaining)
+      );
+
       if (remaining <= 0) break;
       batch++;
     }
 
-    return { totalProcessed, batches: batch + 1 };
+    await step.run("complete-job", () => completeJob(jobId, totalProcessed, totalErrors));
+    return { jobId, totalProcessed, batches: batch + 1 };
   }
 );
 
@@ -197,16 +247,16 @@ export const collectResults = inngest.createFunction(
 
     while (batch < MAX_BATCHES) {
       const result = await step.run(`collect-batch-${batch}`, () =>
-        callEdgeFunction("collect-results", { skipJob: true })
+        callEdgeFunction("collect-results")
       );
 
       totalCollected += result.collected || 0;
       const stillPending = result.stillPending ?? 0;
       if (stillPending <= 0) break;
       batch++;
-      // Wait a bit between batches to let DataForSEO process more tasks
+      // Wait between batches to let DataForSEO process more tasks
       if (stillPending > 0) {
-        await step.sleep("wait-for-processing", "30s");
+        await step.sleep(`wait-${batch}`, "30s");
       }
     }
 
@@ -263,7 +313,9 @@ export const googleAds = inngest.createFunction(
   { id: "enrich-google-ads", retries: 3, triggers: [{ event: "enrichment/google-ads" }] },
   async ({ event, step }) => {
     const minTraffic = event.data?.minTraffic ?? 0;
+    const jobId = await step.run("create-job", () => createJob("google_ads_transparency"));
     let totalProcessed = 0;
+    let totalErrors = 0;
     let batch = 0;
 
     while (batch < MAX_BATCHES) {
@@ -272,12 +324,19 @@ export const googleAds = inngest.createFunction(
       );
 
       totalProcessed += result.processed || 0;
+      totalErrors += result.errors || 0;
       const remaining = result.remaining ?? 0;
+
+      await step.run(`update-progress-${batch}`, () =>
+        updateJobProgress(jobId, totalProcessed, totalErrors, totalProcessed + remaining)
+      );
+
       if (remaining <= 0) break;
       batch++;
     }
 
-    return { totalProcessed, batches: batch + 1 };
+    await step.run("complete-job", () => completeJob(jobId, totalProcessed, totalErrors));
+    return { jobId, totalProcessed, batches: batch + 1 };
   }
 );
 
