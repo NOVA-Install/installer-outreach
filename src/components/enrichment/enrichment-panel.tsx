@@ -180,6 +180,25 @@ TIERS: High = 65+, Medium = 35-64, Low = under 35.`,
   },
 ];
 
+function ErrorLogDisplay({ errorLog }: { errorLog: string }) {
+  let errors: string[];
+  try {
+    errors = JSON.parse(errorLog);
+  } catch {
+    return (
+      <div className="mt-2 rounded-md border border-red-200 bg-red-50 p-2 text-[11px] text-red-700 max-h-32 overflow-y-auto whitespace-pre-wrap">
+        {errorLog}
+      </div>
+    );
+  }
+  return (
+    <div className="mt-2 rounded-md border border-red-200 bg-red-50 p-2 text-[11px] text-red-700 max-h-32 overflow-y-auto whitespace-pre-wrap">
+      {errors.slice(0, 10).join("\n")}
+      {errors.length > 10 && `\n... and ${errors.length - 10} more`}
+    </div>
+  );
+}
+
 function CostEstimator({ total, coverage }: { total: number; coverage: Record<string, number> }) {
   const gRemaining = Math.max(0, total - (coverage.google_reviews || 0));
   const tRemaining = Math.max(0, total - (coverage.trustpilot || 0));
@@ -277,15 +296,17 @@ function GoogleAdsFilter({ onRun, disabled }: { onRun: (minTraffic: number) => v
     setLoadingPreview(true);
     try {
       const res = await fetch(`/api/enrichment/google-ads/preview?minTraffic=${val}`);
-      const data = await res.json();
-      setPreview(data);
-    } catch { /* ignore */ }
+      if (res.ok) {
+        const data = await res.json();
+        setPreview(data);
+      }
+    } catch { /* ignore - preview is non-critical */ }
     setLoadingPreview(false);
   }, []);
 
   useEffect(() => {
     fetchPreview(minTraffic);
-  }, []);
+  }, [fetchPreview]);
 
   return (
     <div className="space-y-2 mt-2 pt-2 border-t border-[#f0f0f0]">
@@ -360,12 +381,13 @@ export function EnrichmentPanel() {
       if (!res.ok) {
         throw new Error(data.error || `Failed: ${res.status}`);
       }
+
       const needsCollect = ["google_reviews", "trustpilot", "trustpilot_domain", "google_business", "job_postings"].includes(source.key);
 
       toast.success(
         needsCollect
           ? `${source.label}: tasks submitted. Click "Collect Results" to retrieve data.`
-          : `${source.label}: job started. Running in background via Inngest.`
+          : `${source.label}: started. Running in background — you can close this page.`
       );
       fetchStatus();
     } catch (err) {
@@ -649,14 +671,7 @@ export function EnrichmentPanel() {
                   )}
 
                   {job?.errorLog && (job.errorCount ?? 0) > 0 && (
-                    <div className="mt-2 rounded-md border border-red-200 bg-red-50 p-2 text-[11px] text-red-700 max-h-32 overflow-y-auto whitespace-pre-wrap">
-                      {JSON.parse(job.errorLog)
-                        .slice(0, 10)
-                        .join("\n")}
-                      {JSON.parse(job.errorLog).length > 10 && (
-                        `\n... and ${JSON.parse(job.errorLog).length - 10} more`
-                      )}
-                    </div>
+                    <ErrorLogDisplay errorLog={job.errorLog} />
                   )}
 
                   {lastErrors[source.key] && (
@@ -673,12 +688,20 @@ export function EnrichmentPanel() {
                       variant="outline"
                       className="text-destructive border-destructive/30 hover:bg-destructive/10"
                       onClick={async () => {
-                        await fetch("/api/enrichment/cancel", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ jobId: job.id }),
-                        });
-                        toast.success(`${source.label} cancelled`);
+                        try {
+                          const res = await fetch("/api/enrichment/cancel", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ jobId: job.id }),
+                          });
+                          if (res.ok) {
+                            toast.success(`${source.label} cancelled`);
+                          } else {
+                            toast.error(`Failed to cancel ${source.label}`);
+                          }
+                        } catch {
+                          toast.error(`Failed to cancel ${source.label}`);
+                        }
                         fetchStatus();
                       }}
                     >
@@ -709,51 +732,14 @@ export function EnrichmentPanel() {
                   onRun={async (minTraffic) => {
                     setRunning((prev) => new Set([...prev, source.key]));
                     try {
-                      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-                      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-                      const useEdge = supabaseUrl && supabaseKey;
-
-                      const endpoint = useEdge
-                        ? `${supabaseUrl}/functions/v1/google-ads-transparency`
-                        : source.endpoint;
-                      const headers: Record<string, string> = { "Content-Type": "application/json" };
-                      if (useEdge) headers["Authorization"] = `Bearer ${supabaseKey}`;
-
-                      const res = await fetch(endpoint, {
+                      const res = await fetch("/api/enrichment/google-ads", {
                         method: "POST",
-                        headers,
+                        headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ minTraffic }),
                       });
-
                       const data = await res.json().catch(() => ({}));
                       if (!res.ok) throw new Error(data.error || "Failed");
-
-                      // Auto-retry if remaining
-                      if (data.remaining > 0) {
-                        let rem = data.remaining;
-                        let totalProcessed = data.processed || 0;
-                        toast.info(`Google Ads: ${totalProcessed} processed, ${rem} remaining. Running...`, { duration: 5000 });
-                        fetchStatus();
-
-                        let stuckCount = 0;
-                        while (rem > 0) {
-                          await new Promise((r) => setTimeout(r, 2000));
-                          try {
-                            const retryRes = await fetch(endpoint, { method: "POST", headers, body: JSON.stringify({ minTraffic }) });
-                            const retryData = await retryRes.json().catch(() => ({}));
-                            if (!retryRes.ok) break;
-                            const batchProcessed = retryData.processed || 0;
-                            totalProcessed += batchProcessed;
-                            rem = retryData.remaining ?? 0;
-                            if (batchProcessed === 0) { stuckCount++; if (stuckCount >= 2) { toast.info(`Google Ads: ${rem} items could not be processed. Stopping.`, { duration: 8000 }); break; } }
-                            else { stuckCount = 0; toast.info(`Google Ads: ${totalProcessed} processed, ${rem} remaining...`, { duration: 3000 }); }
-                            fetchStatus();
-                          } catch { break; }
-                        }
-                        toast.success(`Google Ads: complete. ${totalProcessed} total processed.`);
-                      } else {
-                        toast.success(`Google Ads: ${data.processed || 0} processed.`);
-                      }
+                      toast.success(`Google Ads: started with min traffic ${minTraffic}. Running in background — you can close this page.`);
                       fetchStatus();
                     } catch (err) {
                       toast.error(`Google Ads: ${err instanceof Error ? err.message : "Failed"}`, { duration: 8000 });

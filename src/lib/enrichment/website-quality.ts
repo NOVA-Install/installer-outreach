@@ -5,6 +5,7 @@ import {
   enrichmentJobs,
 } from "@/lib/db/schema";
 import { eq, isNull, sql } from "drizzle-orm";
+import { robustFetch } from "./fetch-utils";
 
 // --- Form quality detection from HTML ---
 
@@ -209,9 +210,10 @@ export function detectWebsiteSignals(html: string, email?: string | null): Websi
 
   // Copyright year
   let copyrightYear: number | null = null;
-  const yearMatch = html.match(/©\s*(\d{4})|&copy;\s*(\d{4})|copyright\s*(\d{4})/i);
+  const yearMatch = html.match(/(?:©|&copy;|copyright)\s*(\d{4})(?:\s*[-–]\s*(\d{4}))?/i);
   if (yearMatch) {
-    const year = parseInt(yearMatch[1] || yearMatch[2] || yearMatch[3]);
+    // Prefer the second year in ranges like "© 2020-2024"
+    const year = parseInt(yearMatch[2] || yearMatch[1]);
     if (year >= 2000 && year <= 2030) copyrightYear = year;
   }
 
@@ -224,9 +226,7 @@ export function detectWebsiteSignals(html: string, email?: string | null): Websi
   // WordPress version
   let wordpressVersion: string | null = null;
   if (siteBuilder === "WordPress") {
-    const wpVerMatch = html.match(/ver=(\d+\.\d+(?:\.\d+)?)/);
-    if (wpVerMatch) wordpressVersion = wpVerMatch[1];
-    // Also check meta generator tag
+    // Only use the reliable meta generator tag (ver= params match plugin/jQuery versions too)
     const genMatch = html.match(/content="WordPress\s+([\d.]+)"/i);
     if (genMatch) wordpressVersion = genMatch[1];
   }
@@ -261,8 +261,15 @@ interface PageSpeedResult {
 }
 
 async function fetchPageSpeed(url: string): Promise<PageSpeedResult> {
-  const apiUrl = `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(url)}&category=performance&category=accessibility&category=best-practices&category=seo&strategy=mobile`;
-  const res = await fetch(apiUrl, { signal: AbortSignal.timeout(60000) });
+  const apiKey = process.env.GOOGLE_PAGESPEED_API_KEY;
+  const keyParam = apiKey ? `&key=${apiKey}` : "";
+  const apiUrl = `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(url)}&category=performance&category=accessibility&category=best-practices&category=seo&strategy=mobile${keyParam}`;
+  const res = await robustFetch(apiUrl, {}, {
+    timeoutMs: 60000,
+    retries: 1,
+    retryDelayMs: 2000,
+    retryOn: (r) => r.status === 429 || r.status >= 500,
+  });
   if (!res.ok) throw new Error(`PageSpeed API ${res.status}`);
   const json = await res.json();
 
@@ -335,15 +342,11 @@ export async function enrichWebsiteQuality(
         // Fetch HTML for form/signal detection + PageSpeed in parallel
         const [htmlResult, pageSpeedResult] = await Promise.allSettled([
           (async () => {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 10000);
             const start = Date.now();
-            const res = await fetch(url, {
-              signal: controller.signal,
+            const res = await robustFetch(url, {
               headers: { "User-Agent": "Mozilla/5.0 (compatible; InstallerCRM/1.0)" },
               redirect: "follow",
-            });
-            clearTimeout(timeout);
+            }, { timeoutMs: 10000, retries: 1, retryDelayMs: 1000, retryOn: (r) => r.status >= 500 });
             const html = await res.text();
             const responseTimeMs = Date.now() - start;
             const isHttps = res.url.startsWith("https://");
@@ -358,7 +361,7 @@ export async function enrichWebsiteQuality(
         const form = htmlData ? detectFormQuality(htmlData.html) : { formType: "none" as const, details: {} };
         const signals = htmlData ? detectWebsiteSignals(htmlData.html, installer.email) : null;
 
-        await db.insert(websiteQuality).values({
+        const wqValues = {
           installerId: installer.id,
           performanceScore: pageSpeed?.performanceScore ?? null,
           accessibilityScore: pageSpeed?.accessibilityScore ?? null,
@@ -383,7 +386,9 @@ export async function enrichWebsiteQuality(
           responseTimeMs: htmlData?.responseTimeMs ?? null,
           isHttps: htmlData?.isHttps ?? null,
           fetchedAt: new Date().toISOString(),
-        });
+        };
+        await db.insert(websiteQuality).values(wqValues)
+          .onConflictDoUpdate({ target: websiteQuality.installerId, set: wqValues });
       })
     );
 
@@ -410,7 +415,7 @@ export async function enrichWebsiteQuality(
       errorLog: errorLog.length > 0 ? JSON.stringify(errorLog.slice(0, 50)) : null,
       completedAt: new Date().toISOString(),
     })
-    .where(eq(enrichmentJobs.id, jobId));
+    .where(sql`${enrichmentJobs.id} = ${jobId} AND ${enrichmentJobs.status} != 'cancelled'`);
 }
 
 // --- Single installer enrichment ---
@@ -420,15 +425,11 @@ export async function enrichSingleWebsiteQuality(installerId: number, website: s
 
   const [htmlResult, pageSpeedResult] = await Promise.allSettled([
     (async () => {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10000);
       const start = Date.now();
-      const res = await fetch(url, {
-        signal: controller.signal,
+      const res = await robustFetch(url, {
         headers: { "User-Agent": "Mozilla/5.0 (compatible; InstallerCRM/1.0)" },
         redirect: "follow",
-      });
-      clearTimeout(timeout);
+      }, { timeoutMs: 10000, retries: 1, retryDelayMs: 1000, retryOn: (r) => r.status >= 500 });
       const html = await res.text();
       return { html, responseTimeMs: Date.now() - start, isHttps: res.url.startsWith("https://") };
     })(),
@@ -441,9 +442,7 @@ export async function enrichSingleWebsiteQuality(installerId: number, website: s
   const form = htmlData ? detectFormQuality(htmlData.html) : { formType: "none" as const, details: {} };
   const signals = htmlData ? detectWebsiteSignals(htmlData.html, email) : null;
 
-  await db.delete(websiteQuality).where(eq(websiteQuality.installerId, installerId));
-
-  await db.insert(websiteQuality).values({
+  const wqValues = {
     installerId,
     performanceScore: pageSpeed?.performanceScore ?? null,
     accessibilityScore: pageSpeed?.accessibilityScore ?? null,
@@ -464,10 +463,13 @@ export async function enrichSingleWebsiteQuality(installerId: number, website: s
     brokenImageCount: signals?.brokenImageCount ?? null,
     imageCount: signals?.imageCount ?? null,
     hasGenericEmail: signals?.hasGenericEmail ?? null,
+    agencyName: signals?.agencyName ?? null,
     responseTimeMs: htmlData?.responseTimeMs ?? null,
     isHttps: htmlData?.isHttps ?? null,
     fetchedAt: new Date().toISOString(),
-  });
+  };
+  await db.insert(websiteQuality).values(wqValues)
+    .onConflictDoUpdate({ target: websiteQuality.installerId, set: wqValues });
 
   return {
     pageSpeed,

@@ -6,6 +6,7 @@ import {
 } from "@/lib/db/schema";
 import { eq, isNull, sql } from "drizzle-orm";
 import { RateLimiter } from "./rate-limiter";
+import { robustFetch } from "./fetch-utils";
 import { aiMatchCompaniesHouse } from "./ai-matcher";
 import { tieredCompanyMatch, type CompanyCandidate } from "./company-matcher";
 
@@ -20,9 +21,11 @@ function getAuth() {
 }
 
 async function chGet(path: string) {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { Authorization: getAuth() },
-  });
+  const res = await robustFetch(
+    `${BASE_URL}${path}`,
+    { headers: { Authorization: getAuth() } },
+    { timeoutMs: 15000, retries: 2, retryDelayMs: 2000, retryOn: (r) => r.status === 429 }
+  );
   if (!res.ok) {
     if (res.status === 404) return null;
     throw new Error(`Companies House API error: ${res.status}`);
@@ -35,11 +38,10 @@ export async function enrichCompaniesHouse(
   installerIds?: number[]
 ) {
   // 600 requests per 5 minutes = 2 per second
-  // Each installer uses ~5 calls (1 search + 4 parallel detail fetches)
-  // With 3 concurrent installers: 3 search + 12 detail = 15 calls per batch
-  // At 2/sec, we process a batch every ~1.5s, which is ~10 batches/min = 150 calls/min = 750/5min
-  // That's over budget, so throttle to 1.8/sec for safety margin
-  const limiter = new RateLimiter(1.8);
+  // Each installer uses ~6 calls (1 search + 5 parallel detail fetches including charges)
+  // With 3 concurrent installers: 3 search + 15 detail = 18 calls per batch
+  // Throttle to 1.5/sec for safety margin
+  const limiter = new RateLimiter(1.5);
 
   const query = installerIds
     ? db
@@ -106,7 +108,6 @@ export async function enrichCompaniesHouse(
       );
 
       if (!searchResult?.items?.length) {
-        processed++;
         return;
       }
 
@@ -135,7 +136,6 @@ export async function enrichCompaniesHouse(
         bestMatch = searchResult.items[matchResult.matchIndex];
       } else {
         // No match found at any tier — skip this installer
-        processed++;
         return;
       }
 
@@ -147,11 +147,12 @@ export async function enrichCompaniesHouse(
         await limiter.acquire();
         return chGet(path);
       };
-      const [profile, officersData, pscData, filingData] = await Promise.all([
+      const [profile, officersData, pscData, filingData, chargesData] = await Promise.all([
         rateLimitedChGet(`/company/${companyNumber}`),
         rateLimitedChGet(`/company/${companyNumber}/officers?items_per_page=50`),
         rateLimitedChGet(`/company/${companyNumber}/persons-with-significant-control`),
         rateLimitedChGet(`/company/${companyNumber}/filing-history?items_per_page=10&category=accounts`),
+        rateLimitedChGet(`/company/${companyNumber}/charges`),
       ]);
       if (!profile) return;
 
@@ -174,7 +175,7 @@ export async function enrichCompaniesHouse(
         latestAccountsUrl = `https://find-and-update.company-information.service.gov.uk/company/${companyNumber}/filing-history`;
       }
 
-      await db.insert(companiesHouseData).values({
+      const chValues = {
         installerId: installer.id,
         companyNumber: profile.company_number,
         companyStatus: profile.company_status,
@@ -197,10 +198,12 @@ export async function enrichCompaniesHouse(
         latestAccountsUrl,
         latestAccountsType,
         hasInsolvencyHistory: profile.has_insolvency_history ?? false,
-        hasCharges: false,
-        chargesCount: 0,
+        hasCharges: (chargesData?.total_count ?? 0) > 0,
+        chargesCount: chargesData?.total_count ?? 0,
         fetchedAt: new Date().toISOString(),
-      });
+      };
+      await db.insert(companiesHouseData).values(chValues)
+        .onConflictDoUpdate({ target: companiesHouseData.installerId, set: chValues });
     })
     );
 
@@ -223,9 +226,9 @@ export async function enrichCompaniesHouse(
     .set({
       processedItems: processed,
       errorCount: errors,
-      errorLog: errorLog.length > 0 ? JSON.stringify(errorLog) : null,
+      errorLog: errorLog.length > 0 ? JSON.stringify(errorLog.slice(0, 50)) : null,
       status: "completed",
       completedAt: new Date().toISOString(),
     })
-    .where(eq(enrichmentJobs.id, jobId));
+    .where(sql`${enrichmentJobs.id} = ${jobId} AND ${enrichmentJobs.status} != 'cancelled'`);
 }

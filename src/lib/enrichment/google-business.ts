@@ -109,12 +109,9 @@ async function postAndPollBusinessInfo(
         additionalCategories: result.additional_categories ? JSON.stringify(result.additional_categories) : null,
         fetchedAt: new Date().toISOString(),
       };
-      const existingBiz = await db.select({ id: googleBusinessInfo.id }).from(googleBusinessInfo).where(eq(googleBusinessInfo.installerId, installerId)).limit(1);
-      if (existingBiz.length > 0) {
-        await db.update(googleBusinessInfo).set(newData).where(eq(googleBusinessInfo.installerId, installerId));
-      } else {
-        await db.insert(googleBusinessInfo).values({ installerId, ...newData });
-      }
+      const bizValues = { installerId, ...newData };
+      await db.insert(googleBusinessInfo).values(bizValues)
+        .onConflictDoUpdate({ target: googleBusinessInfo.installerId, set: newData });
 
       // Update task status
       await db.update(dataforseoTasks)
@@ -166,6 +163,9 @@ export async function enrichGoogleBusinessBatch(jobId: number, priority: 1 | 2 =
 
   // Batch submit in groups of 100
   for (let i = 0; i < toEnrich.length; i += 100) {
+    const [currentJob] = await db.select({ status: enrichmentJobs.status }).from(enrichmentJobs).where(eq(enrichmentJobs.id, jobId)).limit(1);
+    if (currentJob?.status === "cancelled") break;
+
     const batch = toEnrich.slice(i, i + 100);
 
     const tasks = batch.map((inst) => ({
@@ -211,7 +211,7 @@ export async function enrichGoogleBusinessBatch(jobId: number, priority: 1 | 2 =
 
   await db.update(enrichmentJobs).set({
     processedItems: submitted, errorCount: errors,
-    errorLog: errorLog.length > 0 ? JSON.stringify(errorLog) : null,
+    errorLog: errorLog.length > 0 ? JSON.stringify(errorLog.slice(0, 50)) : null,
     status: "completed", completedAt: new Date().toISOString(),
-  }).where(eq(enrichmentJobs.id, jobId));
+  }).where(sql`${enrichmentJobs.id} = ${jobId} AND ${enrichmentJobs.status} != 'cancelled'`);
 }

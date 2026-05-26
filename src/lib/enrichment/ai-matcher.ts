@@ -1,10 +1,14 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
+let cachedModel: ReturnType<GoogleGenerativeAI["getGenerativeModel"]> | null = null;
+
 function getModel() {
+  if (cachedModel) return cachedModel;
   const apiKey = process.env.GOOGLE_AI_API_KEY;
   if (!apiKey) throw new Error("GOOGLE_AI_API_KEY must be set for AI matching");
   const genAI = new GoogleGenerativeAI(apiKey);
-  return genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+  cachedModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+  return cachedModel;
 }
 
 function extractJson<T>(text: string): T {

@@ -175,15 +175,14 @@ serve(async (req) => {
         rematchedList.push({ installerId: task.installer_id, companyName: inst.company_name, oldDomain, newDomain, newRating, matchReason });
 
         if (!dryRun) {
-          await supabase.from("trustpilot_reviews").delete().eq("installer_id", task.installer_id);
-          await supabase.from("trustpilot_reviews").insert({
+          await supabase.from("trustpilot_reviews").upsert({
             installer_id: task.installer_id,
             trustpilot_url: `https://www.trustpilot.com/review/${newDomain}`,
             rating: newRating,
             review_count: bestMatch.reviews_count ?? 0,
             trust_score: bestMatch.trust_score ?? null,
             fetched_at: new Date().toISOString(),
-          });
+          }, { onConflict: "installer_id" });
           await supabase.from("dataforseo_tasks").update({
             result_summary: `Revalidated (${matchReason}): ${newDomain}, rating: ${newRating} (was: ${oldDomain})`,
           }).eq("id", task.id);

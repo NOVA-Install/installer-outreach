@@ -6,6 +6,7 @@ import {
 } from "@/lib/db/schema";
 import { eq, isNull, sql } from "drizzle-orm";
 import { RateLimiter } from "./rate-limiter";
+import { robustFetch } from "./fetch-utils";
 import dns from "node:dns/promises";
 
 const TECH_PATTERNS: {
@@ -18,7 +19,7 @@ const TECH_PATTERNS: {
     name: "Google Analytics",
     category: "analytics",
     field: "hasGoogleAnalytics",
-    patterns: ["gtag(", "google-analytics.com", "googletagmanager.com", "G-", "UA-", "analytics.js", "ga.js"],
+    patterns: ["gtag(", "google-analytics.com", "googletagmanager.com", "analytics.js", "ga.js"],
   },
   {
     name: "Google Ads",
@@ -452,7 +453,7 @@ export async function enrichTechDetection(
       .limit(1);
     if (currentJob?.status === "cancelled") break;
 
-    const batch = toEnrich.slice(i, i + 50).filter((inst) => inst.website);
+    const batch = toEnrich.slice(i, i + 20).filter((inst) => inst.website);
 
     const results = await Promise.allSettled(
       batch.map(async (installer) => {
@@ -465,14 +466,10 @@ export async function enrichTechDetection(
           const domain = extractDomain(installer.website!);
           const [htmlResult, dnsResult] = await Promise.allSettled([
             (async () => {
-              const controller = new AbortController();
-              const timeout = setTimeout(() => controller.abort(), 5000);
-              const res = await fetch(url, {
-                signal: controller.signal,
+              const res = await robustFetch(url, {
                 headers: { "User-Agent": "Mozilla/5.0 (compatible; InstallerCRM/1.0)" },
                 redirect: "follow",
-              });
-              clearTimeout(timeout);
+              }, { timeoutMs: 5000, retries: 1, retryDelayMs: 1000, retryOn: (r) => r.status >= 500 });
               return res.text();
             })(),
             domain ? lookupDnsRecords(domain).then(detectDnsPatterns) : Promise.resolve(null),
@@ -544,9 +541,9 @@ export async function enrichTechDetection(
     .set({
       processedItems: processed,
       errorCount: errors,
-      errorLog: errorLog.length > 0 ? JSON.stringify(errorLog) : null,
+      errorLog: errorLog.length > 0 ? JSON.stringify(errorLog.slice(0, 100)) : null,
       status: "completed",
       completedAt: new Date().toISOString(),
     })
-    .where(eq(enrichmentJobs.id, jobId));
+    .where(sql`${enrichmentJobs.id} = ${jobId} AND ${enrichmentJobs.status} != 'cancelled'`);
 }
