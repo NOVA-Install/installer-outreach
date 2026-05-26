@@ -70,16 +70,22 @@ serve(async (req) => {
   // Process max 100 per invocation (5 API calls each, rate limited)
   const toEnrich = allToEnrich.slice(0, 100);
 
-  // Create job
-  const { data: job } = await supabase.from("enrichment_jobs").insert({
-    type: "companies_house",
-    status: "running",
-    total_items: toEnrich.length,
-    processed_items: 0,
-    error_count: 0,
-    started_at: new Date().toISOString(),
-    created_at: new Date().toISOString(),
-  }).select("id").single();
+  // Only create job record if not called from Inngest
+  const body = await req.json().catch(() => ({}));
+  const skipJob = body.skipJob === true;
+  let job: { id: number } | null = null;
+  if (!skipJob) {
+    const { data } = await supabase.from("enrichment_jobs").insert({
+      type: "companies_house",
+      status: "running",
+      total_items: toEnrich.length,
+      processed_items: 0,
+      error_count: 0,
+      started_at: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+    }).select("id").single();
+    job = data;
+  }
 
   let processed = 0;
   let errors = 0;

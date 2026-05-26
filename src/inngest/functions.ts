@@ -61,7 +61,7 @@ export const techDetection = inngest.createFunction(
 
     while (batch < MAX_BATCHES) {
       const result = await step.run(`tech-batch-${batch}`, () =>
-        callEdgeFunction("tech-detection")
+        callEdgeFunction("tech-detection", { skipJob: true })
       );
 
       totalProcessed += result.processed || 0;
@@ -85,7 +85,7 @@ export const companiesHouse = inngest.createFunction(
 
     while (batch < MAX_BATCHES) {
       const result = await step.run(`ch-batch-${batch}`, () =>
-        callEdgeFunction("companies-house-enrich")
+        callEdgeFunction("companies-house-enrich", { skipJob: true })
       );
 
       totalProcessed += result.processed || 0;
@@ -109,7 +109,7 @@ export const trafficBulk = inngest.createFunction(
 
     while (batch < MAX_BATCHES) {
       const result = await step.run(`traffic-batch-${batch}`, () =>
-        callEdgeFunction("traffic-bulk")
+        callEdgeFunction("traffic-bulk", { skipJob: true })
       );
 
       totalProcessed += result.processed || 0;
@@ -197,7 +197,7 @@ export const collectResults = inngest.createFunction(
 
     while (batch < MAX_BATCHES) {
       const result = await step.run(`collect-batch-${batch}`, () =>
-        callEdgeFunction("collect-results")
+        callEdgeFunction("collect-results", { skipJob: true })
       );
 
       totalCollected += result.collected || 0;
@@ -268,7 +268,7 @@ export const googleAds = inngest.createFunction(
 
     while (batch < MAX_BATCHES) {
       const result = await step.run(`gads-batch-${batch}`, () =>
-        callEdgeFunction("google-ads-transparency", { minTraffic })
+        callEdgeFunction("google-ads-transparency", { minTraffic, skipJob: true })
       );
 
       totalProcessed += result.processed || 0;

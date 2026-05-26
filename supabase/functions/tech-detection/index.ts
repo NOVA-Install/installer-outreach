@@ -84,16 +84,22 @@ serve(async (req) => {
   // Process max 200 per invocation (each requires HTTP fetch with 8s timeout)
   const toProcess = installers.slice(0, 200);
 
-  // Update job tracking
-  const { data: job } = await supabase.from("enrichment_jobs").insert({
-    type: "tech_detection",
-    status: "running",
-    total_items: toProcess.length,
-    processed_items: 0,
-    error_count: 0,
-    started_at: new Date().toISOString(),
-    created_at: new Date().toISOString(),
-  }).select("id").single();
+  // Only create job record if not called from Inngest (which manages its own tracking)
+  const body = await req.json().catch(() => ({}));
+  const skipJob = body.skipJob === true;
+  let job: { id: number } | null = null;
+  if (!skipJob) {
+    const { data } = await supabase.from("enrichment_jobs").insert({
+      type: "tech_detection",
+      status: "running",
+      total_items: toProcess.length,
+      processed_items: 0,
+      error_count: 0,
+      started_at: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+    }).select("id").single();
+    job = data;
+  }
 
   let processed = 0;
   let errors = 0;
