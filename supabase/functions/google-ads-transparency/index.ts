@@ -109,9 +109,8 @@ serve(async (req) => {
       batch.map(async (inst) => {
         try {
           const raw = inst.website as string;
-          const domain = raw.startsWith("http")
-            ? new URL(raw).hostname.replace(/^www\./, "")
-            : raw.replace(/^www\./, "").split("/")[0];
+          const rawUrl = raw.startsWith("http") ? raw : `https://${raw}`;
+          const domain = new URL(rawUrl).hostname.replace(/^www\./, "");
 
           const res = await fetch("https://api.dataforseo.com/v3/serp/google/ads_search/live/advanced", {
             method: "POST",

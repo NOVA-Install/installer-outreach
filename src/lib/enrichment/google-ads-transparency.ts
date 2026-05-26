@@ -93,9 +93,8 @@ export async function fetchGoogleAdsTransparency(installerId: number): Promise<{
 
   if (!inst?.website) return { error: "No website URL" };
 
-  const domain = inst.website.startsWith("http")
-    ? new URL(inst.website).hostname.replace(/^www\./, "")
-    : inst.website.replace(/^www\./, "");
+  const rawUrl = inst.website.startsWith("http") ? inst.website : `https://${inst.website}`;
+  const domain = new URL(rawUrl).hostname.replace(/^www\./, "");
 
   const res = await fetch(`${BASE_URL}/serp/google/ads_search/live/advanced`, {
     method: "POST",
