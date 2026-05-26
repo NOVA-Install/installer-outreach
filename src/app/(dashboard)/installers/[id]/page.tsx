@@ -144,7 +144,8 @@ export default async function InstallerDetailPage({
   const [installer] = await db.select().from(installers).where(eq(installers.id, installerId)).limit(1);
   if (!installer) notFound();
 
-  const [scores, google, trustpilot, companiesHouse, marketing, seo, traffic, keywords, gBusiness, gAds, jobs, siteQuality, googleReviewItems, trustpilotReviewItems, activityList] =
+  // Batch queries to avoid exhausting the connection pool (max 10 connections shared app-wide)
+  const [scores, google, trustpilot, companiesHouse, marketing, seo, traffic, keywords] =
     await Promise.all([
       db.select().from(installerScores).where(eq(installerScores.installerId, installerId)).limit(1),
       db.select().from(googleReviews).where(eq(googleReviews.installerId, installerId)).limit(1),
@@ -154,6 +155,10 @@ export default async function InstallerDetailPage({
       db.select().from(seoData).where(eq(seoData.installerId, installerId)).limit(1),
       db.select().from(trafficData).where(eq(trafficData.installerId, installerId)).limit(1),
       db.select().from(keywordData).where(eq(keywordData.installerId, installerId)).orderBy(sql`${keywordData.searchVolume} DESC`).limit(50),
+    ]);
+
+  const [gBusiness, gAds, jobs, siteQuality, googleReviewItems, trustpilotReviewItems, activityList] =
+    await Promise.all([
       db.select().from(googleBusinessInfo).where(eq(googleBusinessInfo.installerId, installerId)).limit(1),
       db.select().from(googleAdsData).where(eq(googleAdsData.installerId, installerId)).limit(1),
       db.select().from(jobPostings).where(eq(jobPostings.installerId, installerId)).limit(1),
@@ -299,7 +304,24 @@ export default async function InstallerDetailPage({
               </div>
             )}
           </div>
-          <div className="mt-5 pt-5 border-t border-[#f0f0f0]">
+          {(technologies.length > 0 || regions.length > 0) && (
+            <div className="flex flex-wrap gap-x-6 gap-y-2 mt-4">
+              {technologies.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-[#9a9a9a] uppercase tracking-[0.06em] shrink-0">Technologies</span>
+                  <div className="flex flex-wrap gap-1">{technologies.map((t) => <Badge key={t} variant="outline" className="text-[10px] rounded-full bg-[#f8f8f8] border-[#e8e8e8] text-[#5a5a5a]">{t}</Badge>)}</div>
+                </div>
+              )}
+              {regions.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-[#9a9a9a] uppercase tracking-[0.06em] shrink-0">Regions</span>
+                  <div className="flex flex-wrap gap-1">{regions.map((r) => <Badge key={r} variant="outline" className="text-[10px] rounded-full bg-[#f8f8f8] border-[#e8e8e8] text-[#5a5a5a]">{r}</Badge>)}</div>
+                </div>
+              )}
+            </div>
+          )}
+          <div className="flex items-center gap-3 mt-4">
+            <span className="text-[11px] text-[#9a9a9a] uppercase tracking-[0.06em]">Stage</span>
             <PipelineStageSelector installerId={installerId} currentStage={installer.pipelineStage} />
           </div>
         </div>
@@ -317,7 +339,7 @@ export default async function InstallerDetailPage({
               <StatPill label="Overall Score" value={score.overallScore.toFixed(0)} icon={<TrendingUp className="h-3.5 w-3.5" />} />
             )}
             {chData?.employeeCount != null && (
-              <StatPill label="Employees" value={chData.employeeCount.toLocaleString()} icon={<Users className="h-3.5 w-3.5" />} />
+              <StatPill label="Employees" value={chData.employeeCount.toLocaleString("en")} icon={<Users className="h-3.5 w-3.5" />} />
             )}
             {mktSignals && (
               <StatPill
@@ -466,18 +488,6 @@ export default async function InstallerDetailPage({
                 </div>
               </InfoCard>
             </div>
-            {technologies.length > 0 && (
-              <div className="mt-4">
-                <p className="text-[11px] text-[#9a9a9a] uppercase tracking-[0.06em] mb-2">Technologies Certified</p>
-                <div className="flex flex-wrap gap-1.5">{technologies.map((t) => <Badge key={t} variant="outline" className="text-[11px] rounded-full bg-[#f8f8f8] border-[#e8e8e8] text-[#5a5a5a] hover:bg-[#f0f0f0]">{t}</Badge>)}</div>
-              </div>
-            )}
-            {regions.length > 0 && (
-              <div className="mt-4">
-                <p className="text-[11px] text-[#9a9a9a] uppercase tracking-[0.06em] mb-2">Regions Covered</p>
-                <div className="flex flex-wrap gap-1.5">{regions.map((r) => <Badge key={r} variant="outline" className="text-[11px] rounded-full bg-[#f8f8f8] border-[#e8e8e8] text-[#5a5a5a] hover:bg-[#f0f0f0]">{r}</Badge>)}</div>
-              </div>
-            )}
           </Section>
 
           {/* ── Data Sources ── */}
@@ -652,8 +662,8 @@ export default async function InstallerDetailPage({
                       <Signal label="CRM Tool" active={mktSignals.hasCrmTool} detail={mktSignals.crmToolName || undefined} />
                       <Signal label="Live Chat" active={mktSignals.hasLiveChat} detail={mktSignals.liveChatTool || undefined} />
                     </div>
-                    {mktSignals.estimatedMonthlyTraffic != null && <div className="text-[13px]"><span className="text-[#9a9a9a]">Est. Monthly Traffic: </span><span className="font-medium tabular-nums">{mktSignals.estimatedMonthlyTraffic.toLocaleString()}</span></div>}
-                    {mktSignals.estimatedAdSpend != null && mktSignals.estimatedAdSpend > 0 && <div className="text-[13px]"><span className="text-[#9a9a9a]">Est. Ad Spend: </span><span className="font-medium tabular-nums">${mktSignals.estimatedAdSpend.toLocaleString()}/mo</span></div>}
+                    {mktSignals.estimatedMonthlyTraffic != null && <div className="text-[13px]"><span className="text-[#9a9a9a]">Est. Monthly Traffic: </span><span className="font-medium tabular-nums">{mktSignals.estimatedMonthlyTraffic.toLocaleString("en")}</span></div>}
+                    {mktSignals.estimatedAdSpend != null && mktSignals.estimatedAdSpend > 0 && <div className="text-[13px]"><span className="text-[#9a9a9a]">Est. Ad Spend: </span><span className="font-medium tabular-nums">${mktSignals.estimatedAdSpend.toLocaleString("en")}/mo</span></div>}
                     {mktSignals.detectedTechnologies && (
                       <div className="pt-2 border-t border-[#f0f0f0]">
                         <p className="text-[11px] text-[#9a9a9a] uppercase tracking-wider mb-1">Detected Technologies</p>
@@ -703,25 +713,122 @@ export default async function InstallerDetailPage({
 
               {/* Google Ads Transparency */}
               <InfoCard>
-                <p className="text-[11px] text-[#9a9a9a] uppercase tracking-wider mb-2">Google Ads Transparency</p>
-                {adsData ? (
-                  <div className="space-y-2 text-[13px]">
-                    <div className="grid grid-cols-2 gap-2">
-                      <Field label="Advertiser" value={adsData.advertiserName} />
-                      <Field label="Verified" value={adsData.isVerified ? "Yes" : "No"} />
-                      <Field label="Total Ads" value={adsData.totalAds} />
-                      <Field label="Text / Image / Video" value={`${adsData.textAds || 0} / ${adsData.imageAds || 0} / ${adsData.videoAds || 0}`} />
-                      <Field label="First Seen" value={adsData.firstAdSeen} />
-                      <Field label="Last Seen" value={adsData.lastAdSeen} />
-                    </div>
-                    {adsData.sampleAdTitles && (
-                      <div className="pt-2 border-t border-[#f0f0f0]">
-                        <p className="text-[11px] text-[#9a9a9a] uppercase tracking-wider mb-1">Sample Ads</p>
-                        <ul className="space-y-0.5">{JSON.parse(adsData.sampleAdTitles).slice(0, 5).map((t: string, i: number) => <li key={i} className="text-[12px] text-[#6a6a6a]">{t}</li>)}</ul>
+                <p className="text-[11px] text-[#9a9a9a] uppercase tracking-wider mb-3">Google Ads Transparency</p>
+                {adsData ? (() => {
+                  const formatDate = (d: string | null) => {
+                    if (!d) return null;
+                    try { return new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }); } catch { return d; }
+                  };
+                  const uniqueTitles = adsData.sampleAdTitles
+                    ? [...new Set(JSON.parse(adsData.sampleAdTitles) as string[])].filter((t) => t.toUpperCase() !== adsData.advertiserName?.toUpperCase())
+                    : [];
+                  const transparencyUrlList: string[] = adsData.transparencyUrls ? JSON.parse(adsData.transparencyUrls) : [];
+                  const advertiserUrl = adsData.advertiserId
+                    ? `https://adstransparency.google.com/advertiser/${adsData.advertiserId}?region=GB`
+                    : transparencyUrlList[0] || null;
+                  const lastSeenDate = adsData.lastAdSeen ? new Date(adsData.lastAdSeen) : null;
+                  const firstSeenDate = adsData.firstAdSeen ? new Date(adsData.firstAdSeen) : null;
+                  const isRecent = lastSeenDate ? (Date.now() - lastSeenDate.getTime()) < 90 * 24 * 60 * 60 * 1000 : false;
+                  const durationMonths = firstSeenDate && lastSeenDate
+                    ? Math.max(1, Math.round((lastSeenDate.getTime() - firstSeenDate.getTime()) / (30 * 24 * 60 * 60 * 1000)))
+                    : null;
+                  const isMaxed = (adsData.totalAds ?? 0) >= 40;
+                  const paidSpend = trafficInfo?.googlePaidTrafficCost;
+                  const paidTraffic = trafficInfo?.googlePaidEtv;
+
+                  return (
+                    <div className="space-y-3">
+                      {/* Header: ad count + recency badge */}
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-[#4285f4]/10">
+                          <span className="text-[18px] font-bold text-[#4285f4] tabular-nums">{isMaxed ? "40+" : (adsData.totalAds || 0)}</span>
+                        </div>
+                        <div>
+                          <p className="text-[14px] font-semibold text-[#1D1D1D]">
+                            {isMaxed ? "40+ ad creatives" : adsData.totalAds === 1 ? "1 ad" : `${adsData.totalAds || 0} ads`}{!isMaxed && " found"}
+                          </p>
+                          <p className="text-[12px] text-[#9a9a9a]">
+                            {adsData.advertiserName}{adsData.isVerified && <span className="ml-1.5 inline-flex items-center gap-0.5 text-[#4285f4]"><CheckCircle2 className="h-3 w-3" /> Verified</span>}
+                          </p>
+                        </div>
+                        {isRecent && (
+                          <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200/60 px-2 py-0.5 text-[11px] font-medium text-emerald-600">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Active
+                          </span>
+                        )}
                       </div>
-                    )}
-                  </div>
-                ) : <p className="text-[13px] text-[#9a9a9a]">No Google Ads data yet</p>}
+
+                      {/* Ad type breakdown */}
+                      {(adsData.totalAds ?? 0) > 0 && (
+                        <div className="flex gap-2">
+                          {(adsData.textAds ?? 0) > 0 && (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-[#f5f5f5] px-2 py-1 text-[11px] text-[#6a6a6a]">
+                              <span className="font-semibold text-[#3a3a3a] tabular-nums">{adsData.textAds}</span> text
+                            </span>
+                          )}
+                          {(adsData.imageAds ?? 0) > 0 && (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-[#f5f5f5] px-2 py-1 text-[11px] text-[#6a6a6a]">
+                              <span className="font-semibold text-[#3a3a3a] tabular-nums">{adsData.imageAds}</span> image
+                            </span>
+                          )}
+                          {(adsData.videoAds ?? 0) > 0 && (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-[#f5f5f5] px-2 py-1 text-[11px] text-[#6a6a6a]">
+                              <span className="font-semibold text-[#3a3a3a] tabular-nums">{adsData.videoAds}</span> video
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Date range + duration */}
+                      {(adsData.firstAdSeen || adsData.lastAdSeen) && (
+                        <div className="flex items-center gap-2 text-[12px] text-[#6a6a6a]">
+                          <Clock className="h-3 w-3 text-[#9a9a9a]" />
+                          {formatDate(adsData.firstAdSeen)}
+                          {adsData.firstAdSeen && adsData.lastAdSeen && <span className="text-[#d0d0d0]">&rarr;</span>}
+                          {formatDate(adsData.lastAdSeen)}
+                          {durationMonths != null && (
+                            <span className="text-[#9a9a9a] ml-1">({durationMonths === 1 ? "1 month" : `${durationMonths} months`})</span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Paid traffic data cross-reference */}
+                      {(paidSpend != null && paidSpend > 0) || (paidTraffic != null && paidTraffic > 0) ? (
+                        <div className="flex gap-3 pt-2 border-t border-[#f0f0f0]">
+                          {paidSpend != null && paidSpend > 0 && (
+                            <div>
+                              <p className="text-[11px] text-[#9a9a9a] uppercase tracking-wider">Est. Ad Spend</p>
+                              <p className="text-[14px] font-semibold text-[#1D1D1D] tabular-nums">${paidSpend.toLocaleString("en")}<span className="text-[11px] font-normal text-[#9a9a9a]">/mo</span></p>
+                            </div>
+                          )}
+                          {paidTraffic != null && paidTraffic > 0 && (
+                            <div>
+                              <p className="text-[11px] text-[#9a9a9a] uppercase tracking-wider">Paid Traffic</p>
+                              <p className="text-[14px] font-semibold text-[#1D1D1D] tabular-nums">{paidTraffic.toLocaleString("en")}<span className="text-[11px] font-normal text-[#9a9a9a]">/mo</span></p>
+                            </div>
+                          )}
+                        </div>
+                      ) : null}
+
+                      {/* Sample ad titles (only if they differ from advertiser name) */}
+                      {uniqueTitles.length > 0 && (
+                        <div className="pt-2 border-t border-[#f0f0f0]">
+                          <p className="text-[11px] text-[#9a9a9a] uppercase tracking-wider mb-1">Sample Ad Copy</p>
+                          <ul className="space-y-0.5">{uniqueTitles.slice(0, 5).map((t, i) => <li key={i} className="text-[12px] text-[#6a6a6a]">{t}</li>)}</ul>
+                        </div>
+                      )}
+
+                      {/* Link to Transparency Center */}
+                      {advertiserUrl && (
+                        <div className="pt-2 border-t border-[#f0f0f0]">
+                          <a href={advertiserUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] text-primary hover:underline inline-flex items-center gap-1">
+                            View on Google Ads Transparency Center <ExternalLink className="h-3 w-3" />
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })() : <p className="text-[13px] text-[#9a9a9a]">No Google Ads data yet</p>}
               </InfoCard>
             </div>
           </Section>
@@ -742,7 +849,7 @@ export default async function InstallerDetailPage({
                     <div className="mt-3 pt-3 border-t border-[#f0f0f0] text-[13px]">
                       <span className="text-[#9a9a9a]">Response Time: </span>
                       <span className={`font-medium tabular-nums ${quality.responseTimeMs > 3000 ? "text-red-600" : quality.responseTimeMs > 1500 ? "text-amber-600" : "text-emerald-600"}`}>
-                        {quality.responseTimeMs.toLocaleString()}ms
+                        {quality.responseTimeMs.toLocaleString("en")}ms
                       </span>
                     </div>
                   )}
@@ -784,9 +891,9 @@ export default async function InstallerDetailPage({
                     <p className="text-[11px] text-[#9a9a9a] uppercase tracking-wider mb-2">SEO</p>
                     <div className="grid grid-cols-2 gap-3">
                       <Field label="Domain Authority" value={seoInfo.domainAuthority} />
-                      <Field label="Backlinks" value={seoInfo.backlinksCount?.toLocaleString()} />
-                      <Field label="Referring Domains" value={seoInfo.referringDomains?.toLocaleString()} />
-                      <Field label="Organic Keywords" value={seoInfo.organicKeywords?.toLocaleString()} />
+                      <Field label="Backlinks" value={seoInfo.backlinksCount?.toLocaleString("en")} />
+                      <Field label="Referring Domains" value={seoInfo.referringDomains?.toLocaleString("en")} />
+                      <Field label="Organic Keywords" value={seoInfo.organicKeywords?.toLocaleString("en")} />
                     </div>
                   </InfoCard>
                 )}
@@ -794,12 +901,12 @@ export default async function InstallerDetailPage({
                   <InfoCard>
                     <p className="text-[11px] text-[#9a9a9a] uppercase tracking-wider mb-2">Traffic</p>
                     <div className="grid grid-cols-2 gap-3">
-                      <Field label="Google Organic" value={trafficInfo.googleOrganicEtv != null ? `${trafficInfo.googleOrganicEtv.toLocaleString()}/mo` : null} />
-                      <Field label="Google Paid" value={trafficInfo.googlePaidEtv != null ? `${trafficInfo.googlePaidEtv.toLocaleString()}/mo` : null} />
-                      {trafficInfo.googleOrganicTrafficCost != null && <Field label="Organic Value" value={`$${trafficInfo.googleOrganicTrafficCost.toLocaleString()}/mo`} />}
-                      {trafficInfo.googlePaidTrafficCost != null && <Field label="Paid Spend" value={`$${trafficInfo.googlePaidTrafficCost.toLocaleString()}/mo`} />}
-                      <Field label="Google Keywords" value={trafficInfo.googleOrganicCount?.toLocaleString()} />
-                      {trafficInfo.bingOrganicEtv != null && <Field label="Bing Organic" value={`${trafficInfo.bingOrganicEtv.toLocaleString()}/mo`} />}
+                      <Field label="Google Organic" value={trafficInfo.googleOrganicEtv != null ? `${Math.round(trafficInfo.googleOrganicEtv).toLocaleString("en")}/mo` : null} />
+                      <Field label="Google Paid" value={trafficInfo.googlePaidEtv != null ? `${Math.round(trafficInfo.googlePaidEtv).toLocaleString("en")}/mo` : null} />
+                      {trafficInfo.googleOrganicTrafficCost != null && <Field label="Organic Value" value={`$${Math.round(trafficInfo.googleOrganicTrafficCost).toLocaleString("en")}/mo`} />}
+                      {trafficInfo.googlePaidTrafficCost != null && <Field label="Paid Spend" value={`$${Math.round(trafficInfo.googlePaidTrafficCost).toLocaleString("en")}/mo`} />}
+                      <Field label="Google Keywords" value={trafficInfo.googleOrganicCount?.toLocaleString("en")} />
+                      {trafficInfo.bingOrganicEtv != null && <Field label="Bing Organic" value={`${Math.round(trafficInfo.bingOrganicEtv).toLocaleString("en")}/mo`} />}
                     </div>
                   </InfoCard>
                 )}
@@ -819,7 +926,7 @@ export default async function InstallerDetailPage({
                       <tbody>{keywords.map((kw) => (
                         <tr key={kw.id} className="border-b border-[#f0f0f0] last:border-0">
                           <td className="py-1.5 pr-3 text-[#3a3a3a]">{kw.keyword}</td>
-                          <td className="text-right py-1.5 px-2 tabular-nums">{kw.searchVolume?.toLocaleString() ?? "—"}</td>
+                          <td className="text-right py-1.5 px-2 tabular-nums">{kw.searchVolume?.toLocaleString("en") ?? "—"}</td>
                           <td className="text-right py-1.5 px-2 tabular-nums">{kw.cpc != null ? `$${kw.cpc.toFixed(2)}` : "—"}</td>
                           <td className="text-right py-1.5 px-2"><Badge variant="outline" className="text-[10px]">{kw.competition || "—"}</Badge></td>
                         </tr>

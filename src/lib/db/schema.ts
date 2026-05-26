@@ -162,7 +162,7 @@ export const marketingSignals = pgTable("marketing_signals", {
   linkedinUrl: text("linkedin_url"),
   twitterUrl: text("twitter_url"),
   youtubeUrl: text("youtube_url"),
-  detectionVersion: integer("detection_version").default(1),
+  detectionVersion: integer("detection_version").default(3),
   fetchedAt: text("fetched_at").notNull(),
 });
 
@@ -239,7 +239,6 @@ export const installerScores = pgTable("installer_scores", {
     .unique()
     .references(() => installers.id),
   reputationScore: real("reputation_score"),
-  estimatedMonthlyInstalls: real("estimated_monthly_installs"),
   marketingActivityScore: real("marketing_activity_score"),
   overallScore: real("overall_score"),
   tier: text("tier"),
@@ -306,6 +305,7 @@ export const googleAdsData = pgTable("google_ads_data", {
   firstAdSeen: text("first_ad_seen"),
   lastAdSeen: text("last_ad_seen"),
   sampleAdTitles: text("sample_ad_titles"), // JSON array of ad titles
+  transparencyUrls: text("transparency_urls"), // JSON array of links to ads on Google Transparency Center
   fetchedAt: text("fetched_at").notNull(),
 });
 

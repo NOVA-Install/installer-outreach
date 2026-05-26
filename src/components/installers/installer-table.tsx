@@ -39,9 +39,11 @@ import {
   RefreshCw,
 } from "lucide-react";
 import Link from "next/link";
+import { useSearchParams, useRouter } from "next/navigation";
 import { PIPELINE_STAGES } from "@/lib/constants";
 import { AddInstallerDialog } from "@/components/installers/add-installer-dialog";
 import { toast } from "sonner";
+import { FilterSidebar, countActiveFilters, EMPTY_FILTERS, type Filters, type DistanceOrigin } from "@/components/filters/filter-sidebar";
 
 // --- Types ---
 
@@ -69,7 +71,6 @@ interface Installer {
   overallScore: number | null;
   reputationScore: number | null;
   marketingActivityScore: number | null;
-  estimatedMonthlyInstalls: number | null;
   tier: string | null;
   // Reviews
   googleRating: number | null;
@@ -105,6 +106,8 @@ interface Installer {
   linkedinUrl: string | null;
   twitterUrl: string | null;
   youtubeUrl: string | null;
+  // Computed
+  distance: number | null;
 }
 
 interface InstallerResponse {
@@ -116,37 +119,11 @@ interface InstallerResponse {
 }
 
 interface InstallerTableProps {
-  counties: string[];
-  crmTools: string[];
+  counties?: string[];
+  crmTools?: string[];
 }
 
-interface Filters {
-  county: string;
-  stage: string;
-  tier: string;
-  hasWebsite: string;
-  hasEmail: string;
-  hasReviews: string;
-  inMcs: string;
-  inNova: string;
-  inTrustMark: string;
-  scoreMin: string;
-  scoreMax: string;
-  ratingMin: string;
-  isShortlisted: string;
-  crmTool: string;
-  formType: string;
-}
-
-const EMPTY_FILTERS: Filters = {
-  county: "", stage: "", tier: "", hasWebsite: "", hasEmail: "", hasReviews: "",
-  inMcs: "", inNova: "", inTrustMark: "", scoreMin: "", scoreMax: "", ratingMin: "", isShortlisted: "",
-  crmTool: "", formType: "",
-};
-
-function countActiveFilters(f: Filters): number {
-  return Object.values(f).filter((v) => v !== "").length;
-}
+// Filters type, EMPTY_FILTERS, and countActiveFilters imported from @/components/filters/filter-sidebar
 
 // --- Inline edit cell ---
 
@@ -350,10 +327,12 @@ function CompanyLogo({ domain, name }: { domain: string | null; name: string }) 
   }
   return (
     <img
-      src={`https://www.google.com/s2/favicons?domain=${domain}&sz=128`}
+      src={`https://www.google.com/s2/favicons?domain=${domain}&sz=32`}
       alt=""
       width={32}
       height={32}
+      loading="lazy"
+      decoding="async"
       className="h-8 w-8 rounded-lg bg-white object-contain shrink-0 border border-[#f0f0f0]"
       onError={() => setErrored(true)}
     />
@@ -454,6 +433,17 @@ const ALL_COLUMNS: ColumnDef[] = [
     label: "Postcode",
     sortKey: "postcode",
     render: (row) => <span className="text-[#6a6a6a] font-mono text-[12px]">{row.postcode || "—"}</span>,
+  },
+  {
+    key: "distance",
+    label: "Distance",
+    sortKey: "distance",
+    render: (row) =>
+      row.distance != null ? (
+        <span className="tabular-nums text-[12px] text-[#6a6a6a]">{row.distance < 1 ? "<1 mi" : `${Math.round(row.distance)} mi`}</span>
+      ) : (
+        <span className="text-[#d5d5d5]">—</span>
+      ),
   },
   {
     key: "email",
@@ -609,15 +599,6 @@ const ALL_COLUMNS: ColumnDef[] = [
     },
   },
   {
-    key: "estInstalls",
-    label: "Est. Installs/mo",
-    sortKey: "estimatedMonthlyInstalls",
-    render: (row) =>
-      row.estimatedMonthlyInstalls != null && row.estimatedMonthlyInstalls > 0
-        ? <span className="font-medium tabular-nums text-[#1D1D1D]">{Math.round(row.estimatedMonthlyInstalls).toLocaleString()}</span>
-        : <span className="text-[#d5d5d5]">—</span>,
-  },
-  {
     key: "website",
     label: "Website",
     sortKey: "website",
@@ -692,12 +673,6 @@ const ALL_COLUMNS: ColumnDef[] = [
     label: "Marketing Score",
     render: (row) =>
       row.marketingActivityScore != null ? <span className="font-medium tabular-nums text-[12px]">{row.marketingActivityScore.toFixed(0)}</span> : <span className="text-[#d5d5d5]">—</span>,
-  },
-  {
-    key: "estInstalls",
-    label: "Est Installs/mo",
-    render: (row) =>
-      row.estimatedMonthlyInstalls != null && row.estimatedMonthlyInstalls > 0 ? <span className="font-medium tabular-nums text-[12px]">{row.estimatedMonthlyInstalls.toFixed(0)}</span> : <span className="text-[#d5d5d5]">—</span>,
   },
   {
     key: "reviewsPerMonth",
@@ -905,7 +880,7 @@ const ALL_COLUMNS: ColumnDef[] = [
   },
 ];
 
-const DEFAULT_VISIBLE = ["companyName", "county", "postcode", "stage", "googleReviews", "trustpilotReviews", "score", "totalReviews", "website", "estInstalls"];
+const DEFAULT_VISIBLE = ["companyName", "county", "postcode", "stage", "googleReviews", "trustpilotReviews", "score", "totalReviews", "website"];
 const STORAGE_KEY = "installer-table-columns-v2";
 const PAGE_SIZE_KEY = "installer-table-pagesize";
 
@@ -972,162 +947,7 @@ function ColumnSettings({ visible, onUpdate }: { visible: string[]; onUpdate: (c
   );
 }
 
-// --- Filter sidebar (Clay-style accordion) ---
-
-function FilterAccordion({ label, icon, isActive, children }: { label: string; icon?: ReactNode; isActive?: boolean; children: ReactNode }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="border-b border-[#f0f0f0]">
-      <button
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center gap-2.5 px-4 py-3 text-left hover:bg-[#FAFAF9] transition-colors"
-      >
-        {icon && <span className="text-[#6a6a6a] shrink-0">{icon}</span>}
-        <span className="text-[13.5px] font-semibold text-[#1D1D1D] flex-1">{label}</span>
-        {isActive && <div className="h-[7px] w-[7px] rounded-full bg-[#4ABDE8] shrink-0" />}
-        <ChevronDown className={`h-4 w-4 text-[#9a9a9a] transition-transform ${open ? "rotate-180" : ""}`} />
-      </button>
-      {open && <div className="px-4 pb-3 space-y-2">{children}</div>}
-    </div>
-  );
-}
-
-function FilterSidebarSelect({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
-  return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full h-8 rounded-lg border border-[#e5e5e5] bg-white px-2.5 text-[13px] text-[#1D1D1D] outline-none focus:border-[#4ABDE8] transition-colors">
-      {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-    </select>
-  );
-}
-
-function FilterSidebar({ filters, onChange, onClear, counties, crmTools, onClose }: { filters: Filters; onChange: (f: Filters) => void; onClear: () => void; counties: string[]; crmTools: string[]; onClose: () => void }) {
-  const set = (key: keyof Filters, value: string) => onChange({ ...filters, [key]: value });
-  const yesNoOpts = [{ value: "", label: "Any" }, { value: "true", label: "Yes" }, { value: "false", label: "No" }];
-  const active = countActiveFilters(filters);
-
-  return (
-    <div className="w-[280px] shrink-0 border-r border-[#e5e5e5] bg-white flex flex-col h-full overflow-hidden">
-      {/* Sidebar header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#e5e5e5]">
-        <span className="text-[14px] font-semibold text-[#1D1D1D]">Filters</span>
-        <div className="flex items-center gap-2">
-          {active > 0 && (
-            <button onClick={onClear} className="text-[12px] text-[#4ABDE8] hover:underline">Clear all</button>
-          )}
-          <button onClick={onClose} className="h-6 w-6 flex items-center justify-center rounded-md text-[#9a9a9a] hover:bg-[#f0f0f0] transition-colors">
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      </div>
-
-      {/* Scrollable filter list */}
-      <div className="flex-1 overflow-y-auto">
-        {/* PIPELINE section */}
-        <div className="px-4 pt-4 pb-1">
-          <span className="text-[11px] font-bold text-[#4ABDE8] uppercase tracking-wider">Pipeline</span>
-        </div>
-
-        <FilterAccordion label="Stage" isActive={!!filters.stage}>
-          <div className="space-y-1">
-            {[{ key: "", label: "All Stages" }, ...PIPELINE_STAGES.map((s) => ({ key: s.key, label: s.label, color: s.color }))].map((s) => (
-              <label key={s.key} className="flex items-center gap-2 px-1 py-1 rounded-md cursor-pointer hover:bg-[#FAFAF9] transition-colors">
-                <input
-                  type="radio"
-                  name="stage-filter"
-                  checked={filters.stage === s.key}
-                  onChange={() => set("stage", s.key)}
-                  className="h-3.5 w-3.5 accent-[#4ABDE8]"
-                />
-                {"color" in s && s.color && <div className="h-[7px] w-[7px] rounded-full shrink-0" style={{ backgroundColor: s.color }} />}
-                <span className="text-[13px] text-[#3a3a3a]">{s.label}</span>
-              </label>
-            ))}
-          </div>
-        </FilterAccordion>
-
-        <FilterAccordion label="Tier" isActive={!!filters.tier}>
-          <FilterSidebarSelect value={filters.tier} onChange={(v) => set("tier", v)} options={[{ value: "", label: "All Tiers" }, { value: "high", label: "High" }, { value: "medium", label: "Medium" }, { value: "low", label: "Low" }]} />
-        </FilterAccordion>
-
-        <FilterAccordion label="Shortlisted" isActive={!!filters.isShortlisted}>
-          <FilterSidebarSelect value={filters.isShortlisted} onChange={(v) => set("isShortlisted", v)} options={[{ value: "", label: "Any" }, { value: "true", label: "Shortlisted only" }]} />
-        </FilterAccordion>
-
-        {/* LOCATION section */}
-        <div className="px-4 pt-4 pb-1">
-          <span className="text-[11px] font-bold text-[#4ABDE8] uppercase tracking-wider">Location</span>
-        </div>
-
-        <FilterAccordion label="County" isActive={!!filters.county}>
-          <FilterSidebarSelect value={filters.county} onChange={(v) => set("county", v)} options={[{ value: "", label: "All Counties" }, ...counties.map((c) => ({ value: c, label: c }))]} />
-        </FilterAccordion>
-
-        {/* DATA section */}
-        <div className="px-4 pt-4 pb-1">
-          <span className="text-[11px] font-bold text-[#4ABDE8] uppercase tracking-wider">Data Quality</span>
-        </div>
-
-        <FilterAccordion label="Has Website" isActive={!!filters.hasWebsite}>
-          <FilterSidebarSelect value={filters.hasWebsite} onChange={(v) => set("hasWebsite", v)} options={yesNoOpts} />
-        </FilterAccordion>
-
-        <FilterAccordion label="Has Email" isActive={!!filters.hasEmail}>
-          <FilterSidebarSelect value={filters.hasEmail} onChange={(v) => set("hasEmail", v)} options={yesNoOpts} />
-        </FilterAccordion>
-
-        <FilterAccordion label="Has Reviews" isActive={!!filters.hasReviews}>
-          <FilterSidebarSelect value={filters.hasReviews} onChange={(v) => set("hasReviews", v)} options={yesNoOpts} />
-        </FilterAccordion>
-
-        <FilterAccordion label="CRM Tool" isActive={!!filters.crmTool}>
-          <FilterSidebarSelect value={filters.crmTool} onChange={(v) => set("crmTool", v)} options={[{ value: "", label: "Any" }, { value: "has_crm", label: "Has CRM (any)" }, { value: "no_crm", label: "No CRM" }, ...crmTools.map((t) => ({ value: t, label: t }))]} />
-        </FilterAccordion>
-
-        <FilterAccordion label="Form Type" isActive={!!filters.formType}>
-          <FilterSidebarSelect value={filters.formType} onChange={(v) => set("formType", v)} options={[{ value: "", label: "Any" }, { value: "multi_step", label: "Multi-step" }, { value: "quote_form", label: "Quote form" }, { value: "basic_contact", label: "Basic contact" }, { value: "none", label: "No form" }]} />
-        </FilterAccordion>
-
-        {/* SOURCES section */}
-        <div className="px-4 pt-4 pb-1">
-          <span className="text-[11px] font-bold text-[#4ABDE8] uppercase tracking-wider">Sources</span>
-        </div>
-
-        <FilterAccordion label="Registrations" isActive={!!(filters.inMcs || filters.inNova || filters.inTrustMark)}>
-          <div className="space-y-1.5">
-            {([["inMcs", "MCS Certified"], ["inNova", "Nova Energy"], ["inTrustMark", "TrustMark"]] as const).map(([k, label]) => (
-              <label key={k} className="flex items-center gap-2.5 px-1 py-1 rounded-md cursor-pointer hover:bg-[#FAFAF9] transition-colors">
-                <input
-                  type="checkbox"
-                  checked={filters[k] === "true"}
-                  onChange={(e) => set(k, e.target.checked ? "true" : "")}
-                  className="h-4 w-4 rounded accent-[#4ABDE8]"
-                />
-                <span className="text-[13px] text-[#3a3a3a]">{label}</span>
-              </label>
-            ))}
-          </div>
-        </FilterAccordion>
-
-        {/* SCORING section */}
-        <div className="px-4 pt-4 pb-1">
-          <span className="text-[11px] font-bold text-[#4ABDE8] uppercase tracking-wider">Scoring</span>
-        </div>
-
-        <FilterAccordion label="Score Range" isActive={!!(filters.scoreMin || filters.scoreMax)}>
-          <div className="flex items-center gap-2">
-            <input type="number" placeholder="Min" value={filters.scoreMin} onChange={(e) => set("scoreMin", e.target.value)} className="w-full h-8 rounded-lg border border-[#e5e5e5] bg-white px-2.5 text-[13px] outline-none focus:border-[#4ABDE8] tabular-nums" />
-            <span className="text-[#9a9a9a] text-[12px]">–</span>
-            <input type="number" placeholder="Max" value={filters.scoreMax} onChange={(e) => set("scoreMax", e.target.value)} className="w-full h-8 rounded-lg border border-[#e5e5e5] bg-white px-2.5 text-[13px] outline-none focus:border-[#4ABDE8] tabular-nums" />
-          </div>
-        </FilterAccordion>
-
-        <FilterAccordion label="Min Rating" isActive={!!filters.ratingMin}>
-          <input type="number" step="0.1" min="0" max="5" placeholder="e.g. 4.0" value={filters.ratingMin} onChange={(e) => set("ratingMin", e.target.value)} className="w-full h-8 rounded-lg border border-[#e5e5e5] bg-white px-2.5 text-[13px] outline-none focus:border-[#4ABDE8] tabular-nums" />
-        </FilterAccordion>
-      </div>
-    </div>
-  );
-}
+// FilterSidebar imported from @/components/filters/filter-sidebar
 
 // --- Bulk action bar ---
 
@@ -1228,12 +1048,15 @@ function InstallerCard({ row, selected, onToggle }: { row: Installer; selected: 
 
 // --- Main table ---
 
-export function InstallerTable({ counties, crmTools }: InstallerTableProps) {
+export function InstallerTable({ counties: initialCounties, crmTools: initialCrmTools }: InstallerTableProps = {}) {
   const [data, setData] = useState<Installer[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [showFilters, setShowFilters] = useState(false);
+  const [counties, setCounties] = useState<string[]>(initialCounties ?? []);
+  const [crmTools, setCrmTools] = useState<string[]>(initialCrmTools ?? []);
+  const [distanceOrigin, setDistanceOrigin] = useState<DistanceOrigin | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(100);
   const [totalPages, setTotalPages] = useState(1);
@@ -1246,7 +1069,44 @@ export function InstallerTable({ counties, crmTools }: InstallerTableProps) {
   const [colWidths, setColWidths] = useState<Record<string, number>>({});
   const resizingRef = useRef<{ key: string; startX: number; startW: number } | null>(null);
 
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
   useEffect(() => { setVisibleColumns(loadColumns()); setPageSize(loadPageSize()); }, []);
+
+  // Fetch filter dropdown options client-side (non-blocking)
+  useEffect(() => {
+    if (counties.length > 0 && crmTools.length > 0) return; // already have data (from server props)
+    fetch("/api/installers/filter-options")
+      .then((r) => r.json())
+      .then((d: { counties: string[]; crmTools: string[] }) => {
+        setCounties(d.counties);
+        setCrmTools(d.crmTools);
+      })
+      .catch(() => {}); // filters just stay empty if this fails
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Read distanceFrom URL param (from command-K navigation) — reactive to client-side nav
+  useEffect(() => {
+    const postcode = searchParams.get("distanceFrom");
+    const lat = searchParams.get("lat");
+    const lng = searchParams.get("lng");
+    if (postcode && lat && lng) {
+      const origin: DistanceOrigin = { postcode, lat: Number(lat), lng: Number(lng) };
+      setDistanceOrigin(origin);
+      // Auto-show distance column
+      setVisibleColumns((prev) => {
+        if (prev.includes("distance")) return prev;
+        const cols = [...prev];
+        const postcodeIdx = cols.indexOf("postcode");
+        cols.splice(postcodeIdx >= 0 ? postcodeIdx + 1 : 2, 0, "distance");
+        saveColumns(cols);
+        return cols;
+      });
+      // Clean up URL without reload
+      router.replace("/installers", { scroll: false });
+    }
+  }, [searchParams, router]);
 
   // Column resize handlers
   const startResize = useCallback((key: string, e: React.MouseEvent) => {
@@ -1295,8 +1155,15 @@ export function InstallerTable({ counties, crmTools }: InstallerTableProps) {
       }
       params.set("page", String(page));
       params.set("pageSize", String(pageSize));
-      params.set("sortBy", sortBy);
-      params.set("sortOrder", sortOrder);
+      if (distanceOrigin) {
+        params.set("originLat", String(distanceOrigin.lat));
+        params.set("originLng", String(distanceOrigin.lng));
+        params.set("sortBy", "distance");
+        params.set("sortOrder", "asc");
+      } else {
+        params.set("sortBy", sortBy);
+        params.set("sortOrder", sortOrder);
+      }
       const res = await fetch(`/api/installers?${params}`);
       if (!res.ok) {
         console.error("API error:", res.status, await res.text().catch(() => ""));
@@ -1311,7 +1178,7 @@ export function InstallerTable({ counties, crmTools }: InstallerTableProps) {
     } finally {
       setLoading(false);
     }
-  }, [search, filters, page, pageSize, sortBy, sortOrder]);
+  }, [search, filters, page, pageSize, sortBy, sortOrder, distanceOrigin]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -1466,6 +1333,19 @@ export function InstallerTable({ counties, crmTools }: InstallerTableProps) {
             counties={counties}
             crmTools={crmTools}
             onClose={() => setShowFilters(false)}
+            distanceOrigin={distanceOrigin}
+            onDistanceOriginChange={(o) => {
+              setDistanceOrigin(o);
+              setPage(1);
+              if (o && !visibleColumns.includes("distance")) {
+                const cols = [...visibleColumns];
+                const postcodeIdx = cols.indexOf("postcode");
+                cols.splice(postcodeIdx >= 0 ? postcodeIdx + 1 : 2, 0, "distance");
+                updateColumns(cols);
+              } else if (!o && visibleColumns.includes("distance")) {
+                updateColumns(visibleColumns.filter((c) => c !== "distance"));
+              }
+            }}
           />
         )}
 

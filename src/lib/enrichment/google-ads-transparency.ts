@@ -25,6 +25,7 @@ interface ParsedGoogleAds {
   firstAdSeen: string | null;
   lastAdSeen: string | null;
   sampleAdTitles: string | null;
+  transparencyUrls: string | null;
   advertiserId: string | null;
   advertiserName: string | null;
   isVerified: boolean;
@@ -36,6 +37,7 @@ function parseGoogleAdsItems(items: Record<string, unknown>[]): ParsedGoogleAds 
   let firstSeen: string | null = null;
   let lastSeen: string | null = null;
   const sampleTitles: string[] = [];
+  const transparencyUrls: string[] = [];
   let advertiserId: string | null = null;
   let advertiserName: string | null = null;
   let isVerified = false;
@@ -63,6 +65,7 @@ function parseGoogleAdsItems(items: Record<string, unknown>[]): ParsedGoogleAds 
     }
 
     if (sampleTitles.length < 5 && item.title) sampleTitles.push(item.title as string);
+    if (item.url) transparencyUrls.push(item.url as string);
   }
 
   return {
@@ -72,6 +75,7 @@ function parseGoogleAdsItems(items: Record<string, unknown>[]): ParsedGoogleAds 
     firstAdSeen: firstSeen,
     lastAdSeen: lastSeen,
     sampleAdTitles: sampleTitles.length > 0 ? JSON.stringify(sampleTitles) : null,
+    transparencyUrls: transparencyUrls.length > 0 ? JSON.stringify(transparencyUrls) : null,
     advertiserId, advertiserName, isVerified,
   };
 }

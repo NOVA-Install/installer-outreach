@@ -11,7 +11,7 @@ const connectionString = process.env.DATABASE_URL || "";
 // Only create the client if DATABASE_URL exists (it won't during Vercel build)
 let client: ReturnType<typeof postgres> | null = null;
 if (connectionString) {
-  client = globalForDb.pgClient ?? postgres(connectionString, { prepare: false, max: 3 });
+  client = globalForDb.pgClient ?? postgres(connectionString, { prepare: false, max: 10 });
   if (process.env.NODE_ENV !== "production") {
     globalForDb.pgClient = client;
   }

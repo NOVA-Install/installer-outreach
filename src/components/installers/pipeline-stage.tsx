@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { PIPELINE_STAGES, type PipelineStage } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { ChevronDown } from "lucide-react";
 
 export function PipelineStageSelector({
   installerId,
@@ -14,9 +15,20 @@ export function PipelineStageSelector({
 }) {
   const [stage, setStage] = useState(currentStage || "uncontacted");
   const [updating, setUpdating] = useState(false);
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   const handleStageChange = async (newStage: PipelineStage) => {
     if (newStage === stage || updating) return;
+    setOpen(false);
     const oldStage = stage;
     setStage(newStage);
     setUpdating(true);
@@ -38,45 +50,45 @@ export function PipelineStageSelector({
     }
   };
 
-  const currentIndex = PIPELINE_STAGES.findIndex((s) => s.key === stage);
+  const current = PIPELINE_STAGES.find((s) => s.key === stage);
 
   return (
-    <div className="space-y-2">
-      <p className="text-[11px] font-medium text-[#9a9a9a] uppercase tracking-[0.06em]">
-        Pipeline Stage
-      </p>
-      <div className="flex items-center gap-1 flex-wrap">
-        {PIPELINE_STAGES.map((s, i) => {
-          const isActive = s.key === stage;
-          const isPast = i < currentIndex;
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(!open)}
+        disabled={updating}
+        className="inline-flex items-center gap-2 rounded-lg border border-[#e8e8e8] bg-white px-3 py-1.5 text-[12px] font-medium text-[#3a3a3a] hover:border-[#d0d0d0] hover:shadow-[0_2px_8px_rgba(0,0,0,0.04)] transition-all duration-200"
+      >
+        <span
+          className="h-2 w-2 rounded-full shrink-0"
+          style={{ backgroundColor: current?.color || "#9a9a9a" }}
+        />
+        {current?.label || "Uncontacted"}
+        <ChevronDown className={cn("h-3 w-3 text-[#9a9a9a] transition-transform duration-150", open && "rotate-180")} />
+      </button>
 
-          return (
-            <div key={s.key} className="flex items-center gap-1">
-              {i > 0 && (
-                <div className={cn(
-                  "w-4 h-px",
-                  isPast ? "bg-[#d0d0d0]" : "bg-[#ebebeb]"
-                )} />
+      {open && (
+        <div className="absolute top-full left-0 mt-1.5 z-50 min-w-[180px] rounded-xl border border-[#ebebeb] bg-white py-1 shadow-[0_8px_30px_rgba(0,0,0,0.08)]">
+          {PIPELINE_STAGES.map((s) => (
+            <button
+              key={s.key}
+              onClick={() => handleStageChange(s.key)}
+              className={cn(
+                "flex items-center gap-2.5 w-full px-3 py-2 text-[12px] text-left transition-colors",
+                s.key === stage
+                  ? "bg-[#f5f5f5] font-medium text-[#1D1D1D]"
+                  : "text-[#6a6a6a] hover:bg-[#fafafa] hover:text-[#1D1D1D]"
               )}
-              <button
-                onClick={() => handleStageChange(s.key)}
-                disabled={updating}
-                className={cn(
-                  "relative px-3 py-1.5 rounded-full text-[12px] font-medium transition-all duration-200 whitespace-nowrap",
-                  isActive
-                    ? "text-white shadow-[0_2px_8px_rgba(0,0,0,0.12)]"
-                    : isPast
-                      ? "bg-[#f0f0f0] text-[#6a6a6a] hover:bg-[#e8e8e8]"
-                      : "text-[#b0b0b0] hover:bg-[#f5f5f5] hover:text-[#6a6a6a]"
-                )}
-                style={isActive ? { backgroundColor: s.color } : undefined}
-              >
-                {s.label}
-              </button>
-            </div>
-          );
-        })}
-      </div>
+            >
+              <span
+                className="h-2 w-2 rounded-full shrink-0"
+                style={{ backgroundColor: s.color }}
+              />
+              {s.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

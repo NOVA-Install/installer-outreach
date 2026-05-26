@@ -8,11 +8,13 @@ import {
   trafficData,
   websiteQuality,
 } from "@/lib/db/schema";
-import { sql, eq, like, or, and, count, desc, asc, type SQL } from "drizzle-orm";
+import { sql, eq, like, or, and, count, desc, asc, inArray, type SQL } from "drizzle-orm";
+import { getPrefixesForZones } from "@/lib/constants";
 
 export interface InstallerFilters {
   search?: string;
-  county?: string;
+  zones?: string[];
+  counties?: string[];
   technology?: string;
   region?: string;
   tier?: string;
@@ -20,17 +22,22 @@ export interface InstallerFilters {
   boilerUpgradeScheme?: string;
   hasWebsite?: boolean;
   hasEmail?: boolean;
-  hasReviews?: boolean;
+  hasGoogleReviews?: boolean;
+  hasTrustpilot?: boolean;
+  googleRatingMin?: number;
+  trustpilotRatingMin?: number;
+  reviewCountMin?: number;
   inMcs?: boolean;
   inNova?: boolean;
   inTrustMark?: boolean;
   scoreMin?: number;
   scoreMax?: number;
-  ratingMin?: number;
   isShortlisted?: boolean;
   hasCrmTool?: boolean;
   crmToolName?: string;
   formType?: string;
+  originLat?: number;
+  originLng?: number;
   page?: number;
   pageSize?: number;
   sortBy?: string;
@@ -40,7 +47,8 @@ export interface InstallerFilters {
 export async function getInstallers(filters: InstallerFilters = {}) {
   const {
     search,
-    county,
+    zones,
+    counties,
     technology,
     region,
     tier,
@@ -48,22 +56,35 @@ export async function getInstallers(filters: InstallerFilters = {}) {
     boilerUpgradeScheme,
     hasWebsite,
     hasEmail,
-    hasReviews,
+    hasGoogleReviews,
+    hasTrustpilot,
+    googleRatingMin,
+    trustpilotRatingMin,
+    reviewCountMin,
     inMcs,
     inNova,
     inTrustMark,
     scoreMin,
     scoreMax,
-    ratingMin,
     isShortlisted,
     hasCrmTool,
     crmToolName,
     formType,
+    originLat,
+    originLng,
     page = 1,
     pageSize = 100,
     sortBy = "companyName",
     sortOrder = "asc",
   } = filters;
+
+  // Determine which tables need to be joined for this query
+  const needsScores = true; // always needed — default sort is overallScore, score/tier are default columns
+  const needsGoogleReviews = true; // always needed — googleReviews is a default column
+  const needsTrustpilot = true; // always needed — trustpilotReviews is a default column
+  const needsMarketing = hasCrmTool !== undefined || !!crmToolName;
+  const needsTraffic = false; // only needed if traffic columns are visible (not in default set)
+  const needsQuality = !!formType;
 
   const conditions: SQL[] = [];
 
@@ -76,8 +97,29 @@ export async function getInstallers(filters: InstallerFilters = {}) {
     if (searchCondition) conditions.push(searchCondition);
   }
 
-  if (county) {
-    conditions.push(eq(installers.county, county));
+  // Location: zones and/or counties (OR between them)
+  const locationConditions: SQL[] = [];
+
+  if (zones && zones.length > 0) {
+    const prefixes = getPrefixesForZones(zones);
+    if (prefixes.length > 0) {
+      const prefixConditions = prefixes.map(p =>
+        p.length === 1
+          ? sql`UPPER(${installers.postcode}) ~ ${`^${p}[0-9]`}`
+          : sql`UPPER(${installers.postcode}) LIKE ${`${p.toUpperCase()}%`}`
+      );
+      locationConditions.push(sql`(${sql.join(prefixConditions, sql` OR `)})`);
+    }
+  }
+
+  if (counties && counties.length > 0) {
+    locationConditions.push(inArray(installers.county, counties));
+  }
+
+  if (locationConditions.length === 1) {
+    conditions.push(locationConditions[0]);
+  } else if (locationConditions.length > 1) {
+    conditions.push(or(...locationConditions)!);
   }
 
   if (technology) {
@@ -112,10 +154,26 @@ export async function getInstallers(filters: InstallerFilters = {}) {
     conditions.push(sql`(${installers.email} IS NULL OR ${installers.email} = '')`);
   }
 
-  if (hasReviews === true) {
-    conditions.push(sql`${googleReviews.rating} IS NOT NULL OR ${trustpilotReviews.rating} IS NOT NULL`);
-  } else if (hasReviews === false) {
-    conditions.push(sql`${googleReviews.rating} IS NULL AND ${trustpilotReviews.rating} IS NULL`);
+  if (hasGoogleReviews === true) {
+    conditions.push(sql`${googleReviews.reviewCount} IS NOT NULL AND ${googleReviews.reviewCount} > 0`);
+  } else if (hasGoogleReviews === false) {
+    conditions.push(sql`(${googleReviews.reviewCount} IS NULL OR ${googleReviews.reviewCount} = 0)`);
+  }
+
+  if (hasTrustpilot === true) {
+    conditions.push(sql`${trustpilotReviews.reviewCount} IS NOT NULL AND ${trustpilotReviews.reviewCount} > 0`);
+  } else if (hasTrustpilot === false) {
+    conditions.push(sql`(${trustpilotReviews.reviewCount} IS NULL OR ${trustpilotReviews.reviewCount} = 0)`);
+  }
+
+  if (googleRatingMin != null) {
+    conditions.push(sql`${googleReviews.rating} >= ${googleRatingMin}`);
+  }
+  if (trustpilotRatingMin != null) {
+    conditions.push(sql`${trustpilotReviews.rating} >= ${trustpilotRatingMin}`);
+  }
+  if (reviewCountMin != null) {
+    conditions.push(sql`COALESCE(${googleReviews.reviewCount}, 0) + COALESCE(${trustpilotReviews.reviewCount}, 0) >= ${reviewCountMin}`);
   }
 
   if (inMcs === true) {
@@ -133,9 +191,6 @@ export async function getInstallers(filters: InstallerFilters = {}) {
   }
   if (scoreMax != null) {
     conditions.push(sql`${installerScores.overallScore} <= ${scoreMax}`);
-  }
-  if (ratingMin != null) {
-    conditions.push(sql`${googleReviews.rating} >= ${ratingMin}`);
   }
 
   if (isShortlisted === true) {
@@ -176,17 +231,28 @@ export async function getInstallers(filters: InstallerFilters = {}) {
     trustpilotReviewCount: trustpilotReviews.reviewCount,
     legalEntityName: installers.legalEntityName,
     website: installers.website,
-    estimatedMonthlyInstalls: installerScores.estimatedMonthlyInstalls,
   } as unknown as Record<string, typeof installers.companyName>;
 
   // totalReviews is a computed column — handle separately
   const isTotalReviewsSort = sortBy === "totalReviews";
-  const sortColumn = isTotalReviewsSort ? null : (sortMap[sortBy] || installers.companyName);
+  const isDistanceSort = sortBy === "distance" && originLat != null && originLng != null;
+  const sortColumn = (isTotalReviewsSort || isDistanceSort) ? null : (sortMap[sortBy] || installers.companyName);
 
   // Nulls-last sort: for DESC, nulls go last naturally in Postgres for some types,
   // but for joined columns they appear first. Use NULLS LAST explicitly.
   let orderDir;
-  if (isTotalReviewsSort) {
+  if (isDistanceSort) {
+    const distExpr = sql`(
+      ACOS(
+        LEAST(1, GREATEST(-1,
+          SIN(RADIANS(${originLat})) * SIN(RADIANS(${installers.latitude})) +
+          COS(RADIANS(${originLat})) * COS(RADIANS(${installers.latitude})) *
+          COS(RADIANS(${installers.longitude}) - RADIANS(${originLng}))
+        ))
+      ) * 3958.8
+    )`;
+    orderDir = sql`${distExpr} ASC NULLS LAST`;
+  } else if (isTotalReviewsSort) {
     const expr = sql`COALESCE(${googleReviews.reviewCount}, 0) + COALESCE(${trustpilotReviews.reviewCount}, 0)`;
     orderDir = sortOrder === "desc"
       ? sql`${expr} DESC NULLS LAST`
@@ -197,7 +263,10 @@ export async function getInstallers(filters: InstallerFilters = {}) {
       : sql`${sortColumn!} ASC NULLS LAST`;
   }
 
-  const results = await db
+  // Single query: data + total count via window function (eliminates second DB round-trip)
+  // Always-joined: installerScores, googleReviews, trustpilotReviews (used in default columns/sort)
+  // Conditional: marketingSignals, trafficData, websiteQuality (only when filters need them)
+  const dataQuery = db
     .select({
       id: installers.id,
       installerId: installers.installerId,
@@ -226,83 +295,86 @@ export async function getInstallers(filters: InstallerFilters = {}) {
       priority: installers.priority,
       priorityNote: installers.priorityNote,
       websiteStatus: installers.websiteStatus,
-      // Scores
+      // Scores (always joined)
       overallScore: installerScores.overallScore,
       reputationScore: installerScores.reputationScore,
       marketingActivityScore: installerScores.marketingActivityScore,
-      estimatedMonthlyInstalls: installerScores.estimatedMonthlyInstalls,
       tier: installerScores.tier,
-      // Reviews
+      // Reviews (always joined)
       googleRating: googleReviews.rating,
       googleReviewCount: googleReviews.reviewCount,
       googleReviewsPerMonth: googleReviews.reviewsPerMonth,
       trustpilotRating: trustpilotReviews.rating,
       trustpilotReviewCount: trustpilotReviews.reviewCount,
-      // Marketing
-      hasGoogleAnalytics: marketingSignals.hasGoogleAnalytics,
-      hasGoogleAds: marketingSignals.hasGoogleAds,
-      hasMetaPixel: marketingSignals.hasMetaPixel,
-      hasCrmTool: marketingSignals.hasCrmTool,
-      crmToolName: marketingSignals.crmToolName,
-      hasLiveChat: marketingSignals.hasLiveChat,
-      // Social
-      facebookUrl: marketingSignals.facebookUrl,
-      instagramUrl: marketingSignals.instagramUrl,
-      linkedinUrl: marketingSignals.linkedinUrl,
-      twitterUrl: marketingSignals.twitterUrl,
-      youtubeUrl: marketingSignals.youtubeUrl,
-      // Traffic
-      googleOrganicEtv: trafficData.googleOrganicEtv,
-      googlePaidEtv: trafficData.googlePaidEtv,
+      // Marketing (conditional)
+      hasGoogleAnalytics: needsMarketing ? marketingSignals.hasGoogleAnalytics : sql<boolean | null>`NULL`.as("has_google_analytics"),
+      hasGoogleAds: needsMarketing ? marketingSignals.hasGoogleAds : sql<boolean | null>`NULL`.as("has_google_ads"),
+      hasMetaPixel: needsMarketing ? marketingSignals.hasMetaPixel : sql<boolean | null>`NULL`.as("has_meta_pixel"),
+      hasCrmTool: needsMarketing ? marketingSignals.hasCrmTool : sql<boolean | null>`NULL`.as("has_crm_tool"),
+      crmToolName: needsMarketing ? marketingSignals.crmToolName : sql<string | null>`NULL`.as("crm_tool_name"),
+      hasLiveChat: needsMarketing ? marketingSignals.hasLiveChat : sql<boolean | null>`NULL`.as("has_live_chat"),
+      facebookUrl: needsMarketing ? marketingSignals.facebookUrl : sql<string | null>`NULL`.as("facebook_url"),
+      instagramUrl: needsMarketing ? marketingSignals.instagramUrl : sql<string | null>`NULL`.as("instagram_url"),
+      linkedinUrl: needsMarketing ? marketingSignals.linkedinUrl : sql<string | null>`NULL`.as("linkedin_url"),
+      twitterUrl: needsMarketing ? marketingSignals.twitterUrl : sql<string | null>`NULL`.as("twitter_url"),
+      youtubeUrl: needsMarketing ? marketingSignals.youtubeUrl : sql<string | null>`NULL`.as("youtube_url"),
+      // Traffic (conditional)
+      googleOrganicEtv: needsTraffic ? trafficData.googleOrganicEtv : sql<number | null>`NULL`.as("google_organic_etv"),
+      googlePaidEtv: needsTraffic ? trafficData.googlePaidEtv : sql<number | null>`NULL`.as("google_paid_etv"),
       // Source specific
       novaYearStarted: installers.novaYearStarted,
       trustmarkStatus: installers.trustmarkStatus,
       certificationBody: installers.certificationBody,
-      // Website quality
-      formType: websiteQuality.formType,
-      performanceScore: websiteQuality.performanceScore,
-      siteBuilder: websiteQuality.siteBuilder,
+      // Website quality (conditional)
+      formType: needsQuality ? websiteQuality.formType : sql<string | null>`NULL`.as("form_type"),
+      performanceScore: needsQuality ? websiteQuality.performanceScore : sql<number | null>`NULL`.as("performance_score"),
+      siteBuilder: needsQuality ? websiteQuality.siteBuilder : sql<string | null>`NULL`.as("site_builder"),
+      // Computed distance (miles) from origin, null if no origin
+      distance: originLat != null && originLng != null
+        ? sql<number>`CASE WHEN ${installers.latitude} IS NOT NULL AND ${installers.longitude} IS NOT NULL THEN
+            ACOS(LEAST(1, GREATEST(-1,
+              SIN(RADIANS(${originLat})) * SIN(RADIANS(${installers.latitude})) +
+              COS(RADIANS(${originLat})) * COS(RADIANS(${installers.latitude})) *
+              COS(RADIANS(${installers.longitude}) - RADIANS(${originLng}))
+            ))) * 3958.8
+          ELSE NULL END`
+        : sql<number | null>`NULL`,
+      // Window function: total matching rows (avoids separate count query)
+      _total: sql<number>`COUNT(*) OVER()`.as("_total"),
     })
     .from(installers)
     .leftJoin(installerScores, eq(installers.id, installerScores.installerId))
     .leftJoin(googleReviews, eq(installers.id, googleReviews.installerId))
-    .leftJoin(trustpilotReviews, eq(installers.id, trustpilotReviews.installerId))
-    .leftJoin(marketingSignals, eq(installers.id, marketingSignals.installerId))
-    .leftJoin(trafficData, eq(installers.id, trafficData.installerId))
-    .leftJoin(websiteQuality, eq(installers.id, websiteQuality.installerId))
-    .where(whereClause)
-    .orderBy(orderDir)
-    .limit(pageSize)
-    .offset((page - 1) * pageSize);
+    .leftJoin(trustpilotReviews, eq(installers.id, trustpilotReviews.installerId));
 
-  // Simplified count - only join tables that are used in the WHERE clause
-  const countQuery = db
-    .select({ count: count() })
-    .from(installers);
-
-  // Only add joins needed for active filters
-  if (tier || scoreMin != null || scoreMax != null) {
-    countQuery.leftJoin(installerScores, eq(installers.id, installerScores.installerId));
+  // Conditionally add remaining joins
+  if (needsMarketing) {
+    dataQuery.leftJoin(marketingSignals, eq(installers.id, marketingSignals.installerId));
   }
-  if (hasReviews !== undefined || ratingMin != null) {
-    countQuery.leftJoin(googleReviews, eq(installers.id, googleReviews.installerId));
-    countQuery.leftJoin(trustpilotReviews, eq(installers.id, trustpilotReviews.installerId));
+  if (needsTraffic) {
+    dataQuery.leftJoin(trafficData, eq(installers.id, trafficData.installerId));
   }
-  if (hasCrmTool !== undefined || crmToolName) {
-    countQuery.leftJoin(marketingSignals, eq(installers.id, marketingSignals.installerId));
-  }
-  if (formType) {
-    countQuery.leftJoin(websiteQuality, eq(installers.id, websiteQuality.installerId));
+  if (needsQuality) {
+    dataQuery.leftJoin(websiteQuality, eq(installers.id, websiteQuality.installerId));
   }
 
-  const [totalResult] = await countQuery.where(whereClause);
+  dataQuery.where(whereClause).orderBy(orderDir).limit(pageSize).offset((page - 1) * pageSize);
+
+  const t0 = performance.now();
+  const results = await dataQuery;
+  const dbMs = (performance.now() - t0).toFixed(0);
+  console.log(`[getInstallers] db=${dbMs}ms joins=${needsMarketing ? 4 : 3} rows=${results.length}`);
+  const total = results.length > 0 ? results[0]._total : 0;
+
+  // Strip the _total field from each row before returning
+  const data = results.map(({ _total, ...row }) => row);
 
   return {
-    data: results,
-    total: totalResult?.count ?? 0,
+    data,
+    total,
     page,
     pageSize,
-    totalPages: Math.ceil((totalResult?.count ?? 0) / pageSize),
+    totalPages: Math.ceil(total / pageSize),
   };
 }
 
