@@ -324,14 +324,20 @@ export async function enrichTrustpilotDomainFallback(jobId: number, priority: 1 
 
 // Backlinks / SEO data (live endpoint - parallel batches of 10)
 export async function enrichSeoData(jobId: number, installerIds?: number[]) {
+  // Exclude installers that already have SEO data OR have pending/completed SEO tasks
+  const existingSeoTasks = db
+    .select({ installerId: dataforseoTasks.installerId })
+    .from(dataforseoTasks)
+    .where(sql`${dataforseoTasks.source} = 'seo' AND ${dataforseoTasks.status} IN ('pending', 'completed')`);
+
   const query = installerIds
     ? db.select({ id: installers.id, website: installers.website })
         .from(installers)
-        .where(sql`${installers.id} IN (${sql.join(installerIds.map(id => sql`${id}`), sql`,`)}) AND ${installers.website} IS NOT NULL AND ${installers.website} != ''`)
+        .where(sql`${installers.id} IN (${sql.join(installerIds.map(id => sql`${id}`), sql`,`)}) AND ${installers.website} IS NOT NULL AND ${installers.website} != '' AND ${installers.id} NOT IN (${existingSeoTasks})`)
     : db.select({ id: installers.id, website: installers.website })
         .from(installers)
         .leftJoin(seoData, eq(installers.id, seoData.installerId))
-        .where(sql`${seoData.id} IS NULL AND ${installers.website} IS NOT NULL AND ${installers.website} != ''`);
+        .where(sql`${seoData.id} IS NULL AND ${installers.website} IS NOT NULL AND ${installers.website} != '' AND ${installers.id} NOT IN (${existingSeoTasks})`);
 
   const toEnrich = await query;
 
