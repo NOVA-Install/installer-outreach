@@ -28,7 +28,6 @@ export async function GET() {
       overallScore: installerScores.overallScore,
       tier: installerScores.tier,
       reputationScore: installerScores.reputationScore,
-      estimatedMonthlyInstalls: installerScores.estimatedMonthlyInstalls,
       marketingActivityScore: installerScores.marketingActivityScore,
       googleRating: googleReviews.rating,
       googleReviewCount: googleReviews.reviewCount,

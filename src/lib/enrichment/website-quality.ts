@@ -123,6 +123,16 @@ const AGENCY_PATTERNS: { name: string; patterns: string[] }[] = [
   { name: "Scorpion", patterns: ["scorpion.co", "scorpiondesign"] },
   { name: "KickCharge", patterns: ["kickcharge"] },
   { name: "WorkWave", patterns: ["workwave"] },
+  { name: "Trade Mastermind", patterns: ["trade mastermind", "trademastermind"] },
+  { name: "Etoto Media", patterns: ["etoto media", "etotomedia", "etoto.co"] },
+  { name: "Solar on Steroids", patterns: ["solar on steroids", "solaronsteroids"] },
+  { name: "Flavour Marketing", patterns: ["flavour marketing", "flavourmarketing"] },
+  { name: "The Solar Agency", patterns: ["the solar agency", "thesolaragency"] },
+  { name: "Renewables Marketing", patterns: ["renewables marketing", "renewablesmarketing"] },
+  { name: "SolarLeads", patterns: ["solarleads.co", "solar-leads.co"] },
+  { name: "Green Jeeves Media", patterns: ["green jeeves media"] },
+  { name: "Kooomo", patterns: ["kooomo.com"] },
+  { name: "Klyp", patterns: ["klyp.co"] },
 ];
 
 export function detectAgency(html: string): string | null {

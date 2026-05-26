@@ -49,6 +49,7 @@ import { InstallerActionsMenu } from "@/components/installers/installer-actions-
 import { CorrectEnrichment } from "@/components/installers/correct-enrichment";
 import { ShortlistButton } from "@/components/installers/shortlist-button";
 import { AddFieldInline } from "@/components/installers/add-field-inline";
+import { EnrichGoogleAdsButton } from "@/components/installers/enrich-google-ads-button";
 
 const tierStyles: Record<string, string> = {
   high: "bg-emerald-50 text-emerald-600 border-emerald-200/60",
@@ -831,7 +832,7 @@ export default async function InstallerDetailPage({
                       )}
                     </div>
                   );
-                })() : <p className="text-[13px] text-[#9a9a9a]">No Google Ads data yet</p>}
+                })() : <EnrichGoogleAdsButton installerId={installerId} />}
               </InfoCard>
             </div>
           </Section>

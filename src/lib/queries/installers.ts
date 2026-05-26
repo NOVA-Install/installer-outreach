@@ -38,6 +38,7 @@ export interface InstallerFilters {
   formType?: string;
   originLat?: number;
   originLng?: number;
+  maxDistanceKm?: number;
   page?: number;
   pageSize?: number;
   sortBy?: string;
@@ -72,6 +73,7 @@ export async function getInstallers(filters: InstallerFilters = {}) {
     formType,
     originLat,
     originLng,
+    maxDistanceKm,
     page = 1,
     pageSize = 100,
     sortBy = "companyName",
@@ -209,6 +211,18 @@ export async function getInstallers(filters: InstallerFilters = {}) {
 
   if (formType) {
     conditions.push(eq(websiteQuality.formType, formType));
+  }
+
+  if (maxDistanceKm != null && originLat != null && originLng != null) {
+    const maxMiles = maxDistanceKm * 0.621371;
+    conditions.push(
+      sql`${installers.latitude} IS NOT NULL AND ${installers.longitude} IS NOT NULL AND
+        ACOS(LEAST(1, GREATEST(-1,
+          SIN(RADIANS(${originLat})) * SIN(RADIANS(${installers.latitude})) +
+          COS(RADIANS(${originLat})) * COS(RADIANS(${installers.latitude})) *
+          COS(RADIANS(${installers.longitude}) - RADIANS(${originLng}))
+        ))) * 3958.8 <= ${maxMiles}`
+    );
   }
 
   const whereClause =

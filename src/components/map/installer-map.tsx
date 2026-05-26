@@ -28,12 +28,24 @@ interface MapInstaller {
   googleReviewCount: number | null;
   website: string | null;
   technologiesCertified: string | null;
+  email: string | null;
+  pipelineStage: string | null;
+  trustpilotRating: number | null;
+  trustpilotReviewCount: number | null;
+}
+
+interface DistanceOrigin {
+  postcode: string;
+  lat: number;
+  lng: number;
 }
 
 export function InstallerMap({
   installers,
+  distanceOrigin,
 }: {
   installers: MapInstaller[];
+  distanceOrigin?: DistanceOrigin | null;
 }) {
-  return <MapInner installers={installers} />;
+  return <MapInner installers={installers} distanceOrigin={distanceOrigin} />;
 }

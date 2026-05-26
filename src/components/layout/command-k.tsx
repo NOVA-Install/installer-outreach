@@ -222,9 +222,36 @@ export function CommandK() {
     );
   }, [query, quickActions]);
 
+  // Detect UK postcode pattern
+  const isPostcode = React.useMemo(() => /^[A-Z]{1,2}\d[A-Z\d]?\s*\d?[A-Z]{0,2}$/i.test(query.trim()), [query]);
+  const [postcodeCoords, setPostcodeCoords] = React.useState<{ postcode: string; lat: number; lng: number } | null>(null);
+  const [postcodeLoading, setPostcodeLoading] = React.useState(false);
+
+  // Geocode postcode when detected
+  React.useEffect(() => {
+    if (!isPostcode || query.trim().length < 3) {
+      setPostcodeCoords(null);
+      return;
+    }
+    setPostcodeLoading(true);
+    const pc = query.trim();
+    fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(pc)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.status === 200 && data.result) {
+          setPostcodeCoords({ postcode: data.result.postcode, lat: data.result.latitude, lng: data.result.longitude });
+        } else {
+          setPostcodeCoords(null);
+        }
+      })
+      .catch(() => setPostcodeCoords(null))
+      .finally(() => setPostcodeLoading(false));
+  }, [isPostcode, query]);
+
   const hasResults = results.length > 0;
   const hasActions = filteredActions.length > 0;
-  const showEmpty = query.length >= 2 && !loading && !hasResults && !hasActions;
+  const hasPostcodeAction = isPostcode && postcodeCoords && !postcodeLoading;
+  const showEmpty = query.length >= 2 && !loading && !hasResults && !hasActions && !hasPostcodeAction;
 
   return (
     <>
@@ -303,8 +330,38 @@ export function CommandK() {
               );
             })}
 
+            {/* Distance from postcode */}
+            {hasPostcodeAction && (
+              <CommandGroup heading="Distance">
+                <CommandItem
+                  value={`distance-installers-${postcodeCoords.postcode}`}
+                  onSelect={() => {
+                    setOpen(false);
+                    router.push(`/installers?distanceFrom=${encodeURIComponent(postcodeCoords.postcode)}&lat=${postcodeCoords.lat}&lng=${postcodeCoords.lng}`);
+                  }}
+                  className="flex items-center gap-3 py-2"
+                >
+                  <MapPin className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className="text-sm">Sort installers by distance from <strong>{postcodeCoords.postcode}</strong></span>
+                  <ArrowRight className="ml-auto h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-data-selected/command-item:opacity-100" />
+                </CommandItem>
+                <CommandItem
+                  value={`distance-map-${postcodeCoords.postcode}`}
+                  onSelect={() => {
+                    setOpen(false);
+                    router.push(`/map?focusPostcode=${encodeURIComponent(postcodeCoords.postcode)}&lat=${postcodeCoords.lat}&lng=${postcodeCoords.lng}`);
+                  }}
+                  className="flex items-center gap-3 py-2"
+                >
+                  <Globe className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className="text-sm">Show <strong>{postcodeCoords.postcode}</strong> on map</span>
+                  <ArrowRight className="ml-auto h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-data-selected/command-item:opacity-100" />
+                </CommandItem>
+              </CommandGroup>
+            )}
+
             {/* Separator between results and actions */}
-            {hasResults && hasActions && <CommandSeparator />}
+            {(hasResults || hasPostcodeAction) && hasActions && <CommandSeparator />}
 
             {/* Quick actions */}
             {hasActions && (

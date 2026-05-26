@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const CURRENT_VERSION = 2;
+const CURRENT_VERSION = 3;
 
 // HTML-based detection patterns
 const TECH_PATTERNS: { name: string; field: string; patterns: string[] }[] = [
@@ -68,6 +68,78 @@ const DNS_PATTERNS: { name: string; field: string; patterns: string[] }[] = [
   { name: "SendGrid", field: "tech", patterns: ["sendgrid"] },
   { name: "Mailgun", field: "tech", patterns: ["mailgun"] },
 ];
+
+// Agency / "designed by" detection
+const AGENCY_PATTERNS: { name: string; patterns: string[] }[] = [
+  { name: "Nera Marketing", patterns: ["nera marketing", "neramarketing"] },
+  { name: "We Build Trades", patterns: ["we build trades", "webuildtrades"] },
+  { name: "Yell", patterns: ["yell.com", "yell business", "powered by yell"] },
+  { name: "Jeeves Media", patterns: ["jeeves media", "jeevesmedia"] },
+  { name: "SolarSites", patterns: ["solarsites.co", "solar sites"] },
+  { name: "Trade Magnet", patterns: ["trade magnet", "trademagnet"] },
+  { name: "Green Jeeves", patterns: ["green jeeves", "greenjeeves"] },
+  { name: "Lead Jeeves", patterns: ["lead jeeves", "leadjeeves"] },
+  { name: "Jeeves Plus", patterns: ["jeeves plus", "jeevesplus"] },
+  { name: "Jeeves Group", patterns: ["jeeves group", "thejeevesgroup"] },
+  { name: "Jeeves.Plus", patterns: ["jeeves.plus"] },
+  { name: "The Jeeves Group", patterns: ["thejeevesgroup.com"] },
+  { name: "TradesmanSEO", patterns: ["tradesmanseo", "tradesman seo"] },
+  { name: "Contractor Gorilla", patterns: ["contractor gorilla", "contractorgorilla"] },
+  { name: "Contractor Marketing", patterns: ["contractor marketing"] },
+  { name: "Blue Starter", patterns: ["blue starter", "bluestarter"] },
+  { name: "Active Digital", patterns: ["active digital", "activedigital.co"] },
+  { name: "MiHi Digital", patterns: ["mihi digital", "mihidigital"] },
+  { name: "Tradie Digital", patterns: ["tradie digital", "tradiedigital"] },
+  { name: "Leads 2 Trade", patterns: ["leads2trade", "leads 2 trade"] },
+  { name: "Torchlight Digital", patterns: ["torchlight digital", "torchlightdigital"] },
+  { name: "GorillaDesk", patterns: ["gorilladesk"] },
+  { name: "ServiceTitan", patterns: ["servicetitan"] },
+  { name: "Scorpion", patterns: ["scorpion.co", "scorpiondesign"] },
+  { name: "KickCharge", patterns: ["kickcharge"] },
+  { name: "WorkWave", patterns: ["workwave"] },
+  { name: "Trade Mastermind", patterns: ["trade mastermind", "trademastermind"] },
+  { name: "Etoto Media", patterns: ["etoto media", "etotomedia", "etoto.co"] },
+  { name: "Solar on Steroids", patterns: ["solar on steroids", "solaronsteroids"] },
+  { name: "Flavour Marketing", patterns: ["flavour marketing", "flavourmarketing"] },
+  { name: "The Solar Agency", patterns: ["the solar agency", "thesolaragency"] },
+  { name: "Renewables Marketing", patterns: ["renewables marketing", "renewablesmarketing"] },
+  { name: "SolarLeads", patterns: ["solarleads.co", "solar-leads.co"] },
+  { name: "Green Jeeves Media", patterns: ["green jeeves media"] },
+  { name: "Kooomo", patterns: ["kooomo.com"] },
+  { name: "Klyp", patterns: ["klyp.co"] },
+];
+
+const CREDIT_PATTERNS = [
+  /(?:designed|built|developed|created|made|powered)\s+by\s+([^<"'.]{2,40})/gi,
+  /website\s+by\s+([^<"'.]{2,40})/gi,
+  /web\s+design\s+by\s+([^<"'.]{2,40})/gi,
+];
+
+const SKIP_WORDS = ["us", "our", "the", "a", "an", "your", "my", "me", "we", "them", "this", "that", "it", "all"];
+
+function detectAgency(html: string): string | null {
+  const lower = html.toLowerCase();
+
+  // Check known agencies first
+  for (const agency of AGENCY_PATTERNS) {
+    if (agency.patterns.some((p) => lower.includes(p))) return agency.name;
+  }
+
+  // Generic "designed by" credits in footer area (last 30% of HTML)
+  const footerHtml = html.slice(Math.floor(html.length * 0.7));
+  for (const pattern of CREDIT_PATTERNS) {
+    pattern.lastIndex = 0;
+    const match = pattern.exec(footerHtml);
+    if (match) {
+      const name = match[1].trim().replace(/[<>"]/g, "");
+      if (name.length >= 3 && name.length <= 40 && !SKIP_WORDS.includes(name.toLowerCase())) {
+        return name;
+      }
+    }
+  }
+
+  return null;
+}
 
 // Social media link extraction
 const SOCIAL_PATTERNS: { key: string; regex: RegExp; exclude: RegExp }[] = [
@@ -178,6 +250,8 @@ async function processInstaller(
     facebook_url: null, instagram_url: null, linkedin_url: null, twitter_url: null, youtube_url: null,
   };
 
+  let agencyName: string | null = null;
+
   if (fetched && html.length > 0) {
     const htmlLower = html.toLowerCase();
 
@@ -195,6 +269,9 @@ async function processInstaller(
 
     // Social link extraction (original HTML for case-sensitive URLs)
     Object.assign(social, extractSocialLinks(html));
+
+    // Agency detection (piggybacks on same HTML)
+    agencyName = detectAgency(html);
   }
 
   // DNS pattern matching (runs even if HTML fetch failed)
@@ -212,6 +289,8 @@ async function processInstaller(
   const isError = !fetched && dnsRecords.length === 0;
   if (isError) detected.push("error:fetch_failed");
 
+  const now = new Date().toISOString();
+
   await supabase.from("marketing_signals").upsert({
     installer_id: inst.id,
     has_google_analytics: hasGA,
@@ -228,8 +307,17 @@ async function processInstaller(
     twitter_url: social.twitter_url,
     youtube_url: social.youtube_url,
     detection_version: CURRENT_VERSION,
-    fetched_at: new Date().toISOString(),
+    fetched_at: now,
   }, { onConflict: "installer_id" });
+
+  // Write agency name to website_quality (upsert so we don't overwrite other fields)
+  if (agencyName) {
+    await supabase.from("website_quality").upsert({
+      installer_id: inst.id,
+      agency_name: agencyName,
+      fetched_at: now,
+    }, { onConflict: "installer_id" });
+  }
 
   return { processed: !isError, error: isError };
 }

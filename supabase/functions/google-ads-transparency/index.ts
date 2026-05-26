@@ -138,6 +138,9 @@ serve(async (req) => {
           let firstSeen: string | null = null;
           let lastSeen: string | null = null;
           const sampleTitles: string[] = [];
+          const creativeIds: string[] = [];
+          const transparencyUrls: string[] = [];
+          const previewImageUrls: string[] = [];
           let advId: string | null = null;
           let advName: string | null = null;
           let verified = false;
@@ -150,6 +153,10 @@ serve(async (req) => {
             if (item.first_shown && (!firstSeen || item.first_shown < firstSeen)) firstSeen = item.first_shown;
             if (item.last_shown && (!lastSeen || item.last_shown > lastSeen)) lastSeen = item.last_shown;
             if (sampleTitles.length < 5 && item.title) sampleTitles.push(item.title);
+            if (item.creative_id) creativeIds.push(item.creative_id);
+            if (item.url) transparencyUrls.push(item.url);
+            const previewImg = item.preview_image?.[0];
+            if (previewImg?.url) previewImageUrls.push(previewImg.url);
             if (item.advertiser_id && !advId) {
               advId = item.advertiser_id;
               advName = item.title || null;
@@ -170,6 +177,9 @@ serve(async (req) => {
             first_ad_seen: firstSeen,
             last_ad_seen: lastSeen,
             sample_ad_titles: sampleTitles.length > 0 ? JSON.stringify(sampleTitles) : null,
+            creative_ids: creativeIds.length > 0 ? JSON.stringify(creativeIds) : null,
+            transparency_urls: transparencyUrls.length > 0 ? JSON.stringify(transparencyUrls) : null,
+            preview_image_urls: previewImageUrls.length > 0 ? JSON.stringify(previewImageUrls) : null,
             fetched_at: new Date().toISOString(),
           }, { onConflict: "installer_id" });
 

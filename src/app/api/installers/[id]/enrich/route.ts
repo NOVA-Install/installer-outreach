@@ -11,10 +11,11 @@ import {
   trafficData,
   keywordData,
   dataforseoTasks,
+  websiteQuality,
 } from "@/lib/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { detectTechnologies } from "@/lib/enrichment/tech-detection";
-import { enrichSingleWebsiteQuality } from "@/lib/enrichment/website-quality";
+import { enrichSingleWebsiteQuality, detectAgency } from "@/lib/enrichment/website-quality";
 import dns from "node:dns/promises";
 
 // Inline single-installer enrichment to avoid the batch job overhead
@@ -277,7 +278,20 @@ export async function POST(
           fetchedAt: new Date().toISOString(),
         });
 
-        results.tech_detection = { detected: tech.detected };
+        // Piggyback agency detection on the same HTML fetch
+        const agencyName = html ? detectAgency(html) : null;
+        if (agencyName) {
+          await db.insert(websiteQuality).values({
+            installerId,
+            agencyName,
+            fetchedAt: new Date().toISOString(),
+          }).onConflictDoUpdate({
+            target: websiteQuality.installerId,
+            set: { agencyName },
+          });
+        }
+
+        results.tech_detection = { detected: tech.detected, agencyName };
       } catch (err) {
         errors.push(
           `Tech Detection: ${err instanceof Error ? err.message : String(err)}`

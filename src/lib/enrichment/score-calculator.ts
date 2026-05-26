@@ -83,7 +83,6 @@ export async function recalculateScores(jobId: number) {
   const scoresToUpsert: {
     installerId: number;
     reputationScore: number;
-    estimatedMonthlyInstalls: number;
     marketingActivityScore: number;
     overallScore: number;
     tier: string;
@@ -141,21 +140,6 @@ export async function recalculateScores(jobId: number) {
       reputationScore = reputationScore / repWeightTotal;
     }
 
-    // ─── ESTIMATED MONTHLY INSTALLS ───
-    // Only uses reviewsPerMonth when calculated from actual review date data
-    // (set during collection from reviews_data timestamps, null if no date data)
-    let estimatedMonthlyInstalls = 0;
-
-    if (row.gReviewsPerMonth != null && row.gReviewsPerMonth > 0) {
-      // Actual per-month data from review dates — most accurate
-      estimatedMonthlyInstalls = row.gReviewsPerMonth * 15;
-    }
-
-    // Hiring = growth signal
-    if (row.hasJp != null && row.jpIsHiring) {
-      estimatedMonthlyInstalls = Math.max(estimatedMonthlyInstalls * 1.2, 5);
-    }
-
     // ─── MARKETING ACTIVITY SCORE (0-100) ───
     // Weights: website=5, GA=8, GAds(pixel)=10, Meta=10, CRM=12, Chat=8,
     //          organic traffic=10, paid traffic=10, domain authority=8,
@@ -209,23 +193,19 @@ export async function recalculateScores(jobId: number) {
     marketingActivityScore = Math.min(marketingActivityScore, 100);
 
     // ─── OVERALL SCORE ───
-    const hasAnyData = repWeightTotal > 0 || estimatedMonthlyInstalls > 0 ||
+    const hasAnyData = repWeightTotal > 0 ||
       row.hasMkt != null || row.organicEtv != null || row.hasSeo != null ||
       row.hasAdsData != null || row.hasWq != null || row.hasJp != null || row.hasGb != null;
     if (!hasAnyData) continue;
 
-    const volumeScore = Math.min(estimatedMonthlyInstalls / 50, 1) * 100;
-
-    // Overall = weighted blend of three dimensions:
-    //   Reputation (0.35): review quality + volume + company age + business profile trust
-    //   Volume (0.25): estimated monthly install throughput from review frequency + hiring
-    //   Marketing (0.40): digital sophistication — highest weight because it best predicts
+    // Overall = weighted blend of two dimensions:
+    //   Reputation (0.45): review quality + volume + company age + business profile trust
+    //   Marketing (0.55): digital sophistication — highest weight because it best predicts
     //     receptiveness to outreach and investment in growth. A company running GA + ads + CRM
     //     is more likely to engage with partnership proposals than one with no web presence.
     const overallScore =
-      reputationScore * 0.35 +
-      volumeScore * 0.25 +
-      marketingActivityScore * 0.40;
+      reputationScore * 0.45 +
+      marketingActivityScore * 0.55;
 
     const tier =
       overallScore >= 65 ? "high" :
@@ -235,7 +215,6 @@ export async function recalculateScores(jobId: number) {
     scoresToUpsert.push({
       installerId: row.id,
       reputationScore,
-      estimatedMonthlyInstalls,
       marketingActivityScore,
       overallScore,
       tier,
@@ -251,15 +230,14 @@ export async function recalculateScores(jobId: number) {
 
     if (batch.length > 0) {
       const valuesSql = batch.map((s) =>
-        sql`(${s.installerId}, ${s.reputationScore}, ${s.estimatedMonthlyInstalls}, ${s.marketingActivityScore}, ${s.overallScore}, ${s.tier}, ${now})`
+        sql`(${s.installerId}, ${s.reputationScore}, ${s.marketingActivityScore}, ${s.overallScore}, ${s.tier}, ${now})`
       );
 
       await db.execute(sql`
-        INSERT INTO installer_scores (installer_id, reputation_score, estimated_monthly_installs, marketing_activity_score, overall_score, tier, last_calculated_at)
+        INSERT INTO installer_scores (installer_id, reputation_score, marketing_activity_score, overall_score, tier, last_calculated_at)
         VALUES ${sql.join(valuesSql, sql`, `)}
         ON CONFLICT (installer_id) DO UPDATE SET
           reputation_score = EXCLUDED.reputation_score,
-          estimated_monthly_installs = EXCLUDED.estimated_monthly_installs,
           marketing_activity_score = EXCLUDED.marketing_activity_score,
           overall_score = EXCLUDED.overall_score,
           tier = EXCLUDED.tier,

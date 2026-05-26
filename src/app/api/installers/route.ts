@@ -45,6 +45,7 @@ export async function GET(request: NextRequest) {
     formType: searchParams.get("formType") || undefined,
     originLat: searchParams.get("originLat") ? Number(searchParams.get("originLat")) : undefined,
     originLng: searchParams.get("originLng") ? Number(searchParams.get("originLng")) : undefined,
+    maxDistanceKm: searchParams.get("maxDistanceKm") ? Number(searchParams.get("maxDistanceKm")) : undefined,
     page: searchParams.get("page") ? Number(searchParams.get("page")) : 1,
     pageSize: searchParams.get("pageSize")
       ? Number(searchParams.get("pageSize"))
