@@ -81,8 +81,9 @@ serve(async (req) => {
     });
   }
 
-  // Process max 200 per invocation (each requires HTTP fetch with 8s timeout)
-  const toProcess = installers.slice(0, 200);
+  // Process max 50 per invocation (each requires HTTP fetch with 8s timeout)
+  // Inngest calls this in a loop, so smaller batches = faster feedback
+  const toProcess = installers.slice(0, 50);
 
   // Only create job record if not called from Inngest (which manages its own tracking)
   const body = await req.json().catch(() => ({}));
