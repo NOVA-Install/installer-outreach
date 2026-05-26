@@ -67,8 +67,9 @@ serve(async (req) => {
     });
   }
 
-  // Process max 100 per invocation (5 API calls each, rate limited)
-  const toEnrich = allToEnrich.slice(0, 100);
+  // Process max 20 per invocation (5 API calls each + 2.5s delay = ~50s total)
+  // Inngest handles looping for remaining installers
+  const toEnrich = allToEnrich.slice(0, 20);
 
   // Only create job record if not called from Inngest
   const body = await req.json().catch(() => ({}));
