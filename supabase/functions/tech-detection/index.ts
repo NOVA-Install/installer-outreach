@@ -46,14 +46,57 @@ const TECH_PATTERNS: { name: string; field: string; patterns: string[] }[] = [
   { name: "Mailchimp", field: "tech", patterns: ["mailchimp.com", "list-manage.com", "chimpstatic.com"] },
 ];
 
-// Social media link extraction
-const SOCIAL_PATTERNS: { platform: string; key: string; regex: RegExp; exclude: RegExp }[] = [
-  { platform: "facebook", key: "facebook_url", regex: /href=["'](https?:\/\/(?:www\.)?facebook\.com\/[a-zA-Z0-9._-]+\/?)['"]/gi, exclude: /facebook\.com\/(sharer|share|dialog|plugins|tr|hashtag|flx|watch|groups\/\d|pages\/category|login|help|policies)/i },
-  { platform: "instagram", key: "instagram_url", regex: /href=["'](https?:\/\/(?:www\.)?instagram\.com\/[a-zA-Z0-9._]+\/?)['"]/gi, exclude: /instagram\.com\/(explore|accounts|p\/|reel\/|stories\/|about|developer|legal)/i },
-  { platform: "linkedin", key: "linkedin_url", regex: /href=["'](https?:\/\/(?:www\.)?linkedin\.com\/(?:company|in)\/[a-zA-Z0-9._-]+\/?)['"]/gi, exclude: /linkedin\.com\/(share|sharing|pulse|jobs|learning|feed)/i },
-  { platform: "twitter", key: "twitter_url", regex: /href=["'](https?:\/\/(?:www\.)?(?:twitter\.com|x\.com)\/[a-zA-Z0-9_]+\/?)['"]/gi, exclude: /(?:twitter|x)\.com\/(intent|share|hashtag|search|home|i\/|widgets)/i },
-  { platform: "youtube", key: "youtube_url", regex: /href=["'](https?:\/\/(?:www\.)?youtube\.com\/(?:channel|c|user|@)[a-zA-Z0-9._-]+\/?)['"]/gi, exclude: /youtube\.com\/(watch|embed|playlist|results|feed|shorts)/i },
+// DNS TXT/CNAME record patterns
+const DNS_PATTERNS: { name: string; field: string; patterns: string[] }[] = [
+  { name: "HubSpot", field: "crm", patterns: ["hubspot", "hs-site-verification"] },
+  { name: "Salesforce", field: "crm", patterns: ["salesforce", "pardot"] },
+  { name: "Zoho", field: "crm", patterns: ["zoho"] },
+  { name: "ActiveCampaign", field: "crm", patterns: ["activecampaign"] },
+  { name: "Keap", field: "crm", patterns: ["infusionsoft", "keap"] },
+  { name: "Freshsales", field: "crm", patterns: ["freshworks", "freshsales"] },
+  { name: "Simplified Energy", field: "crm", patterns: ["simplifiedenergy"] },
+  { name: "Autarc", field: "crm", patterns: ["autarc.energy", "autarc"] },
+  { name: "Reonic", field: "crm", patterns: ["reonic"] },
+  { name: "EasySolar", field: "crm", patterns: ["easysolar"] },
+  { name: "OpenSolar", field: "crm", patterns: ["opensolar"] },
+  { name: "Sunstak", field: "crm", patterns: ["sunstak"] },
+  { name: "JobNimbus", field: "crm", patterns: ["jobnimbus"] },
+  { name: "Commusoft", field: "crm", patterns: ["commusoft"] },
+  { name: "SimPRO", field: "crm", patterns: ["simpro"] },
+  { name: "Tradify", field: "crm", patterns: ["tradify"] },
+  { name: "Mailchimp", field: "tech", patterns: ["mailchimp", "mandrillapp", "mcsv.net"] },
+  { name: "SendGrid", field: "tech", patterns: ["sendgrid"] },
+  { name: "Mailgun", field: "tech", patterns: ["mailgun"] },
 ];
+
+// Social media link extraction
+const SOCIAL_PATTERNS: { key: string; regex: RegExp; exclude: RegExp }[] = [
+  { key: "facebook_url", regex: /href=["'](https?:\/\/(?:www\.)?facebook\.com\/[a-zA-Z0-9._-]+\/?)['"]/gi, exclude: /facebook\.com\/(sharer|share|dialog|plugins|tr|hashtag|flx|watch|groups\/\d|pages\/category|login|help|policies)/i },
+  { key: "instagram_url", regex: /href=["'](https?:\/\/(?:www\.)?instagram\.com\/[a-zA-Z0-9._]+\/?)['"]/gi, exclude: /instagram\.com\/(explore|accounts|p\/|reel\/|stories\/|about|developer|legal)/i },
+  { key: "linkedin_url", regex: /href=["'](https?:\/\/(?:www\.)?linkedin\.com\/(?:company|in)\/[a-zA-Z0-9._-]+\/?)['"]/gi, exclude: /linkedin\.com\/(share|sharing|pulse|jobs|learning|feed)/i },
+  { key: "twitter_url", regex: /href=["'](https?:\/\/(?:www\.)?(?:twitter\.com|x\.com)\/[a-zA-Z0-9_]+\/?)['"]/gi, exclude: /(?:twitter|x)\.com\/(intent|share|hashtag|search|home|i\/|widgets)/i },
+  { key: "youtube_url", regex: /href=["'](https?:\/\/(?:www\.)?youtube\.com\/(?:channel|c|user|@)[a-zA-Z0-9._-]+\/?)['"]/gi, exclude: /youtube\.com\/(watch|embed|playlist|results|feed|shorts)/i },
+];
+
+function extractDomain(website: string): string | null {
+  try {
+    const url = website.startsWith("http") ? website : `https://${website}`;
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch { return null; }
+}
+
+async function lookupDns(domain: string): Promise<string[]> {
+  const records: string[] = [];
+  try {
+    const txt = await Deno.resolveDns(domain, "TXT");
+    for (const entry of txt) records.push(entry.join(" "));
+  } catch { /* no TXT records */ }
+  try {
+    const cnames = await Deno.resolveDns(domain, "CNAME");
+    records.push(...cnames);
+  } catch { /* no CNAME records */ }
+  return records;
+}
 
 function extractSocialLinks(html: string): Record<string, string | null> {
   const links: Record<string, string | null> = {
@@ -63,11 +106,132 @@ function extractSocialLinks(html: string): Record<string, string | null> {
     regex.lastIndex = 0;
     let match;
     while ((match = regex.exec(html)) !== null) {
-      const url = match[1];
-      if (!exclude.test(url)) { links[key] = url; break; }
+      if (!exclude.test(match[1])) { links[key] = match[1]; break; }
     }
   }
   return links;
+}
+
+async function processInstaller(
+  supabase: ReturnType<typeof createClient>,
+  inst: { id: number; website: string },
+): Promise<{ processed: boolean; error: boolean }> {
+  let raw = inst.website.trim();
+  if (raw.includes("|")) raw = raw.split("|")[0].trim();
+  if (raw.includes(";")) raw = raw.split(";")[0].trim();
+
+  if (/\s/.test(raw) || raw === "****" || !raw.includes(".")) {
+    await supabase.from("marketing_signals").upsert({
+      installer_id: inst.id,
+      has_google_analytics: false, has_google_ads: false, has_meta_pixel: false,
+      has_crm_tool: false, has_live_chat: false,
+      detected_technologies: JSON.stringify(["error:invalid_url"]),
+      detection_version: CURRENT_VERSION,
+      fetched_at: new Date().toISOString(),
+    }, { onConflict: "installer_id" });
+    return { processed: false, error: true };
+  }
+
+  const domain = extractDomain(raw);
+  const urls = raw.startsWith("http")
+    ? [raw, raw.replace("https://", "http://")]
+    : [`https://${raw}`, `http://${raw}`];
+
+  // Fetch HTML and DNS in parallel
+  let html = "";
+  let fetched = false;
+  let dnsRecords: string[] = [];
+
+  const [htmlResult, dnsResult] = await Promise.allSettled([
+    (async () => {
+      for (const url of urls) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 8000);
+        try {
+          const res = await fetch(url, {
+            signal: controller.signal,
+            headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" },
+            redirect: "follow",
+          });
+          clearTimeout(timeout);
+          return await res.text();
+        } catch { clearTimeout(timeout); }
+      }
+      return null;
+    })(),
+    domain ? lookupDns(domain) : Promise.resolve([]),
+  ]);
+
+  if (htmlResult.status === "fulfilled" && htmlResult.value) {
+    html = htmlResult.value;
+    fetched = true;
+  }
+  if (dnsResult.status === "fulfilled") {
+    dnsRecords = dnsResult.value;
+  }
+
+  const detected: string[] = [];
+  let hasGA = false, hasGAds = false, hasMetaPixel = false;
+  let hasCrm = false, crmName: string | null = null;
+  let hasChat = false, chatName: string | null = null;
+  const social: Record<string, string | null> = {
+    facebook_url: null, instagram_url: null, linkedin_url: null, twitter_url: null, youtube_url: null,
+  };
+
+  if (fetched && html.length > 0) {
+    const htmlLower = html.toLowerCase();
+
+    // HTML pattern matching
+    for (const tech of TECH_PATTERNS) {
+      if (tech.patterns.some((p) => htmlLower.includes(p.toLowerCase()))) {
+        detected.push(tech.name);
+        if (tech.field === "ga") hasGA = true;
+        if (tech.field === "gads") hasGAds = true;
+        if (tech.field === "meta") hasMetaPixel = true;
+        if (tech.field === "crm" && !hasCrm) { hasCrm = true; crmName = tech.name; }
+        if (tech.field === "chat" && !hasChat) { hasChat = true; chatName = tech.name; }
+      }
+    }
+
+    // Social link extraction (original HTML for case-sensitive URLs)
+    Object.assign(social, extractSocialLinks(html));
+  }
+
+  // DNS pattern matching (runs even if HTML fetch failed)
+  if (dnsRecords.length > 0) {
+    const lowerRecords = dnsRecords.map((r) => r.toLowerCase());
+    for (const tech of DNS_PATTERNS) {
+      if (detected.includes(tech.name)) continue; // already found via HTML
+      if (tech.patterns.some((p) => lowerRecords.some((r) => r.includes(p.toLowerCase())))) {
+        detected.push(`${tech.name} (DNS)`);
+        if (tech.field === "crm" && !hasCrm) { hasCrm = true; crmName = tech.name; }
+      }
+    }
+  }
+
+  const isError = !fetched && dnsRecords.length === 0;
+  if (isError) detected.push("error:fetch_failed");
+
+  await supabase.from("marketing_signals").upsert({
+    installer_id: inst.id,
+    has_google_analytics: hasGA,
+    has_google_ads: hasGAds,
+    has_meta_pixel: hasMetaPixel,
+    has_crm_tool: hasCrm,
+    crm_tool_name: crmName,
+    has_live_chat: hasChat,
+    live_chat_tool: chatName,
+    detected_technologies: JSON.stringify(detected),
+    facebook_url: social.facebook_url,
+    instagram_url: social.instagram_url,
+    linkedin_url: social.linkedin_url,
+    twitter_url: social.twitter_url,
+    youtube_url: social.youtube_url,
+    detection_version: CURRENT_VERSION,
+    fetched_at: new Date().toISOString(),
+  }, { onConflict: "installer_id" });
+
+  return { processed: !isError, error: isError };
 }
 
 serve(async (req) => {
@@ -81,17 +245,13 @@ serve(async (req) => {
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const supabase = createClient(supabaseUrl, supabaseKey);
 
-  // Find installers needing tech detection:
-  // - No marketing_signals record at all, OR
-  // - detection_version < CURRENT_VERSION (needs re-scan with new patterns)
+  // Find installers needing v2 scan
   let allData: { id: number; website: string }[] = [];
   let pg = 0;
   while (true) {
     const { data: pageData } = await supabase
-      .from("installers")
-      .select("id, website")
-      .not("website", "is", null)
-      .neq("website", "")
+      .from("installers").select("id, website")
+      .not("website", "is", null).neq("website", "")
       .range(pg * 1000, (pg + 1) * 1000 - 1);
     if (!pageData || pageData.length === 0) break;
     allData = allData.concat(pageData);
@@ -99,13 +259,11 @@ serve(async (req) => {
     pg++;
   }
 
-  // Get IDs that already have current version
   const upToDateIds = new Set<number>();
   pg = 0;
   while (true) {
     const { data: exData } = await supabase
-      .from("marketing_signals")
-      .select("installer_id")
+      .from("marketing_signals").select("installer_id")
       .gte("detection_version", CURRENT_VERSION)
       .range(pg * 1000, (pg + 1) * 1000 - 1);
     if (!exData || exData.length === 0) break;
@@ -123,15 +281,15 @@ serve(async (req) => {
     });
   }
 
-  // Process 1 per invocation — Inngest handles looping
-  const inst = installers[0];
+  // Process 5 per invocation — Inngest handles looping
+  const toProcess = installers.slice(0, 5);
 
   const body = await req.json().catch(() => ({}));
   const skipJob = body.skipJob === true;
   let job: { id: number } | null = null;
   if (!skipJob) {
     const { data } = await supabase.from("enrichment_jobs").insert({
-      type: "tech_detection", status: "running", total_items: 1, processed_items: 0,
+      type: "tech_detection", status: "running", total_items: toProcess.length, processed_items: 0,
       error_count: 0, started_at: new Date().toISOString(), created_at: new Date().toISOString(),
     }).select("id").single();
     job = data;
@@ -140,97 +298,18 @@ serve(async (req) => {
   let processed = 0;
   let errors = 0;
 
-  // Clean URL
-  let raw = inst.website.trim();
-  if (raw.includes("|")) raw = raw.split("|")[0].trim();
-  if (raw.includes(";")) raw = raw.split(";")[0].trim();
+  // Process all 5 in parallel (HTML + DNS fetched concurrently per installer)
+  const results = await Promise.allSettled(
+    toProcess.map((inst) => processInstaller(supabase, inst))
+  );
 
-  if (/\s/.test(raw) || raw === "****" || !raw.includes(".")) {
-    await supabase.from("marketing_signals").upsert({
-      installer_id: inst.id,
-      has_google_analytics: false, has_google_ads: false, has_meta_pixel: false,
-      has_crm_tool: false, has_live_chat: false,
-      detected_technologies: JSON.stringify(["error:invalid_url"]),
-      detection_version: CURRENT_VERSION,
-      fetched_at: new Date().toISOString(),
-    }, { onConflict: "installer_id" });
-    errors++;
-  } else {
-    const urls = raw.startsWith("http")
-      ? [raw, raw.replace("https://", "http://")]
-      : [`https://${raw}`, `http://${raw}`];
-
-    let html = "";
-    let fetched = false;
-
-    for (const url of urls) {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
-      try {
-        const res = await fetch(url, {
-          signal: controller.signal,
-          headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" },
-          redirect: "follow",
-        });
-        clearTimeout(timeout);
-        html = await res.text();
-        fetched = true;
-        break;
-      } catch {
-        clearTimeout(timeout);
-      }
-    }
-
-    const detected: string[] = [];
-    let hasGA = false, hasGAds = false, hasMetaPixel = false;
-    let hasCrm = false, crmName: string | null = null;
-    let hasChat = false, chatName: string | null = null;
-    const social: Record<string, string | null> = {
-      facebook_url: null, instagram_url: null, linkedin_url: null, twitter_url: null, youtube_url: null,
-    };
-
-    if (fetched && html.length > 0) {
-      const htmlLower = html.toLowerCase();
-
-      // HTML pattern matching
-      for (const tech of TECH_PATTERNS) {
-        if (tech.patterns.some((p) => htmlLower.includes(p.toLowerCase()))) {
-          detected.push(tech.name);
-          if (tech.field === "ga") hasGA = true;
-          if (tech.field === "gads") hasGAds = true;
-          if (tech.field === "meta") hasMetaPixel = true;
-          if (tech.field === "crm" && !hasCrm) { hasCrm = true; crmName = tech.name; }
-          if (tech.field === "chat" && !hasChat) { hasChat = true; chatName = tech.name; }
-        }
-      }
-
-      // Social link extraction (use original HTML for case-sensitive URLs)
-      const socialLinks = extractSocialLinks(html);
-      Object.assign(social, socialLinks);
+  for (const r of results) {
+    if (r.status === "fulfilled") {
+      if (r.value.processed) processed++;
+      if (r.value.error) errors++;
     } else {
-      detected.push("error:fetch_failed");
       errors++;
     }
-
-    await supabase.from("marketing_signals").upsert({
-      installer_id: inst.id,
-      has_google_analytics: hasGA,
-      has_google_ads: hasGAds,
-      has_meta_pixel: hasMetaPixel,
-      has_crm_tool: hasCrm,
-      crm_tool_name: crmName,
-      has_live_chat: hasChat,
-      live_chat_tool: chatName,
-      detected_technologies: JSON.stringify(detected),
-      facebook_url: social.facebook_url,
-      instagram_url: social.instagram_url,
-      linkedin_url: social.linkedin_url,
-      twitter_url: social.twitter_url,
-      youtube_url: social.youtube_url,
-      detection_version: CURRENT_VERSION,
-      fetched_at: new Date().toISOString(),
-    }, { onConflict: "installer_id" });
-    processed++;
   }
 
   if (job?.id) {
@@ -243,8 +322,8 @@ serve(async (req) => {
   return new Response(JSON.stringify({
     processed,
     errors,
-    remaining: remaining - 1,
-    message: `Tech detection v${CURRENT_VERSION}: ${processed} processed, ${remaining - 1} remaining`,
+    remaining: remaining - toProcess.length,
+    message: `Tech detection v${CURRENT_VERSION}: ${processed} processed, ${remaining - toProcess.length} remaining`,
   }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
