@@ -53,6 +53,9 @@ async function callEdgeFunction(name: string, body: Record<string, unknown> = {}
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!supabaseUrl || !supabaseKey) throw new Error("Supabase env vars not set");
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 180000); // 3 min timeout
+
   const res = await fetch(`${supabaseUrl}/functions/v1/${name}`, {
     method: "POST",
     headers: {
@@ -60,7 +63,9 @@ async function callEdgeFunction(name: string, body: Record<string, unknown> = {}
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
+    signal: controller.signal,
   });
+  clearTimeout(timeout);
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
