@@ -228,14 +228,14 @@ export function CommandK() {
 
   return (
     <>
-      {/* Trigger button in the sidebar / top bar */}
+      {/* Trigger button styled as a search input */}
       <button
         onClick={() => setOpen(true)}
-        className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[6px] text-[13px] font-medium text-[#9a9a9a] transition-colors hover:bg-white/[0.05] hover:text-white"
+        className="flex w-full items-center gap-2 rounded-lg border border-white/[0.12] bg-white/[0.04] px-3 py-2 text-[13px] text-[#6a6a6a] transition-all hover:border-white/[0.2] hover:bg-white/[0.07] hover:text-[#9a9a9a] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/[0.2]"
       >
-        <Search className="h-[16px] w-[16px] shrink-0" />
-        <span className="flex-1 text-left">Search</span>
-        <kbd className="pointer-events-none hidden rounded border border-white/[0.12] bg-white/[0.06] px-1.5 py-0.5 font-mono text-[10px] leading-none text-[#6a6a6a] sm:inline">
+        <Search className="h-[15px] w-[15px] shrink-0" />
+        <span className="flex-1 text-left">Search installers...</span>
+        <kbd className="pointer-events-none rounded border border-white/[0.12] bg-white/[0.06] px-1.5 py-0.5 font-mono text-[10px] leading-none text-[#4a4a4a]">
           {"\u2318"}K
         </kbd>
       </button>

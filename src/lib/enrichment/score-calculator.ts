@@ -6,6 +6,11 @@ import {
   companiesHouseData,
   marketingSignals,
   trafficData,
+  seoData,
+  googleAdsData,
+  websiteQuality,
+  jobPostings,
+  googleBusinessInfo,
   installerScores,
   enrichmentJobs,
 } from "@/lib/db/schema";
@@ -25,7 +30,6 @@ export async function recalculateScores(jobId: number) {
       tpRating: trustpilotReviews.rating,
       tpReviewCount: trustpilotReviews.reviewCount,
       // Companies House
-      chEmployeeCount: companiesHouseData.employeeCount,
       chStatus: companiesHouseData.companyStatus,
       chIncorporationDate: companiesHouseData.incorporationDate,
       // Marketing signals
@@ -39,13 +43,35 @@ export async function recalculateScores(jobId: number) {
       organicEtv: trafficData.googleOrganicEtv,
       paidEtv: trafficData.googlePaidEtv,
       organicCount: trafficData.googleOrganicCount,
+      // SEO
+      domainAuthority: seoData.domainAuthority,
+      hasSeo: seoData.id,
+      // Google Ads Transparency
+      adsTotalAds: googleAdsData.totalAds,
+      hasAdsData: googleAdsData.id,
+      // Website Quality
+      wqPerformanceScore: websiteQuality.performanceScore,
+      wqFormType: websiteQuality.formType,
+      hasWq: websiteQuality.id,
+      // Job Postings
+      jpIsHiring: jobPostings.isHiring,
+      hasJp: jobPostings.id,
+      // Google Business Info
+      gbIsClaimed: googleBusinessInfo.isClaimed,
+      gbTotalPhotos: googleBusinessInfo.totalPhotos,
+      hasGb: googleBusinessInfo.id,
     })
     .from(installers)
     .leftJoin(googleReviews, eq(installers.id, googleReviews.installerId))
     .leftJoin(trustpilotReviews, eq(installers.id, trustpilotReviews.installerId))
     .leftJoin(companiesHouseData, eq(installers.id, companiesHouseData.installerId))
     .leftJoin(marketingSignals, eq(installers.id, marketingSignals.installerId))
-    .leftJoin(trafficData, eq(installers.id, trafficData.installerId));
+    .leftJoin(trafficData, eq(installers.id, trafficData.installerId))
+    .leftJoin(seoData, eq(installers.id, seoData.installerId))
+    .leftJoin(googleAdsData, eq(installers.id, googleAdsData.installerId))
+    .leftJoin(websiteQuality, eq(installers.id, websiteQuality.installerId))
+    .leftJoin(jobPostings, eq(installers.id, jobPostings.installerId))
+    .leftJoin(googleBusinessInfo, eq(installers.id, googleBusinessInfo.installerId));
 
   await db.update(enrichmentJobs).set({
     totalItems: allData.length,
@@ -65,14 +91,14 @@ export async function recalculateScores(jobId: number) {
 
   for (const row of allData) {
     // ─── REPUTATION SCORE (0-100) ───
-    // Weighted average of available review signals
+    // Weighted average of available review/trust signals
     let reputationScore = 0;
     let repWeightTotal = 0;
 
     if (row.gRating != null) {
       // Rating quality (0-100)
-      reputationScore += (row.gRating / 5) * 100 * 0.35;
-      repWeightTotal += 0.35;
+      reputationScore += (row.gRating / 5) * 100 * 0.30;
+      repWeightTotal += 0.30;
 
       // Review volume signal (0-100, caps at 200 reviews)
       const gVolume = Math.min((row.gReviewCount || 0) / 200, 1) * 100;
@@ -81,21 +107,34 @@ export async function recalculateScores(jobId: number) {
     }
 
     if (row.tpRating != null) {
-      reputationScore += (row.tpRating / 5) * 100 * 0.2;
-      repWeightTotal += 0.2;
+      reputationScore += (row.tpRating / 5) * 100 * 0.15;
+      repWeightTotal += 0.15;
 
       // Trustpilot volume (0-100, caps at 100 reviews)
       const tpVolume = Math.min((row.tpReviewCount || 0) / 100, 1) * 100;
-      reputationScore += tpVolume * 0.1;
-      repWeightTotal += 0.1;
+      reputationScore += tpVolume * 0.10;
+      repWeightTotal += 0.10;
     }
 
     // Company age bonus (longer = more established)
     if (row.chIncorporationDate) {
       const yearsOld = (Date.now() - new Date(row.chIncorporationDate).getTime()) / (365.25 * 24 * 60 * 60 * 1000);
       const ageFactor = Math.min(yearsOld / 15, 1) * 100; // caps at 15 years
-      reputationScore += ageFactor * 0.1;
-      repWeightTotal += 0.1;
+      reputationScore += ageFactor * 0.10;
+      repWeightTotal += 0.10;
+    }
+
+    // Google Business claimed = trust signal
+    if (row.hasGb != null && row.gbIsClaimed) {
+      reputationScore += 100 * 0.05;
+      repWeightTotal += 0.05;
+    }
+
+    // Google Business photos (engaged business)
+    if (row.hasGb != null && row.gbTotalPhotos != null && row.gbTotalPhotos > 0) {
+      const photoFactor = Math.min(row.gbTotalPhotos / 20, 1) * 100;
+      reputationScore += photoFactor * 0.05;
+      repWeightTotal += 0.05;
     }
 
     if (repWeightTotal > 0) {
@@ -103,22 +142,24 @@ export async function recalculateScores(jobId: number) {
     }
 
     // ─── ESTIMATED MONTHLY INSTALLS ───
+    // Only uses reviewsPerMonth when calculated from actual review date data
+    // (set during collection from reviews_data timestamps, null if no date data)
     let estimatedMonthlyInstalls = 0;
 
-    // From review frequency
     if (row.gReviewsPerMonth != null && row.gReviewsPerMonth > 0) {
+      // Actual per-month data from review dates — most accurate
       estimatedMonthlyInstalls = row.gReviewsPerMonth * 15;
     }
 
-    // From employee count (if available)
-    if (row.chEmployeeCount != null && row.chEmployeeCount > 0) {
-      const employeeEstimate = row.chEmployeeCount * 4;
-      estimatedMonthlyInstalls = estimatedMonthlyInstalls > 0
-        ? (estimatedMonthlyInstalls + employeeEstimate) / 2
-        : employeeEstimate;
+    // Hiring = growth signal
+    if (row.hasJp != null && row.jpIsHiring) {
+      estimatedMonthlyInstalls = Math.max(estimatedMonthlyInstalls * 1.2, 5);
     }
 
     // ─── MARKETING ACTIVITY SCORE (0-100) ───
+    // Weights: website=5, GA=8, GAds(pixel)=10, Meta=10, CRM=12, Chat=8,
+    //          organic traffic=10, paid traffic=10, domain authority=8,
+    //          confirmed ads=8, website perf=5, form quality=6 = 100 max
     let marketingActivityScore = 0;
 
     // Website presence
@@ -126,33 +167,61 @@ export async function recalculateScores(jobId: number) {
 
     // Tech detection signals
     if (row.hasMkt != null) {
-      if (row.mktGA) marketingActivityScore += 10;
-      if (row.mktGAds) marketingActivityScore += 15;
-      if (row.mktMeta) marketingActivityScore += 15;
-      if (row.mktCrm) marketingActivityScore += 15;
-      if (row.mktChat) marketingActivityScore += 10;
+      if (row.mktGA) marketingActivityScore += 8;
+      if (row.mktGAds) marketingActivityScore += 10;
+      if (row.mktMeta) marketingActivityScore += 10;
+      if (row.mktCrm) marketingActivityScore += 12;
+      if (row.mktChat) marketingActivityScore += 8;
     }
 
     // Traffic signals (organic presence = SEO investment)
     if (row.organicEtv != null && row.organicEtv > 0) {
-      // Scale: 0-100 ETV = low, 100-1000 = medium, 1000+ = high
-      const trafficFactor = Math.min(row.organicEtv / 1000, 1) * 15;
+      const trafficFactor = Math.min(row.organicEtv / 1000, 1) * 10;
       marketingActivityScore += trafficFactor;
     }
 
     // Paid traffic (actively spending on ads)
     if (row.paidEtv != null && row.paidEtv > 0) {
-      marketingActivityScore += 15;
+      marketingActivityScore += 10;
+    }
+
+    // Domain authority from SEO data
+    if (row.hasSeo != null && row.domainAuthority != null && row.domainAuthority > 0) {
+      marketingActivityScore += Math.min(row.domainAuthority / 100, 1) * 8;
+    }
+
+    // Confirmed active Google Ads (from Ads Transparency, not just pixel detection)
+    if (row.hasAdsData != null && row.adsTotalAds != null && row.adsTotalAds > 0) {
+      marketingActivityScore += 8;
+    }
+
+    // Website performance (PageSpeed score)
+    if (row.hasWq != null && row.wqPerformanceScore != null && row.wqPerformanceScore > 50) {
+      marketingActivityScore += (row.wqPerformanceScore / 100) * 5;
+    }
+
+    // Form quality (quote forms / multi-step = higher lead capture sophistication)
+    if (row.hasWq != null && row.wqFormType) {
+      if (row.wqFormType === "multi_step") marketingActivityScore += 6;
+      else if (row.wqFormType === "quote_form") marketingActivityScore += 4;
     }
 
     marketingActivityScore = Math.min(marketingActivityScore, 100);
 
     // ─── OVERALL SCORE ───
-    const hasAnyData = repWeightTotal > 0 || estimatedMonthlyInstalls > 0 || row.hasMkt != null || row.organicEtv != null;
+    const hasAnyData = repWeightTotal > 0 || estimatedMonthlyInstalls > 0 ||
+      row.hasMkt != null || row.organicEtv != null || row.hasSeo != null ||
+      row.hasAdsData != null || row.hasWq != null || row.hasJp != null || row.hasGb != null;
     if (!hasAnyData) continue;
 
     const volumeScore = Math.min(estimatedMonthlyInstalls / 50, 1) * 100;
 
+    // Overall = weighted blend of three dimensions:
+    //   Reputation (0.35): review quality + volume + company age + business profile trust
+    //   Volume (0.25): estimated monthly install throughput from review frequency + hiring
+    //   Marketing (0.40): digital sophistication — highest weight because it best predicts
+    //     receptiveness to outreach and investment in growth. A company running GA + ads + CRM
+    //     is more likely to engage with partnership proposals than one with no web presence.
     const overallScore =
       reputationScore * 0.35 +
       volumeScore * 0.25 +
@@ -173,17 +242,21 @@ export async function recalculateScores(jobId: number) {
     });
   }
 
-  // Batch upsert
+  // Bulk upsert in batches of 200
   let processed = 0;
   const now = new Date().toISOString();
 
   for (let i = 0; i < scoresToUpsert.length; i += 200) {
     const batch = scoresToUpsert.slice(i, i + 200);
 
-    for (const score of batch) {
+    if (batch.length > 0) {
+      const valuesSql = batch.map((s) =>
+        sql`(${s.installerId}, ${s.reputationScore}, ${s.estimatedMonthlyInstalls}, ${s.marketingActivityScore}, ${s.overallScore}, ${s.tier}, ${now})`
+      );
+
       await db.execute(sql`
         INSERT INTO installer_scores (installer_id, reputation_score, estimated_monthly_installs, marketing_activity_score, overall_score, tier, last_calculated_at)
-        VALUES (${score.installerId}, ${score.reputationScore}, ${score.estimatedMonthlyInstalls}, ${score.marketingActivityScore}, ${score.overallScore}, ${score.tier}, ${now})
+        VALUES ${sql.join(valuesSql, sql`, `)}
         ON CONFLICT (installer_id) DO UPDATE SET
           reputation_score = EXCLUDED.reputation_score,
           estimated_monthly_installs = EXCLUDED.estimated_monthly_installs,
@@ -202,5 +275,5 @@ export async function recalculateScores(jobId: number) {
     processedItems: processed,
     status: "completed",
     completedAt: new Date().toISOString(),
-  }).where(eq(enrichmentJobs.id, jobId));
+  }).where(sql`${enrichmentJobs.id} = ${jobId} AND ${enrichmentJobs.status} != 'cancelled'`);
 }

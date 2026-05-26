@@ -6,29 +6,19 @@ import {
   seoData,
   enrichmentJobs,
   dataforseoTasks,
-  googleBusinessInfo,
-  jobPostings,
 } from "@/lib/db/schema";
 import { eq, isNull, sql } from "drizzle-orm";
 import { RateLimiter } from "./rate-limiter";
-import { aiMatchTrustpilot, aiMatchGoogleReview } from "./ai-matcher";
+import { robustFetch } from "./fetch-utils";
+import {
+  handleGoogleReviewResult,
+  handleTrustpilotResult,
+  handleGoogleBusinessResult,
+  handleJobPostingsResult,
+  type TaskHandlerResult,
+} from "./result-handlers";
 
 const BASE_URL = "https://api.dataforseo.com/v3";
-
-// Extract root domain, handling .co.uk, .com.au etc.
-function extractRootDomain(domain: string): string {
-  const parts = domain.replace(/^www\./, "").split(".");
-  // Two-part TLDs: co.uk, com.au, org.uk, etc.
-  const twoPartTlds = ["co.uk", "com.au", "org.uk", "net.au", "co.nz", "com.br", "co.za", "co.in"];
-  const last2 = parts.slice(-2).join(".");
-  if (twoPartTlds.includes(last2) && parts.length > 2) {
-    return parts.slice(-3).join(".");
-  }
-  if (parts.length > 2) {
-    return parts.slice(-2).join(".");
-  }
-  return parts.join(".");
-}
 
 function getAuth() {
   const login = process.env.DATAFORSEO_LOGIN;
@@ -83,6 +73,9 @@ export async function enrichGoogleReviews(jobId: number, installerIds?: number[]
 
   // Batch submit in groups of 100
   for (let i = 0; i < toEnrich.length; i += 100) {
+    const [currentJob] = await db.select({ status: enrichmentJobs.status }).from(enrichmentJobs).where(eq(enrichmentJobs.id, jobId)).limit(1);
+    if (currentJob?.status === "cancelled") break;
+
     const batch = toEnrich.slice(i, i + 100);
 
     const tasks = batch.map((inst) => ({
@@ -125,10 +118,10 @@ export async function enrichGoogleReviews(jobId: number, installerIds?: number[]
 
   await db.update(enrichmentJobs).set({
     processedItems: submitted, errorCount: errors,
-    errorLog: errorLog.length > 0 ? JSON.stringify(errorLog) : null,
+    errorLog: errorLog.length > 0 ? JSON.stringify(errorLog.slice(0, 50)) : null,
     status: "completed",
     completedAt: new Date().toISOString(),
-  }).where(eq(enrichmentJobs.id, jobId));
+  }).where(sql`${enrichmentJobs.id} = ${jobId} AND ${enrichmentJobs.status} != 'cancelled'`);
 }
 
 // Helper: extract a human-readable name from a domain
@@ -206,6 +199,9 @@ export async function enrichTrustpilot(jobId: number, installerIds?: number[], p
 
   // Batch submit in groups of 100
   for (let i = 0; i < tasks.length; i += 100) {
+    const [currentJob] = await db.select({ status: enrichmentJobs.status }).from(enrichmentJobs).where(eq(enrichmentJobs.id, jobId)).limit(1);
+    if (currentJob?.status === "cancelled") break;
+
     const batch = tasks.slice(i, i + 100);
 
     try {
@@ -240,21 +236,27 @@ export async function enrichTrustpilot(jobId: number, installerIds?: number[], p
 
   await db.update(enrichmentJobs).set({
     processedItems: submitted, errorCount: errors,
-    errorLog: errorLog.length > 0 ? JSON.stringify(errorLog) : null,
+    errorLog: errorLog.length > 0 ? JSON.stringify(errorLog.slice(0, 50)) : null,
     status: "completed",
     completedAt: new Date().toISOString(),
-  }).where(eq(enrichmentJobs.id, jobId));
+  }).where(sql`${enrichmentJobs.id} = ${jobId} AND ${enrichmentJobs.status} != 'cancelled'`);
 }
 
 // Trustpilot - Phase 2: domain fallback for unmatched installers
 // Call this after collecting results from Phase 1
 export async function enrichTrustpilotDomainFallback(jobId: number, priority: 1 | 2 = 1) {
+  // Exclude installers that already have a pending/completed domain search task
+  const existingDomainTasks = db
+    .select({ installerId: dataforseoTasks.installerId })
+    .from(dataforseoTasks)
+    .where(sql`${dataforseoTasks.source} = 'trustpilot_search' AND ${dataforseoTasks.searchTerm} LIKE '[domain%' AND ${dataforseoTasks.status} IN ('pending', 'completed')`);
+
   // Find installers that still don't have trustpilot data and have a website
   const unmatched = await db
     .select({ id: installers.id, companyName: installers.companyName, website: installers.website })
     .from(installers)
     .leftJoin(trustpilotReviews, eq(installers.id, trustpilotReviews.installerId))
-    .where(sql`${trustpilotReviews.id} IS NULL AND ${installers.website} IS NOT NULL AND ${installers.website} != ''`);
+    .where(sql`${trustpilotReviews.id} IS NULL AND ${installers.website} IS NOT NULL AND ${installers.website} != '' AND ${installers.id} NOT IN (${existingDomainTasks})`);
 
   await db.update(enrichmentJobs).set({
     totalItems: unmatched.length, processedItems: 0, status: "running", startedAt: new Date().toISOString(),
@@ -323,9 +325,9 @@ export async function enrichTrustpilotDomainFallback(jobId: number, priority: 1 
 
   await db.update(enrichmentJobs).set({
     processedItems: submitted, errorCount: errors,
-    errorLog: errorLog.length > 0 ? JSON.stringify(errorLog) : null,
+    errorLog: errorLog.length > 0 ? JSON.stringify(errorLog.slice(0, 50)) : null,
     status: "completed", completedAt: new Date().toISOString(),
-  }).where(eq(enrichmentJobs.id, jobId));
+  }).where(sql`${enrichmentJobs.id} = ${jobId} AND ${enrichmentJobs.status} != 'cancelled'`);
 }
 
 // Backlinks / SEO data (live endpoint - parallel batches of 10)
@@ -371,17 +373,16 @@ export async function enrichSeoData(jobId: number, installerIds?: number[]) {
 
         const data = task?.result?.[0];
         if (data && data.rank != null) {
-          const existing = await db.select({ id: seoData.id }).from(seoData).where(eq(seoData.installerId, installer.id)).limit(1);
-          if (existing.length === 0) {
-            await db.insert(seoData).values({
-              installerId: installer.id,
-              domainAuthority: data.rank || null,
-              backlinksCount: data.backlinks || 0,
-              referringDomains: data.referring_domains || 0,
-              organicKeywords: null,
-              fetchedAt: new Date().toISOString(),
-            });
-          }
+          const seoValues = {
+            installerId: installer.id,
+            domainAuthority: data.rank || null,
+            backlinksCount: data.backlinks || 0,
+            referringDomains: data.referring_domains || 0,
+            organicKeywords: null,
+            fetchedAt: new Date().toISOString(),
+          };
+          await db.insert(seoData).values(seoValues)
+            .onConflictDoUpdate({ target: seoData.installerId, set: seoValues });
         }
       })
     );
@@ -399,9 +400,9 @@ export async function enrichSeoData(jobId: number, installerIds?: number[]) {
 
   await db.update(enrichmentJobs).set({
     processedItems: processed, errorCount: errors,
-    errorLog: errorLog.length > 0 ? JSON.stringify(errorLog) : null,
+    errorLog: errorLog.length > 0 ? JSON.stringify(errorLog.slice(0, 50)) : null,
     status: "completed", completedAt: new Date().toISOString(),
-  }).where(eq(enrichmentJobs.id, jobId));
+  }).where(sql`${enrichmentJobs.id} = ${jobId} AND ${enrichmentJobs.status} != 'cancelled'`);
 }
 
 // ─── PHASE 2: Collect results for pending tasks ───
@@ -411,398 +412,133 @@ export async function collectPendingResults() {
   const startTime = Date.now();
   const MAX_DURATION_MS = 25000; // Stop after 25 seconds to avoid API route timeout
 
+  // Fetch pending tasks AND ai_failed tasks (for retry without re-paying DataForSEO)
   const pendingTasks = await db
     .select()
     .from(dataforseoTasks)
-    .where(eq(dataforseoTasks.status, "pending"))
+    .where(sql`${dataforseoTasks.status} IN ('pending', 'ai_failed')`)
     .limit(2000);
 
   let collected = 0;
   let stillPending = 0;
   let errored = 0;
-  let autoMatched = 0;
-  let aiVerified = 0;
-  let aiRejected = 0;
   let rejected = 0;
+  let aiFailed = 0;
+  let aiRetried = 0;
   const rejectedMatches: string[] = [];
 
-  // Process in parallel batches of 50 (most skip AI via name pre-check, only ambiguous names call AI)
+  // Process in parallel batches of 50
   let timedOut = false;
   for (let batchStart = 0; batchStart < pendingTasks.length; batchStart += 50) {
     if (Date.now() - startTime > MAX_DURATION_MS) { timedOut = true; break; }
     const batch = pendingTasks.slice(batchStart, batchStart + 50);
 
     await Promise.allSettled(batch.map(async (task) => {
-    try {
-      const res = await fetch(`${BASE_URL}/${task.endpoint}/task_get/${task.taskId}`, {
-        headers: { Authorization: auth },
-      });
-      const data = await res.json();
-      const dfsTask = data?.tasks?.[0];
-      const rawResult = dfsTask?.result?.[0] ? JSON.stringify(dfsTask.result[0]) : null;
+      try {
+        let result: Record<string, unknown> | null = null;
+        let rawResult: string | null = null;
 
-      // Still in queue
-      if (dfsTask?.status_code === 40601 || dfsTask?.status_code === 40602) {
-        stillPending++;
-        return;
-      }
-
-      // No results
-      if (dfsTask?.status_code === 40102) {
-        await db.update(dataforseoTasks).set({
-          status: "no_results",
-          resultSummary: "No results found",
-          rawResult,
-          completedAt: new Date().toISOString(),
-        }).where(eq(dataforseoTasks.id, task.id));
-        collected++;
-        return;
-      }
-
-      // Error
-      if (dfsTask?.status_code && dfsTask.status_code >= 40000) {
-        await db.update(dataforseoTasks).set({
-          status: "failed",
-          resultSummary: `${dfsTask.status_code}: ${dfsTask.status_message}`,
-          rawResult,
-          completedAt: new Date().toISOString(),
-        }).where(eq(dataforseoTasks.id, task.id));
-        errored++;
-        return;
-      }
-
-      // Success - process based on source
-      const result = dfsTask?.result?.[0];
-
-      if (task.source === "google_reviews" && result) {
-        // Get installer data for AI verification
-        const [inst] = await db
-          .select({ companyName: installers.companyName, website: installers.website, postcode: installers.postcode, county: installers.county })
-          .from(installers)
-          .where(eq(installers.id, task.installerId))
-          .limit(1);
-
-        // Build candidate from the result (Google Reviews API returns a single business)
-        const ratingObj = result.rating;
-        const ratingVal = typeof ratingObj === "object" ? ratingObj?.value : ratingObj;
-        const reviewsCount = result.reviews_count || 0;
-        const businessTitle = result.title || result.name || "";
-        const businessAddress = result.address || "";
-        const businessCategory = result.category || result.type || "";
-
-        if (ratingVal && inst) {
-          // Quick name similarity check before calling AI
-          const normalize = (s: string) =>
-            s.toLowerCase()
-              .replace(/\b(ltd|limited|llp|plc|inc|t\/a|trading as)\b/g, "")
-              .replace(/&amp;/g, "&")
-              .replace(/[^a-z0-9&\s]/g, "")
-              .trim()
-              .replace(/\s+/g, " ");
-
-          const instName = normalize(inst.companyName);
-          const bizName = normalize(businessTitle);
-
-          // Calculate match: exact, or one contains the other
-          const isExactMatch = instName === bizName;
-          const isCloseMatch = instName.includes(bizName) || bizName.includes(instName);
-          const wordsInst = instName.split(" ").filter((w) => w.length > 1);
-          const wordsBiz = bizName.split(" ").filter((w) => w.length > 1);
-          const commonWords = wordsInst.filter((w) => wordsBiz.includes(w));
-          const wordOverlap = wordsInst.length > 0 ? commonWords.length / wordsInst.length : 0;
-          const isHighOverlap = wordOverlap >= 0.6;
-
-          let matchMethod = "";
-          let shouldAccept = false;
-          let shouldCallAi = false;
-
-          if (isExactMatch) {
-            shouldAccept = true;
-            matchMethod = "exact name match";
-          } else if (isCloseMatch) {
-            shouldAccept = true;
-            matchMethod = `close name match (${Math.round(wordOverlap * 100)}%)`;
-          } else if (isHighOverlap) {
-            shouldAccept = true;
-            matchMethod = `word overlap ${Math.round(wordOverlap * 100)}%`;
-          } else {
-            // Names don't match well - call AI to decide
-            shouldCallAi = true;
-          }
-
-          if (shouldAccept) {
-            // Skip AI - name match is strong enough
-            const existing = await db.select({ id: googleReviews.id }).from(googleReviews)
-              .where(eq(googleReviews.installerId, task.installerId)).limit(1);
-            if (existing.length === 0) {
-              await db.insert(googleReviews).values({
-                installerId: task.installerId,
-                placeId: result.place_id || null,
-                rating: ratingVal,
-                reviewCount: reviewsCount,
-                reviewsPerMonth: reviewsCount > 0 ? reviewsCount / 36 : null,
-                businessStatus: null,
-                fetchedAt: new Date().toISOString(),
-              });
-            }
-
-            await db.update(dataforseoTasks).set({
-              status: "completed",
-              resultSummary: `Auto-matched (${matchMethod}): "${businessTitle}", rating: ${ratingVal}, ${reviewsCount} reviews`,
-              rawResult, completedAt: new Date().toISOString(),
-            }).where(eq(dataforseoTasks.id, task.id));
-          } else if (shouldCallAi) {
-          // Names are ambiguous - use AI to decide
+        if (task.status === "ai_failed") {
+          // ── Retry: parse from saved rawResult (no API call, no cost) ──
+          if (!task.rawResult) { errored++; return; }
           try {
-            const aiResult = await aiMatchGoogleReview(
-              { companyName: inst.companyName, website: inst.website, postcode: inst.postcode, county: inst.county },
-              [{
-                index: 0,
-                title: businessTitle,
-                address: businessAddress,
-                placeId: result.place_id || null,
-                rating: ratingVal,
-                reviewCount: reviewsCount,
-                category: businessCategory,
-              }]
-            );
-
-            if (aiResult.matched) {
-              const existing = await db.select({ id: googleReviews.id }).from(googleReviews)
-                .where(eq(googleReviews.installerId, task.installerId)).limit(1);
-              if (existing.length === 0) {
-                await db.insert(googleReviews).values({
-                  installerId: task.installerId,
-                  placeId: result.place_id || null,
-                  rating: ratingVal,
-                  reviewCount: reviewsCount,
-                  reviewsPerMonth: reviewsCount > 0 ? reviewsCount / 36 : null,
-                  businessStatus: null,
-                  fetchedAt: new Date().toISOString(),
-                });
-              }
-
-              await db.update(dataforseoTasks).set({
-                status: "completed",
-                resultSummary: `AI verified (${aiResult.confidence}): "${businessTitle}", rating: ${ratingVal}, ${reviewsCount} reviews. ${aiResult.reasoning}`,
-                rawResult, completedAt: new Date().toISOString(),
-              }).where(eq(dataforseoTasks.id, task.id));
-            } else {
-              await db.update(dataforseoTasks).set({
-                status: "no_results",
-                resultSummary: `AI rejected: "${businessTitle}" (${businessAddress}). ${aiResult.reasoning}`,
-                rawResult, completedAt: new Date().toISOString(),
-              }).where(eq(dataforseoTasks.id, task.id));
-
-              rejected++;
-              rejectedMatches.push(`${inst.companyName} → Google returned "${businessTitle}": ${aiResult.reasoning}`);
-            }
-          } catch (aiErr) {
-            // AI failed — fall back to saving with a warning
-            const existing = await db.select({ id: googleReviews.id }).from(googleReviews)
-              .where(eq(googleReviews.installerId, task.installerId)).limit(1);
-            if (existing.length === 0) {
-              await db.insert(googleReviews).values({
-                installerId: task.installerId,
-                placeId: result.place_id || null,
-                rating: ratingVal,
-                reviewCount: reviewsCount,
-                reviewsPerMonth: reviewsCount > 0 ? reviewsCount / 36 : null,
-                businessStatus: null,
-                fetchedAt: new Date().toISOString(),
-              });
-            }
-            await db.update(dataforseoTasks).set({
-              status: "completed",
-              resultSummary: `Saved (AI unavailable): "${businessTitle}", rating: ${ratingVal}. ${aiErr instanceof Error ? aiErr.message : ""}`,
-              rawResult, completedAt: new Date().toISOString(),
-            }).where(eq(dataforseoTasks.id, task.id));
-          }
-          } // end shouldCallAi
+            result = JSON.parse(task.rawResult) as Record<string, unknown>;
+          } catch { errored++; return; }
+          rawResult = task.rawResult;
+          aiRetried++;
         } else {
-          await db.update(dataforseoTasks).set({
-            status: "completed",
-            resultSummary: "No rating found in result",
-            rawResult, completedAt: new Date().toISOString(),
-          }).where(eq(dataforseoTasks.id, task.id));
-        }
-      }
-
-      if (task.source === "trustpilot_search" && result) {
-        const allItems = result.items || [];
-
-        // Filter out non-UK domains
-        const nonUkTlds = [".dk", ".de", ".fr", ".nl", ".se", ".no", ".fi", ".es", ".it", ".pl", ".pt", ".at", ".ch", ".be", ".au", ".nz", ".ca", ".us", ".in", ".za", ".br", ".mx", ".jp", ".kr", ".cn"];
-        const items = allItems.filter((item: { domain?: string }) => {
-          if (!item.domain) return false;
-          if (nonUkTlds.some((tld) => item.domain!.endsWith(tld))) return false;
-          return true;
-        });
-
-        // Get installer data for AI matching
-        const [inst] = await db
-          .select({ companyName: installers.companyName, website: installers.website, postcode: installers.postcode, county: installers.county })
-          .from(installers)
-          .where(eq(installers.id, task.installerId))
-          .limit(1);
-
-        if (!inst) {
-          await db.update(dataforseoTasks).set({
-            status: "failed", resultSummary: "Installer not found", rawResult, completedAt: new Date().toISOString(),
-          }).where(eq(dataforseoTasks.id, task.id));
-          errored++;
-          return;
-        }
-
-        // Use AI to match the correct Trustpilot profile
-        const candidates = items.map((item: Record<string, unknown>, idx: number) => ({
-          index: idx,
-          name: (item.name || item.display_name || item.domain || "") as string,
-          domain: (item.domain || null) as string | null,
-          rating: (item.rating as { value?: number })?.value ?? null,
-          reviewCount: (item.reviews_count || null) as number | null,
-          location: ((item.location as Record<string, Record<string, string>> | undefined)?.address_info?.city || (item.location as Record<string, Record<string, string>> | undefined)?.address_info?.country || null) as string | null,
-          categories: Array.isArray(item.categories) ? (item.categories as { title?: string }[]).map((c) => c.title).join(", ") : null,
-        }));
-
-        try {
-          const aiResult = await aiMatchTrustpilot(
-            { companyName: inst.companyName, website: inst.website, postcode: inst.postcode, county: inst.county },
-            candidates
+          // ── Fetch from DataForSEO (task_get is free to call) ──
+          const res = await robustFetch(
+            `${BASE_URL}/${task.endpoint}/task_get/${task.taskId}`,
+            { headers: { Authorization: auth } },
+            { timeoutMs: 15000, retries: 2, retryDelayMs: 1000, retryOn: (r) => r.status >= 500 }
           );
+          const data = await res.json();
+          const dfsTask = data?.tasks?.[0];
+          rawResult = dfsTask?.result?.[0] ? JSON.stringify(dfsTask.result[0]) : null;
 
-          if (aiResult.matched && aiResult.matchIndex != null) {
-            const match = items[aiResult.matchIndex];
-
-            // Don't overwrite existing
-            const existing = await db.select({ id: trustpilotReviews.id }).from(trustpilotReviews)
-              .where(eq(trustpilotReviews.installerId, task.installerId)).limit(1);
-            if (existing.length === 0) {
-              await db.insert(trustpilotReviews).values({
-                installerId: task.installerId,
-                trustpilotUrl: match.domain ? `https://www.trustpilot.com/review/${extractRootDomain(match.domain)}` : null,
-                rating: match.rating?.value || null,
-                reviewCount: match.reviews_count || 0,
-                trustScore: match.trust_score || null,
-                fetchedAt: new Date().toISOString(),
-              });
-            }
-
-            await db.update(dataforseoTasks).set({
-              status: "completed",
-              resultSummary: `AI matched (${aiResult.confidence}): ${match.domain || candidates[aiResult.matchIndex].name}, rating: ${match.rating?.value}. ${aiResult.reasoning}`,
-              rawResult, completedAt: new Date().toISOString(),
-            }).where(eq(dataforseoTasks.id, task.id));
-          } else {
-            // AI rejected all candidates
-            const topName = candidates[0]?.name || "none";
-            await db.update(dataforseoTasks).set({
-              status: "no_results",
-              resultSummary: `AI rejected all ${candidates.length} candidates (${aiResult.confidence}). Top: "${topName}". ${aiResult.reasoning}`,
-              rawResult, completedAt: new Date().toISOString(),
-            }).where(eq(dataforseoTasks.id, task.id));
-
-            rejected++;
-            rejectedMatches.push(`${inst.companyName} → AI rejected "${topName}": ${aiResult.reasoning}`);
+          // Still in queue
+          if (dfsTask?.status_code === 40601 || dfsTask?.status_code === 40602) {
+            stillPending++;
+            return;
           }
-        } catch (aiErr) {
-          // AI matching failed - log but don't block
-          const errMsg = aiErr instanceof Error ? aiErr.message : String(aiErr);
-          await db.update(dataforseoTasks).set({
-            status: "failed",
-            resultSummary: `AI matching error: ${errMsg}`,
-            rawResult, completedAt: new Date().toISOString(),
-          }).where(eq(dataforseoTasks.id, task.id));
-          errored++;
-        }
-      }
 
-      // Google Business Info
-      if (task.source === "google_business_info" && result) {
-        const bizData = {
-          placeId: result.place_id || null,
-          title: result.title || null,
-          phone: result.phone || null,
-          website: result.domain || null,
-          mainCategory: result.category || null,
-          address: result.address || null,
-          city: result.address_info?.city || null,
-          postalCode: result.address_info?.zip || null,
-          latitude: result.latitude || null,
-          longitude: result.longitude || null,
-          totalPhotos: result.total_photos || null,
-          isClaimed: result.is_claimed ?? null,
-          currentStatus: result.current_status || null,
-          workHours: result.work_hours ? JSON.stringify(result.work_hours) : null,
-          priceLevel: result.price_level || null,
-          additionalCategories: result.additional_categories ? JSON.stringify(result.additional_categories) : null,
-          fetchedAt: new Date().toISOString(),
-        };
-        const existingBiz = await db.select({ id: googleBusinessInfo.id }).from(googleBusinessInfo).where(eq(googleBusinessInfo.installerId, task.installerId)).limit(1);
-        if (existingBiz.length > 0) {
-          await db.update(googleBusinessInfo).set(bizData).where(eq(googleBusinessInfo.installerId, task.installerId));
-        } else {
-          await db.insert(googleBusinessInfo).values({ installerId: task.installerId, ...bizData });
+          // No results
+          if (dfsTask?.status_code === 40102) {
+            await db.update(dataforseoTasks).set({
+              status: "no_results", resultSummary: "No results found",
+              rawResult, completedAt: new Date().toISOString(),
+            }).where(eq(dataforseoTasks.id, task.id));
+            collected++;
+            return;
+          }
+
+          // API error
+          if (dfsTask?.status_code && dfsTask.status_code >= 40000) {
+            await db.update(dataforseoTasks).set({
+              status: "failed",
+              resultSummary: `${dfsTask.status_code}: ${dfsTask.status_message}`,
+              rawResult, completedAt: new Date().toISOString(),
+            }).where(eq(dataforseoTasks.id, task.id));
+            errored++;
+            return;
+          }
+
+          result = dfsTask?.result?.[0] || null;
         }
 
-        await db.update(dataforseoTasks).set({
-          status: "completed",
-          resultSummary: `${result.title} | ${result.phone || "no phone"} | ${result.domain || "no website"}`,
-          rawResult, completedAt: new Date().toISOString(),
-        }).where(eq(dataforseoTasks.id, task.id));
-      }
+        if (!result) { errored++; return; }
 
-      // Job Postings (from SERP organic results)
-      if (task.source === "job_postings" && result) {
-        const jobDomains = ["indeed.co.uk", "indeed.com", "linkedin.com", "reed.co.uk", "totaljobs.com", "glassdoor.co.uk", "glassdoor.com", "cv-library.co.uk", "adzuna.co.uk"];
-        const items = result.items || [];
+        // ── Dispatch to source-specific handler ──
+        const taskRef = { id: task.id, installerId: task.installerId };
+        let handlerResult: TaskHandlerResult;
 
-        const postingsFound = items
-          .filter((item: { type?: string; domain?: string }) =>
-            item.type === "organic" && item.domain && jobDomains.some((jd: string) => item.domain!.includes(jd))
-          )
-          .map((item: { title?: string; domain?: string; url?: string; description?: string }) => ({
-            title: item.title || "",
-            source: item.domain || "",
-            url: item.url || "",
-            snippet: item.description?.substring(0, 200) || "",
-          }))
-          .slice(0, 20);
-
-        const isHiring = postingsFound.length > 0;
-
-        const jobData = {
-          totalPostings: postingsFound.length,
-          postings: postingsFound.length > 0 ? JSON.stringify(postingsFound) : null,
-          isHiring,
-          fetchedAt: new Date().toISOString(),
-        };
-        const existingJobs = await db.select({ id: jobPostings.id }).from(jobPostings).where(eq(jobPostings.installerId, task.installerId)).limit(1);
-        if (existingJobs.length > 0) {
-          await db.update(jobPostings).set(jobData).where(eq(jobPostings.installerId, task.installerId));
-        } else {
-          await db.insert(jobPostings).values({ installerId: task.installerId, ...jobData });
+        switch (task.source) {
+          case "google_reviews":
+            handlerResult = await handleGoogleReviewResult(taskRef, result, rawResult);
+            break;
+          case "trustpilot_search":
+            handlerResult = await handleTrustpilotResult(taskRef, result, rawResult);
+            break;
+          case "google_business_info":
+            handlerResult = await handleGoogleBusinessResult(taskRef, result, rawResult);
+            break;
+          case "job_postings":
+            handlerResult = await handleJobPostingsResult(taskRef, result, rawResult);
+            break;
+          default:
+            errored++;
+            return;
         }
 
-        await db.update(dataforseoTasks).set({
-          status: "completed",
-          resultSummary: isHiring ? `Hiring: ${postingsFound.length} postings found` : "Not hiring",
-          rawResult, completedAt: new Date().toISOString(),
-        }).where(eq(dataforseoTasks.id, task.id));
+        // Tally results
+        switch (handlerResult.outcome) {
+          case "collected":
+            collected++;
+            break;
+          case "rejected":
+            rejected++;
+            if (handlerResult.rejectedMatch) rejectedMatches.push(handlerResult.rejectedMatch);
+            break;
+          case "ai_failed":
+            aiFailed++;
+            break;
+        }
+      } catch {
+        errored++;
       }
-
-      collected++;
-    } catch {
-      errored++;
-    }
     }));
   }
 
+  const processedCount = collected + stillPending + errored + rejected + aiFailed;
+
   return {
     collected,
-    stillPending: stillPending + (timedOut ? pendingTasks.length - (collected + stillPending + errored + rejected) : 0),
+    stillPending: stillPending + (timedOut ? pendingTasks.length - processedCount : 0),
     errored,
     rejected,
+    aiFailed,
+    aiRetried,
     rejectedMatches: rejectedMatches.slice(0, 20),
     total: pendingTasks.length,
     timedOut,

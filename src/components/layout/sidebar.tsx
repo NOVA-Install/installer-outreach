@@ -43,12 +43,12 @@ export function Sidebar() {
       </div>
 
       {/* Search */}
-      <div className="px-2 pt-2">
+      <div className="px-2.5 pt-3 pb-2">
         <CommandK />
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-2 pt-1 space-y-0.5">
+      <nav className="flex-1 px-2 pt-0.5 space-y-0.5">
         {navItems.map((item) => {
           const isActive =
             item.href === "/"
