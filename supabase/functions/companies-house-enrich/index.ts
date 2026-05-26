@@ -104,19 +104,37 @@ serve(async (req) => {
 
         if (!searchResult?.items?.length) return;
 
-        // Pick best match - prefer postcode match
-        let bestMatch = searchResult.items[0];
-        if (installer.postcode) {
-          const prefix = installer.postcode.split(" ")[0].toUpperCase();
-          const byPostcode = searchResult.items.find(
-            (item: { address?: { postal_code?: string } }) =>
-              item.address?.postal_code?.toUpperCase().startsWith(prefix)
-          );
-          if (byPostcode) bestMatch = byPostcode;
+        // Normalize for comparison
+        function norm(s: string) {
+          return s.toLowerCase().replace(/\b(ltd|limited|llp|plc|inc|t\/a|trading as)\b/g, "").replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, " ");
         }
 
-        // If AI available, use it for better matching
-        if (googleAiKey && searchResult.items.length > 1) {
+        // Pre-filter: only consider results where the name has meaningful overlap
+        const instNorm = norm(installer.company_name);
+        const instWords = instNorm.split(" ").filter((w: string) => w.length > 2);
+        const genericWords = new Set(["energy", "solar", "electrical", "electric", "green", "power", "heating", "plumbing", "services", "solutions", "renewables", "renewable", "installations", "contractors", "group", "homes"]);
+        const meaningfulWords = instWords.filter((w: string) => !genericWords.has(w));
+
+        // Find best match — require at least 1 meaningful word in common
+        let bestMatch: typeof searchResult.items[0] | null = null;
+        for (const item of searchResult.items) {
+          const itemNorm = norm(item.title || "");
+          // Exact match after normalization
+          if (instNorm === itemNorm) { bestMatch = item; break; }
+          // Check meaningful word overlap
+          const itemWords = itemNorm.split(" ").filter((w: string) => w.length > 2);
+          const commonMeaningful = meaningfulWords.filter((w: string) => itemWords.includes(w));
+          if (commonMeaningful.length >= 1) {
+            bestMatch = item;
+            break;
+          }
+        }
+
+        // If no meaningful match found without AI, skip
+        if (!bestMatch && !googleAiKey) return;
+
+        // Use AI for matching (or strict name check if no AI)
+        if (googleAiKey) {
           try {
             const candidates = searchResult.items.map((item: { title: string; company_number: string; company_status: string; address?: { postal_code?: string; address_line_1?: string; locality?: string } }, idx: number) =>
               `[${idx}] "${item.title}" (${item.company_number}) - ${item.company_status} - ${item.address?.address_line_1 || ""} ${item.address?.postal_code || ""}`
@@ -126,7 +144,19 @@ serve(async (req) => {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                contents: [{ parts: [{ text: `Which Companies House entry matches "${installer.company_name}" (postcode: ${installer.postcode || "unknown"})?\n\n${candidates}\n\nReply with ONLY the index number (0-${searchResult.items.length - 1}), or "NONE" if no match.` }] }],
+                contents: [{ parts: [{ text: `I need to match the solar installer "${installer.company_name}" (postcode: ${installer.postcode || "unknown"}) to its Companies House registration.
+
+Here are the search results:
+${candidates}
+
+IMPORTANT RULES:
+- The company name must be essentially the SAME business, not just share common words like "electrical", "solar", "renewable", "heating", "energy", "green", "power"
+- "EcoGlow Heating" is NOT the same as "AA Plumbing and Heating" — they share "heating" but are different companies
+- Sole traders or trading names (e.g. "John Smith T/A Solar Direct") should match "SOLAR DIRECT LTD" but NOT "JOHN SMITH BUILDERS LTD"
+- If the postcode is known, prefer matches in the same area, but don't match a completely different company just because the postcode matches
+- If NONE of the results are the same company, reply "NONE" — it's better to have no match than a wrong match
+
+Reply with ONLY the index number (0-${searchResult.items.length - 1}), or "NONE".` }] }],
               }),
             });
             const aiData = await aiRes.json();
@@ -134,11 +164,11 @@ serve(async (req) => {
             const idx = parseInt(answer);
             if (!isNaN(idx) && idx >= 0 && idx < searchResult.items.length) {
               bestMatch = searchResult.items[idx];
-            } else if (answer.toUpperCase() === "NONE") {
+            } else if (answer.toUpperCase().includes("NONE")) {
               return; // AI says no match
             }
           } catch {
-            // AI failed, use fallback match
+            // AI failed — only use fallback if name is very close
           }
         }
 

@@ -441,7 +441,6 @@ export default async function InstallerDetailPage({
                   <p className="text-[11px] text-[#9a9a9a] uppercase tracking-wider mb-3">Scores</p>
                   <div className="space-y-3">
                     <ScoreBar label="Reputation" value={score.reputationScore} />
-                    <ScoreBar label="Est. Monthly Installs" value={score.estimatedMonthlyInstalls} max={50} />
                     <ScoreBar label="Marketing Activity" value={score.marketingActivityScore} />
                     <div className="border-t border-[#f0f0f0] pt-3 mt-1">
                       <ScoreBar label="Overall Score" value={score.overallScore} />
@@ -571,8 +570,8 @@ export default async function InstallerDetailPage({
           )}
 
           {/* ── Company (Companies House) ── */}
-          {chData && (
-            <Section title="Companies House">
+          <Section title="Companies House">
+            {chData ? (<>
               <InfoCard>
                 {installer.legalEntityName && installer.legalEntityName !== "__no_match__" && installer.legalEntityName.toLowerCase() !== installer.companyName.toLowerCase() && (
                   <div className="rounded-md bg-[#FAFAF9] px-3 py-2 mb-3">
@@ -630,8 +629,13 @@ export default async function InstallerDetailPage({
                 </InfoCard>
               )}
               </div>
-            </Section>
-          )}
+            </>) : (
+              <InfoCard>
+                <p className="text-[13px] text-muted-foreground mb-3">No Companies House data yet.</p>
+                <CorrectEnrichment installerId={installerId} source="companies_house" currentValue={null} label="Companies House" placeholder="e.g. 12345678" helpText="Enter a company number to look up, or run Companies House enrichment from the enrichment panel" />
+              </InfoCard>
+            )}
+          </Section>
 
           {/* ── Marketing & Tech ── */}
           <Section title="Marketing & Technology">
