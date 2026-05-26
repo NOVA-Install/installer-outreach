@@ -144,16 +144,14 @@ serve(async (req) => {
         if (item.target) bingByTarget.set(item.target, item);
       }
 
-      // Collect all rows for batch insert
+      // Collect all rows for batch upsert
       const toInsert: Record<string, unknown>[] = [];
-      const toDeleteIds: number[] = [];
       const processedIds = new Set<number>();
 
       for (const domain of batch) {
         const instId = domainMap.get(domain);
         if (!instId || processedIds.has(instId)) continue;
         processedIds.add(instId);
-        toDeleteIds.push(instId);
 
         const gItem = googleByTarget.get(domain);
         const bItem = bingByTarget.get(domain);
@@ -192,12 +190,9 @@ serve(async (req) => {
         processed++;
       }
 
-      // Batch delete existing rows then batch insert new ones
-      if (toDeleteIds.length > 0) {
-        await supabase.from("traffic_data").delete().in("installer_id", toDeleteIds);
-      }
+      // Upsert: insert or update on installer_id conflict
       if (toInsert.length > 0) {
-        await supabase.from("traffic_data").insert(toInsert);
+        await supabase.from("traffic_data").upsert(toInsert, { onConflict: "installer_id" });
       }
 
       // Update progress after each batch
@@ -209,6 +204,7 @@ serve(async (req) => {
       }
 
     } catch (err) {
+      console.error(`Traffic batch ${i}-${i+100} failed:`, err instanceof Error ? err.message : err);
       errors++;
     }
   }

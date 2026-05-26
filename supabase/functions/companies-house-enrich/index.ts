@@ -85,9 +85,9 @@ serve(async (req) => {
   let errors = 0;
   const errorLog: string[] = [];
 
-  // Process 3 at a time (rate limit: 600/5min)
-  for (let i = 0; i < toEnrich.length; i += 3) {
-    const batch = toEnrich.slice(i, i + 3);
+  // Process 1 at a time to stay within rate limit (600/5min = 2/sec, each installer makes ~5 calls)
+  for (let i = 0; i < toEnrich.length; i += 1) {
+    const batch = toEnrich.slice(i, i + 1);
 
     await Promise.allSettled(batch.map(async (installer: { id: number; company_name: string; postcode: string | null }) => {
       try {
@@ -167,7 +167,7 @@ serve(async (req) => {
           latestAccountsUrl = `https://find-and-update.company-information.service.gov.uk/company/${companyNumber}/filing-history`;
         }
 
-        await supabase.from("companies_house_data").insert({
+        await supabase.from("companies_house_data").upsert({
           installer_id: installer.id,
           company_number: profile.company_number,
           company_status: profile.company_status,
@@ -193,7 +193,7 @@ serve(async (req) => {
           has_charges: false,
           charges_count: 0,
           fetched_at: new Date().toISOString(),
-        });
+        }, { onConflict: "installer_id" });
 
         // Also update legal entity name on installer
         await supabase.from("installers").update({
@@ -204,7 +204,9 @@ serve(async (req) => {
 
       } catch (err) {
         errors++;
-        if (errorLog.length < 50) errorLog.push(`${installer.company_name}: ${err instanceof Error ? err.message : String(err)}`);
+        const msg = `${installer.company_name} (id ${installer.id}): ${err instanceof Error ? err.message : String(err)}`;
+        console.error(`CH enrichment failed:`, msg);
+        if (errorLog.length < 50) errorLog.push(msg);
       }
     }));
 
@@ -217,8 +219,8 @@ serve(async (req) => {
       }).eq("id", job.id);
     }
 
-    // Rate limit: ~1.5 req/sec effective
-    await new Promise((r) => setTimeout(r, 500));
+    // Rate limit: 600 req/5min = 2/sec. Each installer makes ~5 calls, so wait 2.5s between installers
+    await new Promise((r) => setTimeout(r, 2500));
   }
 
   // Mark complete

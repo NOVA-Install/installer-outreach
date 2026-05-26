@@ -152,7 +152,7 @@ serve(async (req) => {
             }
           }
 
-          await supabase.from("google_ads_data").insert({
+          await supabase.from("google_ads_data").upsert({
             installer_id: inst.id,
             advertiser_id: advId,
             advertiser_name: advName,
@@ -166,10 +166,11 @@ serve(async (req) => {
             last_ad_seen: lastSeen,
             sample_ad_titles: sampleTitles.length > 0 ? JSON.stringify(sampleTitles) : null,
             fetched_at: new Date().toISOString(),
-          });
+          }, { onConflict: "installer_id" });
 
           processed++;
-        } catch {
+        } catch (err) {
+          console.error(`Google Ads enrichment failed for installer ${inst.id}:`, err instanceof Error ? err.message : err);
           errors++;
         }
       })

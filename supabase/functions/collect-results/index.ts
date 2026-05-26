@@ -48,6 +48,22 @@ serve(async (req) => {
       .replace(/\s+/g, " ");
   }
 
+  // Batch-load all installer details upfront (avoids N+1 queries)
+  const installerIds = [...new Set(pendingTasks!.map((t) => t.installer_id))];
+  const installerMap = new Map<number, { company_name: string; website: string | null; postcode: string | null; county: string | null }>();
+  for (let b = 0; b < installerIds.length; b += 500) {
+    const batch = installerIds.slice(b, b + 500);
+    const { data } = await supabase
+      .from("installers")
+      .select("id, company_name, website, postcode, county")
+      .in("id", batch);
+    if (data) {
+      for (const row of data) {
+        installerMap.set(row.id, { company_name: row.company_name, website: row.website, postcode: row.postcode, county: row.county });
+      }
+    }
+  }
+
   // Process in batches of 50
   for (let i = 0; i < total; i += 50) {
     const batch = pendingTasks!.slice(i, i + 50);
@@ -111,13 +127,8 @@ serve(async (req) => {
             return;
           }
 
-          // Get installer name for matching
-          const { data: inst } = await supabase
-            .from("installers")
-            .select("company_name, website, postcode, county")
-            .eq("id", task.installer_id)
-            .single();
-
+          // Get installer from pre-loaded map
+          const inst = installerMap.get(task.installer_id);
           if (!inst) {
             await supabase.from("dataforseo_tasks").update({
               status: "failed", result_summary: "Installer not found",
@@ -161,34 +172,26 @@ serve(async (req) => {
               } else {
                 matchMethod = "ai_rejected";
               }
-            } catch {
-              // AI failed, skip
-              accepted = true;
-              matchMethod = "ai_unavailable";
+            } catch (aiErr) {
+              // AI failed - reject uncertain match to be safe (consistent with Trustpilot)
+              console.error(`AI call failed for installer ${task.installer_id}:`, aiErr instanceof Error ? aiErr.message : aiErr);
+              accepted = false;
+              matchMethod = "ai_unavailable_rejected";
             }
           } else if (!accepted) {
             matchMethod = "name_mismatch";
           }
 
           if (accepted) {
-            // Check for existing record
-            const { data: existing } = await supabase
-              .from("google_reviews")
-              .select("id")
-              .eq("installer_id", task.installer_id)
-              .limit(1);
-
-            if (!existing || existing.length === 0) {
-              await supabase.from("google_reviews").insert({
-                installer_id: task.installer_id,
-                place_id: result.place_id || null,
-                rating: ratingVal,
-                review_count: reviewsCount,
-                reviews_per_month: reviewsCount > 0 ? reviewsCount / 36 : null,
-                business_status: null,
-                fetched_at: new Date().toISOString(),
-              });
-            }
+            await supabase.from("google_reviews").upsert({
+              installer_id: task.installer_id,
+              place_id: result.place_id || null,
+              rating: ratingVal,
+              review_count: reviewsCount,
+              reviews_per_month: reviewsCount > 0 ? reviewsCount / 36 : null,
+              business_status: null,
+              fetched_at: new Date().toISOString(),
+            }, { onConflict: "installer_id" });
 
             await supabase.from("dataforseo_tasks").update({
               status: "completed",
@@ -220,11 +223,7 @@ serve(async (req) => {
             item.domain && !nonUkTlds.some((tld: string) => item.domain!.endsWith(tld))
           );
 
-          const { data: inst } = await supabase
-            .from("installers")
-            .select("company_name, website, postcode")
-            .eq("id", task.installer_id)
-            .single();
+          const inst = installerMap.get(task.installer_id);
 
           if (!inst || filtered.length === 0) {
             await supabase.from("dataforseo_tasks").update({
@@ -323,22 +322,14 @@ serve(async (req) => {
           }
 
           if (bestMatch) {
-            const { data: existing } = await supabase
-              .from("trustpilot_reviews")
-              .select("id")
-              .eq("installer_id", task.installer_id)
-              .limit(1);
-
-            if (!existing || existing.length === 0) {
-              await supabase.from("trustpilot_reviews").insert({
-                installer_id: task.installer_id,
-                trustpilot_url: bestMatch.domain ? `https://www.trustpilot.com/review/${bestMatch.domain}` : null,
-                rating: bestMatch.rating?.value || null,
-                review_count: bestMatch.reviews_count || 0,
-                trust_score: bestMatch.trust_score || null,
-                fetched_at: new Date().toISOString(),
-              });
-            }
+            await supabase.from("trustpilot_reviews").upsert({
+              installer_id: task.installer_id,
+              trustpilot_url: bestMatch.domain ? `https://www.trustpilot.com/review/${bestMatch.domain}` : null,
+              rating: bestMatch.rating?.value || null,
+              review_count: bestMatch.reviews_count || 0,
+              trust_score: bestMatch.trust_score || null,
+              fetched_at: new Date().toISOString(),
+            }, { onConflict: "installer_id" });
 
             await supabase.from("dataforseo_tasks").update({
               status: "completed",
@@ -363,13 +354,7 @@ serve(async (req) => {
 
         // ─── Google Business Info ───
         if (task.source === "google_business_info" && result) {
-          const { data: existing } = await supabase
-            .from("google_business_info")
-            .select("id")
-            .eq("installer_id", task.installer_id)
-            .limit(1);
-
-          const bizData = {
+          await supabase.from("google_business_info").upsert({
             installer_id: task.installer_id,
             place_id: result.place_id || null,
             title: result.title || null,
@@ -388,13 +373,7 @@ serve(async (req) => {
             price_level: result.price_level || null,
             additional_categories: result.additional_categories ? JSON.stringify(result.additional_categories) : null,
             fetched_at: new Date().toISOString(),
-          };
-
-          if (existing && existing.length > 0) {
-            await supabase.from("google_business_info").update(bizData).eq("installer_id", task.installer_id);
-          } else {
-            await supabase.from("google_business_info").insert(bizData);
-          }
+          }, { onConflict: "installer_id" });
 
           await supabase.from("dataforseo_tasks").update({
             status: "completed",
@@ -427,17 +406,7 @@ serve(async (req) => {
             fetched_at: new Date().toISOString(),
           };
 
-          const { data: existing } = await supabase
-            .from("job_postings")
-            .select("id")
-            .eq("installer_id", task.installer_id)
-            .limit(1);
-
-          if (existing && existing.length > 0) {
-            await supabase.from("job_postings").update(jobData).eq("installer_id", task.installer_id);
-          } else {
-            await supabase.from("job_postings").insert(jobData);
-          }
+          await supabase.from("job_postings").upsert(jobData, { onConflict: "installer_id" });
 
           await supabase.from("dataforseo_tasks").update({
             status: "completed",
@@ -452,6 +421,7 @@ serve(async (req) => {
         // Unknown source - mark complete
         collected++;
       } catch (err) {
+        console.error(`Task ${task.id} (${task.source}, installer ${task.installer_id}) failed:`, err instanceof Error ? err.message : err);
         errored++;
       }
     }));

@@ -110,13 +110,13 @@ serve(async (req) => {
         if (raw.includes(";")) raw = raw.split(";")[0].trim();
         if (/\s/.test(raw) || raw === "****" || !raw.includes(".")) {
           // Skip obviously invalid URLs, but still mark as processed
-          await supabase.from("marketing_signals").insert({
+          await supabase.from("marketing_signals").upsert({
             installer_id: inst.id,
             has_google_analytics: false, has_google_ads: false, has_meta_pixel: false,
             has_crm_tool: false, has_live_chat: false,
             detected_technologies: JSON.stringify(["error:invalid_url"]),
             fetched_at: new Date().toISOString(),
-          });
+          }, { onConflict: "installer_id" });
           errors++;
           return;
         }
@@ -167,8 +167,8 @@ serve(async (req) => {
           errors++;
         }
 
-        // Always create a row so this installer doesn't get retried
-        await supabase.from("marketing_signals").insert({
+        // Upsert so this installer doesn't get retried and no race conditions
+        await supabase.from("marketing_signals").upsert({
           installer_id: inst.id,
           has_google_analytics: hasGA,
           has_google_ads: hasGAds,
@@ -179,7 +179,7 @@ serve(async (req) => {
           live_chat_tool: chatName,
           detected_technologies: JSON.stringify(detected),
           fetched_at: new Date().toISOString(),
-        });
+        }, { onConflict: "installer_id" });
         processed++;
       })
     );

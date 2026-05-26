@@ -72,6 +72,7 @@ export const googleReviews = pgTable("google_reviews", {
   id: serial("id").primaryKey(),
   installerId: integer("installer_id")
     .notNull()
+    .unique()
     .references(() => installers.id),
   placeId: text("place_id"),
   rating: real("rating"),
@@ -86,6 +87,7 @@ export const trustpilotReviews = pgTable("trustpilot_reviews", {
   id: serial("id").primaryKey(),
   installerId: integer("installer_id")
     .notNull()
+    .unique()
     .references(() => installers.id),
   trustpilotUrl: text("trustpilot_url"),
   rating: real("rating"),
@@ -113,6 +115,7 @@ export const companiesHouseData = pgTable("companies_house_data", {
   id: serial("id").primaryKey(),
   installerId: integer("installer_id")
     .notNull()
+    .unique()
     .references(() => installers.id),
   companyNumber: text("company_number"),
   companyStatus: text("company_status"),
@@ -138,6 +141,7 @@ export const marketingSignals = pgTable("marketing_signals", {
   id: serial("id").primaryKey(),
   installerId: integer("installer_id")
     .notNull()
+    .unique()
     .references(() => installers.id),
   hasMetaAds: boolean("has_meta_ads"),
   metaAdCount: integer("meta_ad_count"),
@@ -166,6 +170,7 @@ export const seoData = pgTable("seo_data", {
   id: serial("id").primaryKey(),
   installerId: integer("installer_id")
     .notNull()
+    .unique()
     .references(() => installers.id),
   domainAuthority: integer("domain_authority"),
   backlinksCount: integer("backlinks_count"),
@@ -179,6 +184,7 @@ export const trafficData = pgTable("traffic_data", {
   id: serial("id").primaryKey(),
   installerId: integer("installer_id")
     .notNull()
+    .unique()
     .references(() => installers.id),
   googleOrganicEtv: real("google_organic_etv"),
   googleOrganicCount: integer("google_organic_count"),
@@ -260,6 +266,7 @@ export const googleBusinessInfo = pgTable("google_business_info", {
   id: serial("id").primaryKey(),
   installerId: integer("installer_id")
     .notNull()
+    .unique()
     .references(() => installers.id),
   placeId: text("place_id"),
   title: text("title"),
@@ -285,6 +292,7 @@ export const googleAdsData = pgTable("google_ads_data", {
   id: serial("id").primaryKey(),
   installerId: integer("installer_id")
     .notNull()
+    .unique()
     .references(() => installers.id),
   advertiserId: text("advertiser_id"),
   advertiserName: text("advertiser_name"),
@@ -305,6 +313,7 @@ export const jobPostings = pgTable("job_postings", {
   id: serial("id").primaryKey(),
   installerId: integer("installer_id")
     .notNull()
+    .unique()
     .references(() => installers.id),
   totalPostings: integer("total_postings"),
   postings: text("postings"), // JSON array of { title, location, source, url, datePosted }
@@ -317,6 +326,7 @@ export const websiteQuality = pgTable("website_quality", {
   id: serial("id").primaryKey(),
   installerId: integer("installer_id")
     .notNull()
+    .unique()
     .references(() => installers.id),
   // PageSpeed Insights scores (0-100)
   performanceScore: integer("performance_score"),
