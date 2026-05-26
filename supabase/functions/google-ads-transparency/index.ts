@@ -82,16 +82,21 @@ serve(async (req) => {
   // Process max 150 per invocation (30 parallel × 5 batches within timeout)
   const toProcess = toEnrich.slice(0, 150);
 
-  // Create job
-  const { data: job } = await supabase.from("enrichment_jobs").insert({
-    type: "google_ads_transparency",
-    status: "running",
-    total_items: toProcess.length,
-    processed_items: 0,
-    error_count: 0,
-    started_at: new Date().toISOString(),
-    created_at: new Date().toISOString(),
-  }).select("id").single();
+  // Only create job record if not called from Inngest
+  const skipJob = body.skipJob === true;
+  let job: { id: number } | null = null;
+  if (!skipJob) {
+    const { data } = await supabase.from("enrichment_jobs").insert({
+      type: "google_ads_transparency",
+      status: "running",
+      total_items: toProcess.length,
+      processed_items: 0,
+      error_count: 0,
+      started_at: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+    }).select("id").single();
+    job = data;
+  }
 
   let processed = 0;
   let errors = 0;

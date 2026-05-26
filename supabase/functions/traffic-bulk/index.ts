@@ -64,16 +64,22 @@ serve(async (req) => {
   // Process max 2000 per invocation to stay within timeout
   const toProcess = toEnrich.slice(0, 2000);
 
-  // Create job
-  const { data: job } = await supabase.from("enrichment_jobs").insert({
-    type: "traffic_bulk",
-    status: "running",
-    total_items: toProcess.length,
-    processed_items: 0,
-    error_count: 0,
-    started_at: new Date().toISOString(),
-    created_at: new Date().toISOString(),
-  }).select("id").single();
+  // Only create job record if not called from Inngest
+  const body = await req.json().catch(() => ({}));
+  const skipJob = body.skipJob === true;
+  let job: { id: number } | null = null;
+  if (!skipJob) {
+    const { data } = await supabase.from("enrichment_jobs").insert({
+      type: "traffic_bulk",
+      status: "running",
+      total_items: toProcess.length,
+      processed_items: 0,
+      error_count: 0,
+      started_at: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+    }).select("id").single();
+    job = data;
+  }
 
   // Extract domains - map both with and without www
   const domainMap = new Map<string, number>(); // domain → installerId
