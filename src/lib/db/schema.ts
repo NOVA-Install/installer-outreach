@@ -162,6 +162,7 @@ export const marketingSignals = pgTable("marketing_signals", {
   linkedinUrl: text("linkedin_url"),
   twitterUrl: text("twitter_url"),
   youtubeUrl: text("youtube_url"),
+  detectionVersion: integer("detection_version").default(1),
   fetchedAt: text("fetched_at").notNull(),
 });
 
