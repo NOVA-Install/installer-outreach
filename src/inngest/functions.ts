@@ -75,8 +75,10 @@ async function callEdgeFunction(name: string, body: Record<string, unknown> = {}
   return res.json();
 }
 
-// Max batches per Edge Function loop to prevent runaway
-const MAX_BATCHES = 50;
+// Max iterations per Inngest function to prevent runaway
+// Higher for 1-per-batch functions, lower for bulk functions
+const MAX_BATCHES_SINGLE = 500; // tech detection, companies house (1 installer per call)
+const MAX_BATCHES_BULK = 50;    // traffic, google ads, collect (many per call)
 
 // ── Tech Detection ─────────────────────────────────────────────
 // Runs via Edge Function in batches (200 per invocation)
@@ -89,7 +91,7 @@ export const techDetection = inngest.createFunction(
     let totalErrors = 0;
     let batch = 0;
 
-    while (batch < MAX_BATCHES) {
+    while (batch < MAX_BATCHES_SINGLE) {
       const result = await step.run(`tech-batch-${batch}`, () =>
         callEdgeFunction("tech-detection", { skipJob: true })
       );
@@ -112,7 +114,7 @@ export const techDetection = inngest.createFunction(
 );
 
 // ── Companies House ────────────────────────────────────────────
-// Runs via Edge Function in batches (100 per invocation, rate limited)
+// 1 installer per Edge Function call, rate limited via step.sleep
 
 export const companiesHouse = inngest.createFunction(
   { id: "enrich-companies-house", retries: 3, triggers: [{ event: "enrichment/companies-house" }] },
@@ -122,7 +124,7 @@ export const companiesHouse = inngest.createFunction(
     let totalErrors = 0;
     let batch = 0;
 
-    while (batch < MAX_BATCHES) {
+    while (batch < MAX_BATCHES_SINGLE) {
       const result = await step.run(`ch-batch-${batch}`, () =>
         callEdgeFunction("companies-house-enrich", { skipJob: true })
       );
@@ -136,6 +138,8 @@ export const companiesHouse = inngest.createFunction(
       );
 
       if (remaining <= 0) break;
+      // Rate limit: 600 req/5min. Each installer = 5 calls. Wait 3s between.
+      await step.sleep(`rate-limit-${batch}`, "3s");
       batch++;
     }
 
@@ -155,7 +159,7 @@ export const trafficBulk = inngest.createFunction(
     let totalErrors = 0;
     let batch = 0;
 
-    while (batch < MAX_BATCHES) {
+    while (batch < MAX_BATCHES_BULK) {
       const result = await step.run(`traffic-batch-${batch}`, () =>
         callEdgeFunction("traffic-bulk", { skipJob: true })
       );
@@ -272,7 +276,7 @@ export const collectResults = inngest.createFunction(
     let totalCollected = 0;
     let batch = 0;
 
-    while (batch < MAX_BATCHES) {
+    while (batch < MAX_BATCHES_BULK) {
       const result = await step.run(`collect-batch-${batch}`, () =>
         callEdgeFunction("collect-results")
       );
@@ -345,7 +349,7 @@ export const googleAds = inngest.createFunction(
     let totalErrors = 0;
     let batch = 0;
 
-    while (batch < MAX_BATCHES) {
+    while (batch < MAX_BATCHES_BULK) {
       const result = await step.run(`gads-batch-${batch}`, () =>
         callEdgeFunction("google-ads-transparency", { minTraffic, skipJob: true })
       );

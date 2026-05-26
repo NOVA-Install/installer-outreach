@@ -67,9 +67,8 @@ serve(async (req) => {
     });
   }
 
-  // Process max 20 per invocation (5 API calls each + 2.5s delay = ~50s total)
-  // Inngest handles looping for remaining installers
-  const toEnrich = allToEnrich.slice(0, 20);
+  // Process 1 per invocation — Inngest handles looping
+  const toEnrich = allToEnrich.slice(0, 1);
 
   // Only create job record if not called from Inngest
   const body = await req.json().catch(() => ({}));
@@ -218,16 +217,6 @@ serve(async (req) => {
     }));
 
     processed += batch.length;
-
-    if (job?.id && processed % 15 === 0) {
-      await supabase.from("enrichment_jobs").update({
-        processed_items: processed,
-        error_count: errors,
-      }).eq("id", job.id);
-    }
-
-    // Rate limit: 600 req/5min = 2/sec. Each installer makes ~5 calls, so wait 2.5s between installers
-    await new Promise((r) => setTimeout(r, 2500));
   }
 
   // Mark complete

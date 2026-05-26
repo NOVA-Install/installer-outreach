@@ -81,10 +81,8 @@ serve(async (req) => {
     });
   }
 
-  // Process max 10 per invocation to stay within Supabase Pro 2s CPU limit
-  // (each site: fetch HTML + lowercase + regex match 20 patterns = ~100-200ms CPU)
-  // Inngest calls this in a loop, so small batches are fine
-  const toProcess = installers.slice(0, 10);
+  // Process 1 per invocation — Inngest handles looping
+  const toProcess = installers.slice(0, 1);
 
   // Only create job record if not called from Inngest (which manages its own tracking)
   const body = await req.json().catch(() => ({}));
@@ -106,9 +104,9 @@ serve(async (req) => {
   let processed = 0;
   let errors = 0;
 
-  // Process in parallel batches of 5
-  for (let i = 0; i < toProcess.length; i += 5) {
-    const batch = toProcess.slice(i, i + 5).filter((inst: { website: string | null }) => inst.website);
+  // Process each installer
+  for (let i = 0; i < toProcess.length; i++) {
+    const batch = [toProcess[i]].filter((inst: { website: string | null }) => inst.website);
 
     await Promise.allSettled(
       batch.map(async (inst: { id: number; website: string }) => {
