@@ -7,6 +7,9 @@ import {
 import { eq, isNull, sql } from "drizzle-orm";
 import { robustFetch } from "./fetch-utils";
 
+// Bump this when enrichment logic changes — batch runs will re-enrich outdated rows
+export const WEBSITE_QUALITY_VERSION = 2;
+
 // --- Form quality detection from HTML ---
 
 const MULTI_STEP_SIGNALS = [
@@ -327,7 +330,8 @@ export async function enrichWebsiteQuality(
         .from(installers)
         .leftJoin(websiteQuality, eq(installers.id, websiteQuality.installerId))
         .where(
-          sql`${websiteQuality.id} IS NULL AND ${installers.website} IS NOT NULL AND ${installers.website} != ''`
+          sql`(${websiteQuality.id} IS NULL OR ${websiteQuality.enrichmentVersion} IS NULL OR ${websiteQuality.enrichmentVersion} < ${WEBSITE_QUALITY_VERSION})
+            AND ${installers.website} IS NOT NULL AND ${installers.website} != ''`
         );
 
   const toEnrich = await query;
@@ -409,6 +413,7 @@ export async function enrichWebsiteQuality(
           agencyName: signals?.agencyName ?? null,
           responseTimeMs: htmlData?.responseTimeMs ?? null,
           isHttps: htmlData?.isHttps ?? null,
+          enrichmentVersion: WEBSITE_QUALITY_VERSION,
           fetchedAt: new Date().toISOString(),
         };
         await db.insert(websiteQuality).values(wqValues)
@@ -490,6 +495,7 @@ export async function enrichSingleWebsiteQuality(installerId: number, website: s
     agencyName: signals?.agencyName ?? null,
     responseTimeMs: htmlData?.responseTimeMs ?? null,
     isHttps: htmlData?.isHttps ?? null,
+    enrichmentVersion: WEBSITE_QUALITY_VERSION,
     fetchedAt: new Date().toISOString(),
   };
   await db.insert(websiteQuality).values(wqValues)
