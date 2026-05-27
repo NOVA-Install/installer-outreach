@@ -63,10 +63,10 @@ const SOURCES = [
     cost: "Free",
   },
   {
-    key: "tech_detection",
-    label: "Website Tech Detection",
-    endpoint: "/api/enrichment/tech-detection",
-    description: "Scans installer websites for GA, Meta Pixel, CRM tools, live chat",
+    key: "site_analysis",
+    label: "Site Analysis",
+    endpoint: "/api/enrichment/site-analysis",
+    description: "Tech detection (GA, CRM, chat), PageSpeed scores, form quality, site builder, HTTPS, privacy policy, agency, social links — all in one pass",
     cost: "Free",
   },
   {
@@ -140,13 +140,6 @@ const SOURCES = [
     endpoint: "/api/enrichment/job-postings",
     description: "Detect if company is hiring via Indeed, LinkedIn, Reed, Totaljobs, etc.",
     cost: "~$0.002/search",
-  },
-  {
-    key: "website_quality",
-    label: "Website Quality & PageSpeed",
-    endpoint: "/api/enrichment/website-quality",
-    description: "PageSpeed scores, form quality (basic vs multi-step), site builder, social links, HTTPS, privacy policy, schema markup",
-    cost: "Free",
   },
   {
     key: "creditsafe",

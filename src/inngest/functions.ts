@@ -80,21 +80,26 @@ async function callEdgeFunction(name: string, body: Record<string, unknown> = {}
 const MAX_BATCHES_SINGLE = 500; // tech detection, companies house (1 installer per call)
 const MAX_BATCHES_BULK = 50;    // traffic, google ads, collect (many per call)
 
-// ── Tech Detection ─────────────────────────────────────────────
-// Runs via Edge Function in batches (200 per invocation)
+// ── Site Analysis (merged tech detection + website quality) ──────
+// Fetches HTML once per installer, runs both analyses, writes to both tables
 
-export const techDetection = inngest.createFunction(
-  { id: "enrich-tech-detection", retries: 3, triggers: [{ event: "enrichment/tech-detection" }] },
+export const siteAnalysis = inngest.createFunction(
+  { id: "enrich-site-analysis", retries: 3, triggers: [
+    { event: "enrichment/site-analysis" },
+    { event: "enrichment/tech-detection" },    // backwards compat
+    { event: "enrichment/website-quality" },   // backwards compat
+  ] },
   async ({ step }) => {
-    const jobId = await step.run("create-job", () => createJob("tech_detection"));
+    const jobId = await step.run("create-job", () => createJob("site_analysis"));
     let totalProcessed = 0;
     let totalErrors = 0;
     let batch = 0;
 
-    while (batch < MAX_BATCHES_SINGLE) {
-      const result = await step.run(`tech-batch-${batch}`, () =>
-        callEdgeFunction("tech-detection", { skipJob: true })
-      );
+    while (batch < MAX_BATCHES_BULK) {
+      const result = await step.run(`sa-batch-${batch}`, async () => {
+        const { enrichSiteAnalysisBatch } = await import("@/lib/enrichment/site-analysis");
+        return enrichSiteAnalysisBatch(20);
+      });
 
       totalProcessed += result.processed || 0;
       totalErrors += result.errors || 0;
@@ -181,38 +186,7 @@ export const trafficBulk = inngest.createFunction(
   }
 );
 
-// ── Website Quality ────────────────────────────────────────────
-
-export const websiteQuality = inngest.createFunction(
-  { id: "enrich-website-quality", retries: 3, triggers: [{ event: "enrichment/website-quality" }] },
-  async ({ step }) => {
-    const jobId = await step.run("create-job", () => createJob("website_quality"));
-    let totalProcessed = 0;
-    let totalErrors = 0;
-    let batch = 0;
-
-    while (batch < MAX_BATCHES_BULK) {
-      const result = await step.run(`wq-batch-${batch}`, async () => {
-        const { enrichWebsiteQualityBatch } = await import("@/lib/enrichment/website-quality");
-        return enrichWebsiteQualityBatch(25);
-      });
-
-      totalProcessed += result.processed || 0;
-      totalErrors += result.errors || 0;
-      const remaining = result.remaining ?? 0;
-
-      await step.run(`update-progress-${batch}`, () =>
-        updateJobProgress(jobId, totalProcessed, totalErrors, totalProcessed + remaining)
-      );
-
-      if (remaining <= 0) break;
-      batch++;
-    }
-
-    await step.run("complete-job", () => completeJob(jobId, totalProcessed, totalErrors));
-    return { jobId, totalProcessed, batches: batch + 1 };
-  }
-);
+// (Website Quality merged into Site Analysis above)
 
 // ── Google Reviews ─────────────────────────────────────────────
 
@@ -427,10 +401,9 @@ export const scoresFn = inngest.createFunction(
 
 // Export all functions for the serve handler
 export const allFunctions = [
-  techDetection,
+  siteAnalysis,
   companiesHouse,
   trafficBulk,
-  websiteQuality,
   googleReviews,
   trustpilotFn,
   trustpilotDomainFn,
