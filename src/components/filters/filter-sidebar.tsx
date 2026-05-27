@@ -26,13 +26,14 @@ export interface Filters {
   isShortlisted: string;
   crmTool: string;
   formType: string;
+  agencyName: string;
 }
 
 export const EMPTY_FILTERS: Filters = {
   zones: "", counties: "", stage: "", tier: "", hasWebsite: "", hasEmail: "",
   hasGoogleReviews: "", hasTrustpilot: "", googleRatingMin: "", trustpilotRatingMin: "", reviewCountMin: "",
   inMcs: "", inNova: "", inTrustMark: "", scoreMin: "", scoreMax: "", isShortlisted: "",
-  crmTool: "", formType: "",
+  crmTool: "", formType: "", agencyName: "",
 };
 
 export function countActiveFilters(f: Filters): number {
@@ -149,12 +150,13 @@ function FilterMultiSelect({ values, onChange, options, placeholder }: {
 
 // --- Main FilterSidebar ---
 
-export function FilterSidebar({ filters, onChange, onClear, counties, crmTools, onClose, distanceOrigin, onDistanceOriginChange }: {
+export function FilterSidebar({ filters, onChange, onClear, counties, crmTools, agencies, onClose, distanceOrigin, onDistanceOriginChange }: {
   filters: Filters;
   onChange: (f: Filters) => void;
   onClear: () => void;
   counties: string[];
   crmTools: string[];
+  agencies?: string[];
   onClose: () => void;
   distanceOrigin?: DistanceOrigin | null;
   onDistanceOriginChange?: (origin: DistanceOrigin | null) => void;
@@ -371,6 +373,10 @@ export function FilterSidebar({ filters, onChange, onClear, counties, crmTools, 
 
         <FilterAccordion label="Form Type" isActive={!!filters.formType}>
           <FilterSidebarSelect value={filters.formType} onChange={(v) => set("formType", v)} options={[{ value: "", label: "Any" }, { value: "multi_step", label: "Multi-step" }, { value: "quote_form", label: "Quote form" }, { value: "basic_contact", label: "Basic contact" }, { value: "none", label: "No form" }]} />
+        </FilterAccordion>
+
+        <FilterAccordion label="Agency / Built By" isActive={!!filters.agencyName}>
+          <FilterSidebarSelect value={filters.agencyName} onChange={(v) => set("agencyName", v)} options={[{ value: "", label: "Any" }, { value: "has_agency", label: "Has agency (any)" }, { value: "no_agency", label: "No agency" }, ...(agencies || []).map((a) => ({ value: a, label: a }))]} />
         </FilterAccordion>
 
         {/* REVIEWS section */}

@@ -1056,6 +1056,7 @@ export function InstallerTable({ counties: initialCounties, crmTools: initialCrm
   const [showFilters, setShowFilters] = useState(false);
   const [counties, setCounties] = useState<string[]>(initialCounties ?? []);
   const [crmTools, setCrmTools] = useState<string[]>(initialCrmTools ?? []);
+  const [agencies, setAgencies] = useState<string[]>([]);
   const [distanceOrigin, setDistanceOrigin] = useState<DistanceOrigin | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(100);
@@ -1079,9 +1080,10 @@ export function InstallerTable({ counties: initialCounties, crmTools: initialCrm
     if (counties.length > 0 && crmTools.length > 0) return; // already have data (from server props)
     fetch("/api/installers/filter-options")
       .then((r) => r.json())
-      .then((d: { counties: string[]; crmTools: string[] }) => {
+      .then((d: { counties: string[]; crmTools: string[]; agencies?: string[] }) => {
         setCounties(d.counties);
         setCrmTools(d.crmTools);
+        if (d.agencies) setAgencies(d.agencies);
       })
       .catch(() => {}); // filters just stay empty if this fails
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1149,6 +1151,10 @@ export function InstallerTable({ counties: initialCounties, crmTools: initialCrm
           if (v === "has_crm") params.set("hasCrmTool", "true");
           else if (v === "no_crm") params.set("hasCrmTool", "false");
           else params.set("crmToolName", v);
+        } else if (k === "agencyName") {
+          if (v === "has_agency") params.set("hasAgency", "true");
+          else if (v === "no_agency") params.set("hasAgency", "false");
+          else params.set("agencyName", v);
         } else {
           params.set(k === "stage" ? "stage" : k, v);
         }
@@ -1338,6 +1344,7 @@ export function InstallerTable({ counties: initialCounties, crmTools: initialCrm
             onClear={() => { setFilters(EMPTY_FILTERS); setPage(1); }}
             counties={counties}
             crmTools={crmTools}
+            agencies={agencies}
             onClose={() => setShowFilters(false)}
             distanceOrigin={distanceOrigin}
             onDistanceOriginChange={(o) => {

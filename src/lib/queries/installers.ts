@@ -36,6 +36,8 @@ export interface InstallerFilters {
   hasCrmTool?: boolean;
   crmToolName?: string;
   formType?: string;
+  hasAgency?: boolean;
+  agencyName?: string;
   originLat?: number;
   originLng?: number;
   maxDistanceKm?: number;
@@ -71,6 +73,8 @@ export async function getInstallers(filters: InstallerFilters = {}) {
     hasCrmTool,
     crmToolName,
     formType,
+    hasAgency,
+    agencyName,
     originLat,
     originLng,
     maxDistanceKm,
@@ -86,7 +90,7 @@ export async function getInstallers(filters: InstallerFilters = {}) {
   const needsTrustpilot = true; // always needed — trustpilotReviews is a default column
   const needsMarketing = hasCrmTool !== undefined || !!crmToolName;
   const needsTraffic = false; // only needed if traffic columns are visible (not in default set)
-  const needsQuality = !!formType;
+  const needsQuality = !!formType || hasAgency !== undefined || !!agencyName;
 
   const conditions: SQL[] = [];
 
@@ -211,6 +215,16 @@ export async function getInstallers(filters: InstallerFilters = {}) {
 
   if (formType) {
     conditions.push(eq(websiteQuality.formType, formType));
+  }
+
+  if (hasAgency === true) {
+    conditions.push(sql`${websiteQuality.agencyName} IS NOT NULL AND ${websiteQuality.agencyName} != ''`);
+  } else if (hasAgency === false) {
+    conditions.push(sql`(${websiteQuality.agencyName} IS NULL OR ${websiteQuality.agencyName} = '')`);
+  }
+
+  if (agencyName) {
+    conditions.push(eq(websiteQuality.agencyName, agencyName));
   }
 
   if (maxDistanceKm != null && originLat != null && originLng != null) {
@@ -420,4 +434,14 @@ export async function getDistinctCounties() {
     .orderBy(asc(installers.county));
 
   return results.map((r) => r.county).filter(Boolean) as string[];
+}
+
+export async function getDistinctAgencies() {
+  const results = await db
+    .selectDistinct({ agencyName: websiteQuality.agencyName })
+    .from(websiteQuality)
+    .where(sql`${websiteQuality.agencyName} IS NOT NULL AND ${websiteQuality.agencyName} != ''`)
+    .orderBy(asc(websiteQuality.agencyName));
+
+  return results.map((r) => r.agencyName).filter(Boolean) as string[];
 }

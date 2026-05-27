@@ -43,6 +43,8 @@ export async function GET(request: NextRequest) {
     hasCrmTool: boolParam(searchParams.get("hasCrmTool")),
     crmToolName: searchParams.get("crmToolName") || undefined,
     formType: searchParams.get("formType") || undefined,
+    hasAgency: boolParam(searchParams.get("hasAgency")),
+    agencyName: searchParams.get("agencyName") || undefined,
     originLat: searchParams.get("originLat") ? Number(searchParams.get("originLat")) : undefined,
     originLng: searchParams.get("originLng") ? Number(searchParams.get("originLng")) : undefined,
     maxDistanceKm: searchParams.get("maxDistanceKm") ? Number(searchParams.get("maxDistanceKm")) : undefined,

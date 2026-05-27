@@ -32,6 +32,7 @@ interface MapInstaller {
   hasCrmTool: boolean | null;
   crmToolName: string | null;
   formType: string | null;
+  agencyName: string | null;
 }
 
 function applyFilters(inst: MapInstaller, filters: Filters, search: string): boolean {
@@ -94,6 +95,11 @@ function applyFilters(inst: MapInstaller, filters: Filters, search: string): boo
   // Form type
   if (filters.formType && inst.formType !== filters.formType) return false;
 
+  // Agency
+  if (filters.agencyName === "has_agency" && !inst.agencyName) return false;
+  if (filters.agencyName === "no_agency" && inst.agencyName) return false;
+  if (filters.agencyName && filters.agencyName !== "has_agency" && filters.agencyName !== "no_agency" && inst.agencyName !== filters.agencyName) return false;
+
   // Sources
   if (filters.inMcs === "true" && !inst.inMcs) return false;
   if (filters.inNova === "true" && !inst.inNova) return false;
@@ -110,10 +116,12 @@ export function MapPageClient({
   installers,
   counties,
   crmTools,
+  agencies,
 }: {
   installers: MapInstaller[];
   counties: string[];
   crmTools: string[];
+  agencies: string[];
 }) {
   const [filters, setFiltersRaw] = useState<Filters>(EMPTY_FILTERS);
   const setFilters = (f: Filters) => { setFiltersRaw(f); saveFilters(f); };
@@ -157,6 +165,7 @@ export function MapPageClient({
           onClear={() => setFilters(EMPTY_FILTERS)}
           counties={counties}
           crmTools={crmTools}
+          agencies={agencies}
           onClose={() => setShowFilters(false)}
           distanceOrigin={distanceOrigin}
           onDistanceOriginChange={setDistanceOrigin}

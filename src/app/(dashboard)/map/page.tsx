@@ -2,12 +2,12 @@ import { db } from "@/lib/db";
 import { installers, installerScores, googleReviews, trustpilotReviews, marketingSignals, websiteQuality } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { MapPageClient } from "@/components/map/map-page-client";
-import { getDistinctCounties, getDistinctCrmTools } from "@/lib/queries/installers";
+import { getDistinctCounties, getDistinctCrmTools, getDistinctAgencies } from "@/lib/queries/installers";
 
 export const dynamic = "force-dynamic";
 
 export default async function MapPage() {
-  const [allInstallers, counties, crmTools] = await Promise.all([
+  const [allInstallers, counties, crmTools, agencies] = await Promise.all([
     db
       .select({
         id: installers.id,
@@ -34,6 +34,7 @@ export default async function MapPage() {
         hasCrmTool: marketingSignals.hasCrmTool,
         crmToolName: marketingSignals.crmToolName,
         formType: websiteQuality.formType,
+        agencyName: websiteQuality.agencyName,
       })
       .from(installers)
       .leftJoin(installerScores, eq(installers.id, installerScores.installerId))
@@ -43,7 +44,8 @@ export default async function MapPage() {
       .leftJoin(websiteQuality, eq(installers.id, websiteQuality.installerId)),
     getDistinctCounties(),
     getDistinctCrmTools(),
+    getDistinctAgencies(),
   ]);
 
-  return <MapPageClient installers={allInstallers} counties={counties} crmTools={crmTools} />;
+  return <MapPageClient installers={allInstallers} counties={counties} crmTools={crmTools} agencies={agencies} />;
 }
