@@ -184,21 +184,33 @@ export const trafficBulk = inngest.createFunction(
 // ── Website Quality ────────────────────────────────────────────
 
 export const websiteQuality = inngest.createFunction(
-  { id: "enrich-website-quality", retries: 1, triggers: [{ event: "enrichment/website-quality" }] },
+  { id: "enrich-website-quality", retries: 3, triggers: [{ event: "enrichment/website-quality" }] },
   async ({ step }) => {
     const jobId = await step.run("create-job", () => createJob("website_quality"));
+    let totalProcessed = 0;
+    let totalErrors = 0;
+    let batch = 0;
 
-    await step.run("run-enrichment", async () => {
-      const { enrichWebsiteQuality } = await import("@/lib/enrichment/website-quality");
-      try {
-        await enrichWebsiteQuality(jobId);
-      } catch (err) {
-        await failJob(jobId, err);
-        throw err;
-      }
-    });
+    while (batch < MAX_BATCHES_BULK) {
+      const result = await step.run(`wq-batch-${batch}`, async () => {
+        const { enrichWebsiteQualityBatch } = await import("@/lib/enrichment/website-quality");
+        return enrichWebsiteQualityBatch(25);
+      });
 
-    return { jobId };
+      totalProcessed += result.processed || 0;
+      totalErrors += result.errors || 0;
+      const remaining = result.remaining ?? 0;
+
+      await step.run(`update-progress-${batch}`, () =>
+        updateJobProgress(jobId, totalProcessed, totalErrors, totalProcessed + remaining)
+      );
+
+      if (remaining <= 0) break;
+      batch++;
+    }
+
+    await step.run("complete-job", () => completeJob(jobId, totalProcessed, totalErrors));
+    return { jobId, totalProcessed, batches: batch + 1 };
   }
 );
 

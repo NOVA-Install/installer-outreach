@@ -447,6 +447,96 @@ export async function enrichWebsiteQuality(
     .where(sql`${enrichmentJobs.id} = ${jobId} AND ${enrichmentJobs.status} != 'cancelled'`);
 }
 
+// --- Batch step (for Inngest — processes a limited chunk and returns) ---
+
+export async function enrichWebsiteQualityBatch(batchSize = 25): Promise<{ processed: number; errors: number; remaining: number }> {
+  const toEnrich = await db
+    .select({ id: installers.id, website: installers.website, email: installers.email })
+    .from(installers)
+    .leftJoin(websiteQuality, eq(installers.id, websiteQuality.installerId))
+    .where(
+      sql`(${websiteQuality.id} IS NULL OR ${websiteQuality.enrichmentVersion} IS NULL OR ${websiteQuality.enrichmentVersion} < ${WEBSITE_QUALITY_VERSION})
+        AND ${installers.website} IS NOT NULL AND ${installers.website} != ''`
+    )
+    .limit(batchSize + 1); // fetch one extra to check if more remain
+
+  const hasMore = toEnrich.length > batchSize;
+  const batch = toEnrich.slice(0, batchSize).filter((inst) => inst.website);
+
+  let processed = 0;
+  let errors = 0;
+
+  // Process in sub-batches of 5 (PageSpeed rate limit)
+  for (let i = 0; i < batch.length; i += 5) {
+    const chunk = batch.slice(i, i + 5);
+    const results = await Promise.allSettled(
+      chunk.map(async (installer) => {
+        const url = installer.website!.startsWith("http")
+          ? installer.website!
+          : `https://${installer.website}`;
+
+        const [htmlResult, pageSpeedResult] = await Promise.allSettled([
+          (async () => {
+            const start = Date.now();
+            const res = await robustFetch(url, {
+              headers: { "User-Agent": "Mozilla/5.0 (compatible; InstallerCRM/1.0)" },
+              redirect: "follow",
+            }, { timeoutMs: 10000, retries: 1, retryDelayMs: 1000, retryOn: (r) => r.status >= 500 });
+            const html = await res.text();
+            return { html, responseTimeMs: Date.now() - start, isHttps: res.url.startsWith("https://") };
+          })(),
+          fetchPageSpeed(url),
+        ]);
+
+        const htmlData = htmlResult.status === "fulfilled" ? htmlResult.value : null;
+        const pageSpeed = pageSpeedResult.status === "fulfilled" ? pageSpeedResult.value : null;
+        const form = htmlData ? detectFormQuality(htmlData.html) : { formType: "none" as const, details: {} };
+        const signals = htmlData ? detectWebsiteSignals(htmlData.html, installer.email) : null;
+
+        const wqValues = {
+          installerId: installer.id,
+          performanceScore: pageSpeed?.performanceScore ?? null,
+          accessibilityScore: pageSpeed?.accessibilityScore ?? null,
+          bestPracticesScore: pageSpeed?.bestPracticesScore ?? null,
+          seoScore: pageSpeed?.seoScore ?? null,
+          formType: form.formType,
+          formDetails: JSON.stringify(form.details),
+          siteBuilder: signals?.siteBuilder ?? null,
+          hasSocialLinks: signals?.hasSocialLinks ?? null,
+          hasFavicon: signals?.hasFavicon ?? null,
+          isMobileResponsive: signals?.isMobileResponsive ?? null,
+          hasPrivacyPolicy: signals?.hasPrivacyPolicy ?? null,
+          hasCookieConsent: signals?.hasCookieConsent ?? null,
+          copyrightYear: signals?.copyrightYear ?? null,
+          hasSchemaMarkup: signals?.hasSchemaMarkup ?? null,
+          hasBlog: signals?.hasBlog ?? null,
+          wordpressVersion: signals?.wordpressVersion ?? null,
+          brokenImageCount: signals?.brokenImageCount ?? null,
+          imageCount: signals?.imageCount ?? null,
+          hasGenericEmail: signals?.hasGenericEmail ?? null,
+          agencyName: signals?.agencyName ?? null,
+          responseTimeMs: htmlData?.responseTimeMs ?? null,
+          isHttps: htmlData?.isHttps ?? null,
+          enrichmentVersion: WEBSITE_QUALITY_VERSION,
+          fetchedAt: new Date().toISOString(),
+        };
+        await db.insert(websiteQuality).values(wqValues)
+          .onConflictDoUpdate({ target: websiteQuality.installerId, set: wqValues });
+      })
+    );
+
+    for (const r of results) {
+      processed++;
+      if (r.status === "rejected") errors++;
+    }
+  }
+
+  // Rough remaining count (avoid expensive full count query)
+  const remaining = hasMore ? batchSize : 0; // approximate — will be 0 on last batch
+
+  return { processed, errors, remaining };
+}
+
 // --- Single installer enrichment ---
 
 export async function enrichSingleWebsiteQuality(installerId: number, website: string, email?: string | null) {
