@@ -95,7 +95,7 @@ export const siteAnalysis = inngest.createFunction(
     let totalErrors = 0;
     let batch = 0;
 
-    while (batch < MAX_BATCHES_BULK) {
+    while (batch < 500) {
       const result = await step.run(`sa-batch-${batch}`, async () => {
         const { enrichSiteAnalysisBatch } = await import("@/lib/enrichment/site-analysis");
         return enrichSiteAnalysisBatch(20);
