@@ -153,16 +153,30 @@ export function detectAgency(html: string): string | null {
   }
 
   // Then look for generic "designed by" credits in the footer area
-  // Try to find the footer section (last 20% of HTML)
-  const footerHtml = html.slice(Math.floor(html.length * 0.7));
+  // Only search the last 5% of HTML (actual footer credits, not body content)
+  const footerHtml = html.slice(Math.floor(html.length * 0.95));
   for (const pattern of creditPatterns) {
     pattern.lastIndex = 0;
     const match = pattern.exec(footerHtml);
     if (match) {
       const name = match[1].trim().replace(/[<>"]/g, "");
-      // Filter out generic words that aren't agency names
-      const skipWords = ["us", "our", "the", "a", "an", "your", "my", "me", "we", "them", "this", "that", "it", "all"];
-      if (name.length >= 3 && name.length <= 40 && !skipWords.includes(name.toLowerCase())) {
+      // Filter out generic words and phrases that aren't agency names
+      const skipWords = ["us", "our", "the", "a", "an", "your", "my", "me", "we", "them", "this", "that", "it", "all", "and", "or"];
+      const lowerName = name.toLowerCase();
+      if (
+        name.length >= 3 &&
+        name.length <= 40 &&
+        !skipWords.includes(lowerName) &&
+        // Skip if it looks like body copy (contains common non-agency words)
+        !lowerName.includes("energy") &&
+        !lowerName.includes("solar") &&
+        !lowerName.includes("installation") &&
+        !lowerName.includes("system") &&
+        !lowerName.includes("customer") &&
+        !lowerName.includes("service") &&
+        // Must look like a proper name (starts with uppercase or contains typical agency words)
+        (/[A-Z]/.test(name[0]) || lowerName.includes("digital") || lowerName.includes("media") || lowerName.includes("design") || lowerName.includes("web"))
+      ) {
         return name;
       }
     }
