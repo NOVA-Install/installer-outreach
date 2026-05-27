@@ -7,6 +7,7 @@ import {
   trustpilotReviews,
   companiesHouseData,
   marketingSignals,
+  websiteQuality,
   seoData,
   trafficData,
   installerScores,
@@ -40,6 +41,7 @@ export async function GET() {
   const [trustpilotCount] = await db.select({ count: count() }).from(trustpilotReviews);
   const [chCount] = await db.select({ count: count() }).from(companiesHouseData);
   const [marketingCount] = await db.select({ count: count() }).from(marketingSignals);
+  const [wqCount] = await db.select({ count: count() }).from(websiteQuality).where(sql`${websiteQuality.isHttps} IS NOT NULL`);
   const [seoCount] = await db.select({ count: count() }).from(seoData);
   const [trafficCount] = await db
     .select({ count: count() })
@@ -99,7 +101,7 @@ export async function GET() {
       google_reviews: googleCount?.count ?? 0,
       trustpilot: trustpilotCount?.count ?? 0,
       companies_house: chCount?.count ?? 0,
-      tech_detection: marketingCount?.count ?? 0,
+      site_analysis: Math.min(marketingCount?.count ?? 0, wqCount?.count ?? 0),
       seo: seoCount?.count ?? 0,
       traffic: trafficCount?.count ?? 0,
       scores: scoresCount?.count ?? 0,

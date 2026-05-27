@@ -200,7 +200,7 @@ function CostEstimator({ total, coverage }: { total: number; coverage: Record<st
     [`Google Reviews (${gRemaining} remaining)`, `~$${(gRemaining * 0.0015).toFixed(2)} priority / $${(gRemaining * 0.00075).toFixed(2)} standard`],
     [`Trustpilot (${tRemaining} remaining)`, `~$${(tRemaining * 0.0015).toFixed(2)} priority / $${(tRemaining * 0.00075).toFixed(2)} standard`],
     [`SEO / Backlinks (${sRemaining} remaining)`, `~$${(sRemaining * 0.005).toFixed(2)}`],
-    ["Tech Detection + Companies House", "Free"],
+    ["Site Analysis + Companies House", "Free"],
   ];
   return (
     <div className="rounded-lg bg-[#FFF8F5] border border-[#4ABDE8]/20 px-3 py-2.5">
