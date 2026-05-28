@@ -385,26 +385,25 @@ function saveLinkedInKeywords(kw: string[]) {
   try { localStorage.setItem(LINKEDIN_KEYWORDS_KEY, JSON.stringify(kw)); } catch {}
 }
 
-function LinkedInSignalsConfig({ onRun, disabled }: { onRun: (config: { keywords: string[]; postedLimit: string; companyBatchSize: number; maxCompanies?: number }) => void; disabled: boolean }) {
+function LinkedInSignalsConfig({ disabled }: { disabled: boolean }) {
   const [keywords, setKeywords] = useState<string[]>(loadLinkedInKeywords);
   const [preview, setPreview] = useState<{ eligible: number; estimatedCost: string } | null>(null);
-  const [maxCompanies, setMaxCompanies] = useState<number | undefined>(undefined);
   const [newKeyword, setNewKeyword] = useState("");
   const [postedLimit, setPostedLimit] = useState(() => {
     if (typeof window === "undefined") return "week";
     return localStorage.getItem(LINKEDIN_POSTED_LIMIT_KEY) || "week";
   });
-  const [companyBatchSize, setCompanyBatchSize] = useState(() => {
-    if (typeof window === "undefined") return 10;
-    const s = typeof window !== "undefined" ? localStorage.getItem(LINKEDIN_BATCH_SIZE_KEY) : null;
-    return s ? Number(s) : 1;
-  });
+  const [maxBatches, setMaxBatches] = useState(5);
+  const [signalsRunning, setSignalsRunning] = useState(false);
+  const [progress, setProgress] = useState<{ processed: number; newSignals: number; remaining: number } | null>(null);
 
-  // Fetch cost preview on mount
   useEffect(() => {
     fetch("/api/enrichment/linkedin-signals/preview")
       .then((r) => r.json())
-      .then((data) => setPreview(data))
+      .then((data) => {
+        setPreview(data);
+        setMaxBatches(Math.min(10, Math.ceil(data.eligible / 20)));
+      })
       .catch(() => {});
   }, []);
 
@@ -428,6 +427,41 @@ function LinkedInSignalsConfig({ onRun, disabled }: { onRun: (config: { keywords
     saveLinkedInKeywords(DEFAULT_LINKEDIN_KEYWORDS);
   };
 
+  const runSignals = async () => {
+    setSignalsRunning(true);
+    setProgress({ processed: 0, newSignals: 0, remaining: preview?.eligible ?? 0 });
+
+    let totalProcessed = 0;
+    let totalNewSignals = 0;
+
+    for (let batch = 0; batch < maxBatches; batch++) {
+      try {
+        const res = await fetch("/api/enrichment/linkedin-signals", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ keywords, postedLimit, batchSize: 20 }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed");
+
+        totalProcessed += data.processed || 0;
+        totalNewSignals += data.newSignals || 0;
+        setProgress({ processed: totalProcessed, newSignals: totalNewSignals, remaining: data.remaining || 0 });
+
+        if (data.remaining <= 0 || data.processed === 0) break;
+      } catch (err) {
+        toast.error(`LinkedIn Signals batch ${batch + 1} failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+        break;
+      }
+    }
+
+    toast.success(`LinkedIn Signals: ${totalNewSignals} new posts found from ${totalProcessed} checked`);
+    setSignalsRunning(false);
+    fetch("/api/enrichment/linkedin-signals/preview").then((r) => r.json()).then(setPreview).catch(() => {});
+  };
+
+  const maxCompanies = maxBatches * 20;
+
   return (
     <div className="space-y-3 mt-3 pt-3 border-t border-[#f0f0f0]">
       {/* Search Keywords */}
@@ -446,6 +480,7 @@ function LinkedInSignalsConfig({ onRun, disabled }: { onRun: (config: { keywords
               <button
                 onClick={() => removeKeyword(kw)}
                 className="hover:text-red-500 transition-colors"
+                disabled={signalsRunning}
               >
                 <X className="h-3 w-3" />
               </button>
@@ -460,8 +495,9 @@ function LinkedInSignalsConfig({ onRun, disabled }: { onRun: (config: { keywords
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addKeyword(); } }}
             placeholder="Add keyword..."
             className="flex-1 h-7 rounded-md border border-input bg-background px-2.5 text-[12px] placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            disabled={signalsRunning}
           />
-          <Button size="sm" variant="outline" className="h-7 px-2" onClick={addKeyword} disabled={!newKeyword.trim()}>
+          <Button size="sm" variant="outline" className="h-7 px-2" onClick={addKeyword} disabled={!newKeyword.trim() || signalsRunning}>
             <Plus className="h-3 w-3" />
           </Button>
         </div>
@@ -479,6 +515,7 @@ function LinkedInSignalsConfig({ onRun, disabled }: { onRun: (config: { keywords
                 try { localStorage.setItem(LINKEDIN_POSTED_LIMIT_KEY, v); } catch {}
               }
             }}
+            disabled={signalsRunning}
           >
             <SelectTrigger className="w-[140px] h-7 text-[12px]">
               <SelectValue />
@@ -490,77 +527,68 @@ function LinkedInSignalsConfig({ onRun, disabled }: { onRun: (config: { keywords
             </SelectContent>
           </Select>
         </div>
-        <div className="space-y-1">
-          <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Company Batch Size</label>
-          <Select
-            value={String(companyBatchSize)}
-            onValueChange={(v: string | null) => {
-              if (v) {
-                setCompanyBatchSize(Number(v));
-                try { localStorage.setItem(LINKEDIN_BATCH_SIZE_KEY, v); } catch {}
-              }
-            }}
-          >
-            <SelectTrigger className="w-[100px] h-7 text-[12px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="1">1 (precise)</SelectItem>
-              <SelectItem value="5">5</SelectItem>
-              <SelectItem value="10">10 (default)</SelectItem>
-              <SelectItem value="20">20 (faster)</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
       </div>
 
       {/* Company limit */}
       {preview && preview.eligible > 0 && (
-        <div className="space-y-2">
-          <div className="flex items-center gap-3">
-            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap">Max companies:</label>
-            <input
-              type="range"
-              min={10}
-              max={preview.eligible}
-              step={10}
-              value={maxCompanies ?? preview.eligible}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                setMaxCompanies(v >= preview.eligible ? undefined : v);
-              }}
-              className="flex-1 h-1.5 accent-[#0a66c2]"
-            />
-            <span className="text-[12px] font-medium tabular-nums w-[60px] text-right">
-              {maxCompanies ?? preview.eligible} / {preview.eligible}
-            </span>
-          </div>
+        <div className="flex items-center gap-3">
+          <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap">Companies:</label>
+          <input
+            type="range"
+            min={1}
+            max={Math.min(50, Math.ceil(preview.eligible / 20))}
+            step={1}
+            value={maxBatches}
+            onChange={(e) => setMaxBatches(Number(e.target.value))}
+            className="flex-1 h-1.5 accent-[#0a66c2]"
+            disabled={signalsRunning}
+          />
+          <span className="text-[12px] font-medium tabular-nums w-[80px] text-right">
+            ~{Math.min(maxCompanies, preview.eligible)} / {preview.eligible}
+          </span>
         </div>
       )}
 
-      {/* Cost estimate + Run */}
+      {/* Progress */}
+      {signalsRunning && progress && (
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2 text-[12px]">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            <span className="tabular-nums">
+              {progress.processed} posts checked · {progress.newSignals} new signals · {progress.remaining} companies remaining
+            </span>
+          </div>
+          {preview && preview.eligible > 0 && (
+            <div className="h-1 rounded-full bg-muted overflow-hidden">
+              <div
+                className="h-full bg-[#0a66c2] rounded-full transition-all"
+                style={{ width: `${Math.round(((preview.eligible - progress.remaining) / preview.eligible) * 100)}%` }}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Cost + Run */}
       <div className="flex items-center justify-between pt-1">
         <div className="text-[11px] text-muted-foreground">
           {preview ? (
             <span>
-              <span className="font-medium text-[#1D1D1D]">{maxCompanies ?? preview.eligible}</span> companies with LinkedIn URLs
-              {" · "}
-              Est. cost: <span className="font-medium text-[#1D1D1D]">
-                {maxCompanies
-                  ? `~$${((maxCompanies / preview.eligible) * parseFloat(preview.estimatedCost.replace(/[^0-9.]/g, ""))).toFixed(2)}`
-                  : preview.estimatedCost}
-              </span>
+              <span className="font-medium text-[#1D1D1D]">{preview.eligible}</span> companies with LinkedIn URLs
+              {" · "}Est. cost: <span className="font-medium text-[#1D1D1D]">{preview.estimatedCost}</span>
             </span>
-          ) : (
-            "Loading preview..."
-          )}
+          ) : "Loading preview..."}
         </div>
         <Button
           size="sm"
-          onClick={() => onRun({ keywords, postedLimit, companyBatchSize, maxCompanies })}
-          disabled={disabled || keywords.length === 0}
+          onClick={runSignals}
+          disabled={disabled || signalsRunning || keywords.length === 0}
         >
-          <FaLinkedinIn className="h-3 w-3" /> Run
+          {signalsRunning ? (
+            <><Loader2 className="h-3 w-3 animate-spin" /> Running</>
+          ) : (
+            <><FaLinkedinIn className="h-3 w-3" /> Run (~{Math.min(maxCompanies, preview?.eligible ?? 0)} companies)</>
+          )}
         </Button>
       </div>
     </div>
@@ -1067,24 +1095,6 @@ export function EnrichmentPanel() {
               {source.key === "linkedin_signals" && (
                 <LinkedInSignalsConfig
                   disabled={isRunning || (status?.total ?? 0) === 0}
-                  onRun={async (config: { keywords: string[]; postedLimit: string; companyBatchSize: number; maxCompanies?: number }) => {
-                    setRunning((prev) => new Set([...prev, source.key]));
-                    try {
-                      const res = await fetch("/api/enrichment/linkedin-signals", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify(config),
-                      });
-                      const data = await res.json().catch(() => ({}));
-                      if (!res.ok) throw new Error(data.error || "Failed");
-                      toast.success(`LinkedIn Signals: started with ${config.keywords.length} keywords. Running in background.`);
-                      fetchStatus();
-                    } catch (err) {
-                      toast.error(`LinkedIn Signals: ${err instanceof Error ? err.message : "Failed"}`, { duration: 8000 });
-                    } finally {
-                      setRunning((prev) => { const next = new Set(prev); next.delete(source.key); return next; });
-                    }
-                  }}
                 />
               )}
 

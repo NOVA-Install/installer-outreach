@@ -353,46 +353,62 @@ function matchPostToInstaller(
   return batch[0].installerId;
 }
 
-// ── Inngest entry point ──────────────────────────────────────────
+// ── Single-batch entry point (for client-driven loop on Vercel) ──
 
-export async function enrichLinkedInSignalsBatch(
-  jobId: number,
-  options?: { keywords?: string[]; postedLimit?: string; companyBatchSize?: number; maxCompanies?: number }
-): Promise<void> {
-  try {
-    // Step 1: Sync any new LinkedIn URLs from marketingSignals
-    const { synced } = await syncLinkedInUrls();
-    console.log(`[linkedin-signals] Synced ${synced} new LinkedIn URLs`);
+/**
+ * Process one batch of companies. Called repeatedly by the API route.
+ * Each call syncs URLs, then searches a fixed number of companies.
+ */
+export async function searchLinkedInSignalsBatch(options?: {
+  keywords?: string[];
+  postedLimit?: string;
+  batchSize?: number;
+}): Promise<{ processed: number; errors: number; newSignals: number; remaining: number }> {
+  const batchSize = options?.batchSize ?? 20;
 
-    // Step 2: Search for posts with user-configured options
-    const result = await searchLinkedInPosts({
-      keywords: options?.keywords,
-      postedLimit: options?.postedLimit,
-      companyBatchSize: options?.companyBatchSize,
-      maxCompanies: options?.maxCompanies,
-    });
-    console.log(
-      `[linkedin-signals] Done: ${result.processed} posts checked, ${result.newSignals} new signals, ${result.errors} errors`
-    );
+  // Sync any new LinkedIn URLs first
+  await syncLinkedInUrls();
 
-    await db
-      .update(enrichmentJobs)
-      .set({
-        processedItems: result.processed,
-        errorCount: result.errors,
-        status: "completed",
-        completedAt: new Date().toISOString(),
-      })
-      .where(eq(enrichmentJobs.id, jobId));
-  } catch (err) {
-    await db
-      .update(enrichmentJobs)
-      .set({
-        status: "failed",
-        errorLog: JSON.stringify([String(err)]),
-        completedAt: new Date().toISOString(),
-      })
-      .where(eq(enrichmentJobs.id, jobId));
-    throw err;
+  // Get unsearched companies (those not searched recently)
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const tracked = await db
+    .select({
+      installerId: linkedinCompanyTracking.installerId,
+      companySlug: linkedinCompanyTracking.companySlug,
+      linkedinUrl: linkedinCompanyTracking.linkedinUrl,
+      companyName: installers.companyName,
+      trackingId: linkedinCompanyTracking.id,
+    })
+    .from(linkedinCompanyTracking)
+    .innerJoin(installers, eq(linkedinCompanyTracking.installerId, installers.id))
+    .where(and(
+      isNotNull(linkedinCompanyTracking.companySlug),
+      sql`${linkedinCompanyTracking.companySlug} != '__not_found__'`,
+      sql`(${linkedinCompanyTracking.lastSearchedAt} IS NULL OR ${linkedinCompanyTracking.lastSearchedAt} < ${oneDayAgo})`
+    ))
+    .limit(batchSize);
+
+  if (tracked.length === 0) {
+    return { processed: 0, errors: 0, newSignals: 0, remaining: 0 };
   }
+
+  // Search posts for this batch (one company at a time for accurate attribution)
+  const result = await searchLinkedInPosts({
+    keywords: options?.keywords,
+    postedLimit: options?.postedLimit,
+    companyBatchSize: 1,
+    maxCompanies: batchSize,
+  });
+
+  // Count remaining
+  const [{ count }] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(linkedinCompanyTracking)
+    .where(and(
+      isNotNull(linkedinCompanyTracking.companySlug),
+      sql`${linkedinCompanyTracking.companySlug} != '__not_found__'`,
+      sql`(${linkedinCompanyTracking.lastSearchedAt} IS NULL OR ${linkedinCompanyTracking.lastSearchedAt} < ${oneDayAgo})`
+    ));
+
+  return { ...result, remaining: Number(count) };
 }
