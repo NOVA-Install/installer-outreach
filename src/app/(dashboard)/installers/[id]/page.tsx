@@ -1033,40 +1033,76 @@ export default async function InstallerDetailPage({
                     <LinkedInSearchButton installerId={installerId} />
                   )}
                 </div>
-                <div className="space-y-0">
-                  {contacts.map((contact, i) => (
-                    <div key={contact.id} className={`flex items-center gap-3 py-2.5 ${i > 0 ? "border-t border-[#f0f0f0]" : ""}`}>
-                      {contact.avatarUrl ? (
-                        <img src={contact.avatarUrl} alt="" className="h-8 w-8 rounded-full object-cover shrink-0" />
-                      ) : (
-                        <div className="h-8 w-8 rounded-full bg-[#f5f5f5] flex items-center justify-center shrink-0">
-                          <span className="text-[12px] font-semibold text-[#6a6a6a]">{contact.name[0].toUpperCase()}</span>
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          {contact.profileUrl ? (
-                            <a href={contact.profileUrl} target="_blank" rel="noopener noreferrer" className="text-[13px] font-medium text-[#1D1D1D] hover:text-[#0a66c2] transition-colors">
-                              {contact.name}
-                            </a>
-                          ) : (
-                            <span className="text-[13px] font-medium text-[#1D1D1D]">{contact.name}</span>
+                <details className="group">
+                  <div className="space-y-0">
+                    {contacts.slice(0, 3).map((contact, i) => (
+                      <div key={contact.id} className={`flex items-center gap-3 py-2.5 ${i > 0 ? "border-t border-[#f0f0f0]" : ""}`}>
+                        {contact.avatarUrl ? (
+                          <img src={contact.avatarUrl} alt="" className="h-8 w-8 rounded-full object-cover shrink-0" />
+                        ) : (
+                          <div className="h-8 w-8 rounded-full bg-[#f5f5f5] flex items-center justify-center shrink-0">
+                            <span className="text-[12px] font-semibold text-[#6a6a6a]">{contact.name[0].toUpperCase()}</span>
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            {contact.profileUrl ? (
+                              <a href={contact.profileUrl} target="_blank" rel="noopener noreferrer" className="text-[13px] font-medium text-[#1D1D1D] hover:text-[#0a66c2] transition-colors">
+                                {contact.name}
+                              </a>
+                            ) : (
+                              <span className="text-[13px] font-medium text-[#1D1D1D]">{contact.name}</span>
+                            )}
+                            {contact.profileUrl && <ExternalLink className="h-3 w-3 text-[#c0c0c0]" />}
+                          </div>
+                          {(contact.jobTitle || contact.headline) && (
+                            <p className="text-[11px] text-[#8a8a8a] truncate">{contact.jobTitle || contact.headline}</p>
                           )}
-                          {contact.profileUrl && <ExternalLink className="h-3 w-3 text-[#c0c0c0]" />}
+                          {contact.location && (
+                            <p className="text-[10px] text-[#b0b0b0] truncate">{contact.location}</p>
+                          )}
                         </div>
-                        {(contact.jobTitle || contact.headline) && (
-                          <p className="text-[11px] text-[#8a8a8a] truncate">{contact.jobTitle || contact.headline}</p>
-                        )}
-                        {contact.location && (
-                          <p className="text-[10px] text-[#b0b0b0] truncate">{contact.location}</p>
-                        )}
+                        <span className="text-[10px] text-[#b0b0b0] shrink-0">
+                          Last seen {(() => { try { return new Date(contact.lastSeenAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" }); } catch { return ""; } })()}
+                        </span>
                       </div>
-                      <span className="text-[10px] text-[#b0b0b0] shrink-0">
-                        Last seen {(() => { try { return new Date(contact.lastSeenAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" }); } catch { return ""; } })()}
-                      </span>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                  {contacts.length > 3 && (
+                    <>
+                      <summary className="text-[11px] text-[#0a66c2] hover:underline cursor-pointer mt-2 list-none">
+                        Show all {contacts.length} contacts
+                      </summary>
+                      <div className="space-y-0 mt-1">
+                        {contacts.slice(3).map((contact, i) => (
+                          <div key={contact.id} className="flex items-center gap-3 py-2.5 border-t border-[#f0f0f0]">
+                            {contact.avatarUrl ? (
+                              <img src={contact.avatarUrl} alt="" className="h-8 w-8 rounded-full object-cover shrink-0" />
+                            ) : (
+                              <div className="h-8 w-8 rounded-full bg-[#f5f5f5] flex items-center justify-center shrink-0">
+                                <span className="text-[12px] font-semibold text-[#6a6a6a]">{contact.name[0].toUpperCase()}</span>
+                              </div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                {contact.profileUrl ? (
+                                  <a href={contact.profileUrl} target="_blank" rel="noopener noreferrer" className="text-[13px] font-medium text-[#1D1D1D] hover:text-[#0a66c2] transition-colors">
+                                    {contact.name}
+                                  </a>
+                                ) : (
+                                  <span className="text-[13px] font-medium text-[#1D1D1D]">{contact.name}</span>
+                                )}
+                              </div>
+                              {(contact.jobTitle || contact.headline) && (
+                                <p className="text-[11px] text-[#8a8a8a] truncate">{contact.jobTitle || contact.headline}</p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </details>
               </InfoCard>
             </Section>
           )}
@@ -1075,6 +1111,11 @@ export default async function InstallerDetailPage({
           {linkedInSignals.length > 0 && (() => {
             // Build contact lookup for avatars
             const contactMap = new Map(contacts.map((c) => [c.id, c]));
+            // Only show relevant signals (scored >= 40, or has keyword match, or unscored)
+            const relevantSignals = linkedInSignals.filter((s) =>
+              s.matchedKeyword || s.relevanceScore == null || s.relevanceScore >= 40
+            );
+            if (relevantSignals.length === 0) return null;
             return (
             <Section title="LinkedIn Activity">
               <InfoCard>
@@ -1083,12 +1124,12 @@ export default async function InstallerDetailPage({
                     <FaLinkedinIn className="h-4 w-4 text-[#0a66c2]" />
                   </div>
                   <div>
-                    <p className="text-[14px] font-semibold text-[#1D1D1D]">{linkedInSignals.length} post{linkedInSignals.length !== 1 ? "s" : ""} found</p>
+                    <p className="text-[14px] font-semibold text-[#1D1D1D]">{relevantSignals.length} relevant post{relevantSignals.length !== 1 ? "s" : ""}</p>
                     <p className="text-[11px] text-[#9a9a9a]">Recent LinkedIn activity by employees</p>
                   </div>
                 </div>
                 <div className="space-y-0">
-                  {linkedInSignals.map((signal, i) => {
+                  {relevantSignals.map((signal, i) => {
                     const postedDate = signal.postedAt ? (() => {
                       try { return new Date(signal.postedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }); }
                       catch { return signal.postedAt; }

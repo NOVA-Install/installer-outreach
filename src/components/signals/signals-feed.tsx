@@ -13,6 +13,10 @@ import {
   ArrowUpDown,
   Radio,
   X,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  Sparkles,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -33,10 +37,12 @@ interface Signal {
   matchedKeyword: string | null;
   relevanceScore: number | null;
   relevanceReason: string | null;
+  status: string | null;
   signalType: string;
   fetchedAt: string;
   companyName: string;
   companyWebsite: string | null;
+  pipelineStage: string | null;
   contactId: number | null;
   contactAvatarUrl: string | null;
   contactName: string | null;
@@ -134,6 +140,24 @@ function SignalBadge({ type }: { type: string }) {
   );
 }
 
+function PipelineBadge({ stage }: { stage: string | null }) {
+  if (!stage || stage === "uncontacted") return null;
+  const colors: Record<string, string> = {
+    contacted: "bg-blue-50 text-blue-600 border-blue-200/60",
+    interested: "bg-emerald-50 text-emerald-600 border-emerald-200/60",
+    meeting_booked: "bg-purple-50 text-purple-600 border-purple-200/60",
+    proposal_sent: "bg-amber-50 text-amber-600 border-amber-200/60",
+    closed_won: "bg-green-50 text-green-700 border-green-200/60",
+    closed_lost: "bg-red-50 text-red-600 border-red-200/60",
+    not_interested: "bg-gray-50 text-gray-500 border-gray-200/60",
+  };
+  return (
+    <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${colors[stage] || "bg-gray-50 text-gray-500 border-gray-200/60"}`}>
+      {stage.replace(/_/g, " ")}
+    </span>
+  );
+}
+
 export function SignalsFeed() {
   const [signals, setSignals] = useState<Signal[]>([]);
   const [total, setTotal] = useState(0);
@@ -142,7 +166,31 @@ export function SignalsFeed() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<"postedAt" | "fetchedAt">("postedAt");
+  const [statusFilter, setStatusFilter] = useState<string>("new");
   const [selected, setSelected] = useState<Signal | null>(null);
+  const [scoring, setScoring] = useState(false);
+
+  const updateSignalStatus = async (signalId: number, status: string) => {
+    await fetch(`/api/signals/${signalId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    setSignals((prev) => prev.map((s) => s.id === signalId ? { ...s, status } : s));
+    if (selected?.id === signalId) setSelected({ ...selected, status });
+  };
+
+  const scoreUnscored = async () => {
+    setScoring(true);
+    try {
+      const res = await fetch("/api/signals/score", { method: "POST" });
+      const data = await res.json();
+      if (data.scored > 0) {
+        fetchSignals(); // Refresh to show scores
+      }
+    } catch {}
+    setScoring(false);
+  };
 
   const fetchSignals = useCallback(async () => {
     setLoading(true);
@@ -153,6 +201,7 @@ export function SignalsFeed() {
         sortBy,
       });
       if (search) params.set("search", search);
+      if (statusFilter) params.set("status", statusFilter);
       const res = await fetch(`/api/signals?${params}`);
       if (res.ok) {
         const json: SignalsResponse = await res.json();
@@ -165,7 +214,7 @@ export function SignalsFeed() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, sortBy]);
+  }, [page, search, sortBy, statusFilter]);
 
   useEffect(() => {
     fetchSignals();
@@ -240,6 +289,36 @@ export function SignalsFeed() {
               <ArrowUpDown className="h-3 w-3" />
               {sortBy === "postedAt" ? "Date posted" : "Date added"}
             </button>
+            <button
+              onClick={scoreUnscored}
+              disabled={scoring}
+              className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-[#e5e5e5] bg-white text-[11px] text-[#6a6a6a] hover:bg-[#fafafa] transition-colors shrink-0 disabled:opacity-50"
+              title="Score unscored posts with AI"
+            >
+              {scoring ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+              Score
+            </button>
+          </div>
+          {/* Status tabs */}
+          <div className="flex gap-1 mt-2">
+            {[
+              { value: "new", label: "New" },
+              { value: "", label: "All" },
+              { value: "actioned", label: "Actioned" },
+              { value: "dismissed", label: "Dismissed" },
+            ].map((tab) => (
+              <button
+                key={tab.value}
+                onClick={() => { setStatusFilter(tab.value); setPage(1); }}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors ${
+                  statusFilter === tab.value
+                    ? "bg-[#0a66c2] text-white"
+                    : "text-[#6a6a6a] hover:bg-[#f0f0f0]"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -310,6 +389,7 @@ export function SignalsFeed() {
                               <span className="text-[13px] font-semibold text-[#1D1D1D] truncate">
                                 {signal.companyName}
                               </span>
+                              <PipelineBadge stage={signal.pipelineStage} />
                             </div>
                             <p className="text-[11px] text-[#8a8a8a] truncate">
                               {signal.authorName || "Unknown"}
@@ -499,8 +579,8 @@ export function SignalsFeed() {
               </div>
             )}
 
-            {/* Actions */}
-            <div className="flex gap-2 pt-4 border-t border-[#f0f0f0]">
+            {/* Status + Actions */}
+            <div className="flex flex-wrap gap-2 pt-4 border-t border-[#f0f0f0]">
               <Link
                 href={`/installers/${selected.installerId}`}
                 className="inline-flex items-center gap-1.5 h-8 px-3.5 rounded-lg bg-[#0a66c2] text-white text-[12px] font-medium hover:bg-[#094fa0] transition-colors"
@@ -517,6 +597,32 @@ export function SignalsFeed() {
                   <FaLinkedinIn className="h-3 w-3 text-[#0a66c2]" /> View Profile
                 </a>
               )}
+              <div className="flex gap-1.5 ml-auto">
+                {(selected.status !== "actioned") && (
+                  <button
+                    onClick={() => updateSignalStatus(selected.id, "actioned")}
+                    className="inline-flex items-center gap-1 h-8 px-3 rounded-lg border border-emerald-200 bg-emerald-50 text-[12px] font-medium text-emerald-700 hover:bg-emerald-100 transition-colors"
+                  >
+                    <CheckCircle2 className="h-3 w-3" /> Actioned
+                  </button>
+                )}
+                {(selected.status !== "dismissed") && (
+                  <button
+                    onClick={() => updateSignalStatus(selected.id, "dismissed")}
+                    className="inline-flex items-center gap-1 h-8 px-3 rounded-lg border border-[#e5e5e5] text-[12px] font-medium text-[#9a9a9a] hover:bg-[#fafafa] transition-colors"
+                  >
+                    <XCircle className="h-3 w-3" /> Dismiss
+                  </button>
+                )}
+                {(selected.status === "actioned" || selected.status === "dismissed") && (
+                  <button
+                    onClick={() => updateSignalStatus(selected.id, "new")}
+                    className="inline-flex items-center gap-1 h-8 px-3 rounded-lg border border-[#e5e5e5] text-[12px] font-medium text-[#9a9a9a] hover:bg-[#fafafa] transition-colors"
+                  >
+                    Undo
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         ) : (

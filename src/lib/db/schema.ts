@@ -436,6 +436,7 @@ export const socialSignals = pgTable("social_signals", {
   matchedKeyword: text("matched_keyword"), // which search keyword found this post
   relevanceScore: integer("relevance_score"), // 0-100 from AI analysis
   relevanceReason: text("relevance_reason"), // AI explanation of why this post is relevant
+  status: text("status").default("new"), // "new" | "dismissed" | "actioned"
   signalType: text("signal_type").notNull(), // "post" | "repost"
   fetchedAt: text("fetched_at").notNull(),
 });
