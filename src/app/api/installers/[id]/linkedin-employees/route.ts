@@ -38,27 +38,11 @@ export async function POST(
     const run = await client.actor("harvestapi/linkedin-company-employees").start({
       companies: [tracking.linkedinUrl],
       profileScraperMode: "Short ($4 per 1k)",
+      maxItems: 100,
     });
 
-    // Poll for completion (shorter intervals, fits within Vercel timeout)
-    const runClient = client.run(run.id);
-    const maxWaitMs = 50000; // 50 seconds max
-    const pollInterval = 3000;
-    const startTime = Date.now();
-
-    let finished = false;
-    while (Date.now() - startTime < maxWaitMs) {
-      const status = await runClient.get();
-      if (status?.status === "SUCCEEDED") { finished = true; break; }
-      if (status?.status === "FAILED" || status?.status === "ABORTED") {
-        return NextResponse.json({ error: `Actor run ${status.status}` }, { status: 500 });
-      }
-      await new Promise((r) => setTimeout(r, pollInterval));
-    }
-
-    if (!finished) {
-      return NextResponse.json({ error: "Timed out waiting for Apify. Try again — the run may still complete." }, { status: 504 });
-    }
+    // Wait for the actor to finish using the client's built-in waitForFinish
+    await client.run(run.id).waitForFinish({ waitSecs: 55 });
 
     const { items } = await client.dataset(run.defaultDatasetId).listItems();
 

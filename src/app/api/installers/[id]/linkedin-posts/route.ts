@@ -47,32 +47,14 @@ export async function POST(
 
   const client = new ApifyClient({ token });
 
-  // Start the actor run
+  // Start the actor run and wait
   const run = await client.actor("harvestapi/linkedin-profile-posts").start({
     targetUrls: profileUrls,
     postedLimit,
     maxPosts: 10, // per profile
   });
 
-  // Poll for completion
-  const runClient = client.run(run.id);
-  const maxWaitMs = 50000;
-  const pollInterval = 3000;
-  const startTime = Date.now();
-
-  let finished = false;
-  while (Date.now() - startTime < maxWaitMs) {
-    const status = await runClient.get();
-    if (status?.status === "SUCCEEDED") { finished = true; break; }
-    if (status?.status === "FAILED" || status?.status === "ABORTED") {
-      return NextResponse.json({ error: `Actor run ${status.status}` }, { status: 500 });
-    }
-    await new Promise((r) => setTimeout(r, pollInterval));
-  }
-
-  if (!finished) {
-    return NextResponse.json({ error: "Timed out waiting for Apify. Try again — the run may still complete." }, { status: 504 });
-  }
+  await client.run(run.id).waitForFinish({ waitSecs: 55 });
 
   const { items } = await client.dataset(run.defaultDatasetId).listItems();
 
