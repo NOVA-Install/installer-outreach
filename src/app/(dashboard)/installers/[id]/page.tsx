@@ -18,6 +18,8 @@ import {
   googleAdsData,
   jobPostings,
   websiteQuality,
+  socialSignals,
+  linkedinContacts,
 } from "@/lib/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { Badge } from "@/components/ui/badge";
@@ -39,6 +41,9 @@ import {
   Users,
   Search as SearchIcon,
   AlertCircle,
+  MessageSquare,
+  ThumbsUp,
+  Share2,
 } from "lucide-react";
 import Link from "next/link";
 import { PipelineStageSelector } from "@/components/installers/pipeline-stage";
@@ -158,7 +163,7 @@ export default async function InstallerDetailPage({
       db.select().from(keywordData).where(eq(keywordData.installerId, installerId)).orderBy(sql`${keywordData.searchVolume} DESC`).limit(50),
     ]);
 
-  const [gBusiness, gAds, jobs, siteQuality, googleReviewItems, trustpilotReviewItems, activityList] =
+  const [gBusiness, gAds, jobs, siteQuality, googleReviewItems, trustpilotReviewItems, activityList, linkedInSignals, contacts] =
     await Promise.all([
       db.select().from(googleBusinessInfo).where(eq(googleBusinessInfo.installerId, installerId)).limit(1),
       db.select().from(googleAdsData).where(eq(googleAdsData.installerId, installerId)).limit(1),
@@ -167,6 +172,8 @@ export default async function InstallerDetailPage({
       db.select().from(reviewItems).where(sql`${reviewItems.installerId} = ${installerId} AND ${reviewItems.source} = 'google'`).orderBy(sql`${reviewItems.reviewDate} DESC`),
       db.select().from(reviewItems).where(sql`${reviewItems.installerId} = ${installerId} AND ${reviewItems.source} = 'trustpilot'`).orderBy(sql`${reviewItems.reviewDate} DESC`),
       db.select().from(activities).where(eq(activities.installerId, installerId)).orderBy(sql`${activities.createdAt} DESC`),
+      db.select().from(socialSignals).where(eq(socialSignals.installerId, installerId)).orderBy(sql`${socialSignals.postedAt} DESC`).limit(50),
+      db.select().from(linkedinContacts).where(eq(linkedinContacts.installerId, installerId)).orderBy(sql`${linkedinContacts.lastSeenAt} DESC`),
     ]);
 
   const score = scores[0] ?? null;
@@ -1007,6 +1014,147 @@ export default async function InstallerDetailPage({
               </div>
             </Section>
           )}
+
+          {/* ── LinkedIn Contacts ── */}
+          {contacts.length > 0 && (
+            <Section title="LinkedIn Contacts">
+              <InfoCard>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-[#0a66c2]/10">
+                    <FaLinkedinIn className="h-4 w-4 text-[#0a66c2]" />
+                  </div>
+                  <div>
+                    <p className="text-[14px] font-semibold text-[#1D1D1D]">{contacts.length} contact{contacts.length !== 1 ? "s" : ""}</p>
+                    <p className="text-[11px] text-[#9a9a9a]">People discovered from LinkedIn activity</p>
+                  </div>
+                </div>
+                <div className="space-y-0">
+                  {contacts.map((contact, i) => (
+                    <div key={contact.id} className={`flex items-center gap-3 py-2.5 ${i > 0 ? "border-t border-[#f0f0f0]" : ""}`}>
+                      {contact.avatarUrl ? (
+                        <img src={contact.avatarUrl} alt="" className="h-8 w-8 rounded-full object-cover shrink-0" />
+                      ) : (
+                        <div className="h-8 w-8 rounded-full bg-[#f5f5f5] flex items-center justify-center shrink-0">
+                          <span className="text-[12px] font-semibold text-[#6a6a6a]">{contact.name[0].toUpperCase()}</span>
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          {contact.profileUrl ? (
+                            <a href={contact.profileUrl} target="_blank" rel="noopener noreferrer" className="text-[13px] font-medium text-[#1D1D1D] hover:text-[#0a66c2] transition-colors">
+                              {contact.name}
+                            </a>
+                          ) : (
+                            <span className="text-[13px] font-medium text-[#1D1D1D]">{contact.name}</span>
+                          )}
+                          {contact.profileUrl && <ExternalLink className="h-3 w-3 text-[#c0c0c0]" />}
+                        </div>
+                        {contact.headline && (
+                          <p className="text-[11px] text-[#8a8a8a] truncate">{contact.headline}</p>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-[#b0b0b0] shrink-0">
+                        Last seen {(() => { try { return new Date(contact.lastSeenAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" }); } catch { return ""; } })()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </InfoCard>
+            </Section>
+          )}
+
+          {/* ── LinkedIn Social Signals ── */}
+          {linkedInSignals.length > 0 && (() => {
+            // Build contact lookup for avatars
+            const contactMap = new Map(contacts.map((c) => [c.id, c]));
+            return (
+            <Section title="LinkedIn Activity">
+              <InfoCard>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-[#0a66c2]/10">
+                    <FaLinkedinIn className="h-4 w-4 text-[#0a66c2]" />
+                  </div>
+                  <div>
+                    <p className="text-[14px] font-semibold text-[#1D1D1D]">{linkedInSignals.length} post{linkedInSignals.length !== 1 ? "s" : ""} found</p>
+                    <p className="text-[11px] text-[#9a9a9a]">Recent LinkedIn activity by employees</p>
+                  </div>
+                </div>
+                <div className="space-y-0">
+                  {linkedInSignals.map((signal, i) => {
+                    const postedDate = signal.postedAt ? (() => {
+                      try { return new Date(signal.postedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }); }
+                      catch { return signal.postedAt; }
+                    })() : null;
+                    const text = signal.postText || "";
+                    const truncated = text.length > 280 ? text.slice(0, 280) + "…" : text;
+                    const contact = signal.contactId ? contactMap.get(signal.contactId) : null;
+
+                    return (
+                      <div key={signal.id} className={`py-3 ${i > 0 ? "border-t border-[#f0f0f0]" : ""}`}>
+                        <div className="flex items-start gap-3">
+                          {contact?.avatarUrl ? (
+                            <img src={contact.avatarUrl} alt="" className="h-8 w-8 rounded-full object-cover shrink-0 mt-0.5" />
+                          ) : (
+                          <div className="flex items-center justify-center h-8 w-8 rounded-full bg-[#f5f5f5] shrink-0 mt-0.5">
+                            <span className="text-[12px] font-semibold text-[#6a6a6a]">
+                              {(signal.authorName || "?")[0].toUpperCase()}
+                            </span>
+                          </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {signal.authorProfileUrl ? (
+                                <a href={signal.authorProfileUrl} target="_blank" rel="noopener noreferrer" className="text-[13px] font-medium text-[#1D1D1D] hover:text-[#0a66c2] transition-colors">
+                                  {signal.authorName || "Unknown"}
+                                </a>
+                              ) : (
+                                <span className="text-[13px] font-medium text-[#1D1D1D]">{signal.authorName || "Unknown"}</span>
+                              )}
+                              {signal.signalType === "repost" && (
+                                <span className="inline-flex items-center gap-0.5 text-[10px] text-[#9a9a9a] bg-[#f5f5f5] rounded-full px-1.5 py-0.5">
+                                  <Share2 className="h-2.5 w-2.5" /> repost
+                                </span>
+                              )}
+                              {postedDate && <span className="text-[11px] text-[#9a9a9a]">{postedDate}</span>}
+                            </div>
+                            {signal.authorHeadline && (
+                              <p className="text-[11px] text-[#9a9a9a] truncate">{signal.authorHeadline}</p>
+                            )}
+                            {truncated && (
+                              <p className="text-[12px] text-[#4a4a4a] mt-1.5 leading-relaxed whitespace-pre-line">{truncated}</p>
+                            )}
+                            <div className="flex items-center gap-4 mt-2">
+                              {signal.likes != null && signal.likes > 0 && (
+                                <span className="flex items-center gap-1 text-[11px] text-[#9a9a9a]">
+                                  <ThumbsUp className="h-3 w-3" /> {signal.likes}
+                                </span>
+                              )}
+                              {signal.comments != null && signal.comments > 0 && (
+                                <span className="flex items-center gap-1 text-[11px] text-[#9a9a9a]">
+                                  <MessageSquare className="h-3 w-3" /> {signal.comments}
+                                </span>
+                              )}
+                              {signal.shares != null && signal.shares > 0 && (
+                                <span className="flex items-center gap-1 text-[11px] text-[#9a9a9a]">
+                                  <Share2 className="h-3 w-3" /> {signal.shares}
+                                </span>
+                              )}
+                              {signal.postUrl && (
+                                <a href={signal.postUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] text-[#0a66c2] hover:underline inline-flex items-center gap-0.5 ml-auto">
+                                  View on LinkedIn <ExternalLink className="h-3 w-3" />
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </InfoCard>
+            </Section>
+            );
+          })()}
 
           {/* ── Activity ── */}
           <Section title="Activity">

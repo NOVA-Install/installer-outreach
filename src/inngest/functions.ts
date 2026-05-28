@@ -399,6 +399,32 @@ export const scoresFn = inngest.createFunction(
   }
 );
 
+// ── LinkedIn Social Signals ──────────────────────────────────
+
+export const linkedInSignals = inngest.createFunction(
+  { id: "enrich-linkedin-signals", retries: 2, triggers: [{ event: "enrichment/linkedin-signals" }] },
+  async ({ event, step }) => {
+    const keywords = event.data?.keywords as string[] | undefined;
+    const postedLimit = (event.data?.postedLimit as string) || "week";
+    const companyBatchSize = (event.data?.companyBatchSize as number) || 1;
+    const maxCompanies = event.data?.maxCompanies as number | undefined;
+
+    const jobId = await step.run("create-job", () => createJob("linkedin_signals"));
+
+    await step.run("run-enrichment", async () => {
+      const { enrichLinkedInSignalsBatch } = await import("@/lib/enrichment/linkedin-signals");
+      try {
+        await enrichLinkedInSignalsBatch(jobId, { keywords, postedLimit, companyBatchSize, maxCompanies });
+      } catch (err) {
+        await failJob(jobId, err);
+        throw err;
+      }
+    });
+
+    return { jobId };
+  }
+);
+
 // Export all functions for the serve handler
 export const allFunctions = [
   siteAnalysis,
@@ -413,4 +439,5 @@ export const allFunctions = [
   googleAds,
   jobPostingsFn,
   scoresFn,
+  linkedInSignals,
 ];

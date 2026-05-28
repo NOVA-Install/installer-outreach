@@ -1,0 +1,2475 @@
+{
+  "id": "1df58a39-e29a-407c-8b96-7a06ba781322",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.activities": {
+      "name": "activities",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "installer_id": {
+          "name": "installer_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content": {
+          "name": "content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "metadata": {
+          "name": "metadata",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "activities_installer_id_installers_id_fk": {
+          "name": "activities_installer_id_installers_id_fk",
+          "tableFrom": "activities",
+          "tableTo": "installers",
+          "columnsFrom": [
+            "installer_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.companies_house_data": {
+      "name": "companies_house_data",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "installer_id": {
+          "name": "installer_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "company_number": {
+          "name": "company_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "company_status": {
+          "name": "company_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "incorporation_date": {
+          "name": "incorporation_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "company_type": {
+          "name": "company_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sic_codes": {
+          "name": "sic_codes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "registered_address": {
+          "name": "registered_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_accounts_date": {
+          "name": "last_accounts_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "account_category": {
+          "name": "account_category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "employee_count": {
+          "name": "employee_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "officers": {
+          "name": "officers",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "persons_of_control": {
+          "name": "persons_of_control",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "latest_accounts_url": {
+          "name": "latest_accounts_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "latest_accounts_type": {
+          "name": "latest_accounts_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "has_insolvency_history": {
+          "name": "has_insolvency_history",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "has_charges": {
+          "name": "has_charges",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "charges_count": {
+          "name": "charges_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fetched_at": {
+          "name": "fetched_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "companies_house_data_installer_id_installers_id_fk": {
+          "name": "companies_house_data_installer_id_installers_id_fk",
+          "tableFrom": "companies_house_data",
+          "tableTo": "installers",
+          "columnsFrom": [
+            "installer_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "companies_house_data_installer_id_unique": {
+          "name": "companies_house_data_installer_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "installer_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.dataforseo_tasks": {
+      "name": "dataforseo_tasks",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "installer_id": {
+          "name": "installer_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "task_id": {
+          "name": "task_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "endpoint": {
+          "name": "endpoint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "search_term": {
+          "name": "search_term",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "result_summary": {
+          "name": "result_summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "raw_result": {
+          "name": "raw_result",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "dataforseo_tasks_installer_id_installers_id_fk": {
+          "name": "dataforseo_tasks_installer_id_installers_id_fk",
+          "tableFrom": "dataforseo_tasks",
+          "tableTo": "installers",
+          "columnsFrom": [
+            "installer_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.enrichment_jobs": {
+      "name": "enrichment_jobs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "total_items": {
+          "name": "total_items",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "processed_items": {
+          "name": "processed_items",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error_count": {
+          "name": "error_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error_log": {
+          "name": "error_log",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.google_ads_data": {
+      "name": "google_ads_data",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "installer_id": {
+          "name": "installer_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "advertiser_id": {
+          "name": "advertiser_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "advertiser_name": {
+          "name": "advertiser_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_verified": {
+          "name": "is_verified",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "total_ads": {
+          "name": "total_ads",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "text_ads": {
+          "name": "text_ads",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "image_ads": {
+          "name": "image_ads",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "video_ads": {
+          "name": "video_ads",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "platforms": {
+          "name": "platforms",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "first_ad_seen": {
+          "name": "first_ad_seen",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_ad_seen": {
+          "name": "last_ad_seen",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sample_ad_titles": {
+          "name": "sample_ad_titles",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "transparency_urls": {
+          "name": "transparency_urls",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fetched_at": {
+          "name": "fetched_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "google_ads_data_installer_id_installers_id_fk": {
+          "name": "google_ads_data_installer_id_installers_id_fk",
+          "tableFrom": "google_ads_data",
+          "tableTo": "installers",
+          "columnsFrom": [
+            "installer_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "google_ads_data_installer_id_unique": {
+          "name": "google_ads_data_installer_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "installer_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.google_business_info": {
+      "name": "google_business_info",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "installer_id": {
+          "name": "installer_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "place_id": {
+          "name": "place_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "phone": {
+          "name": "phone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "website_domain": {
+          "name": "website_domain",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "main_category": {
+          "name": "main_category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "address": {
+          "name": "address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "city": {
+          "name": "city",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "postal_code": {
+          "name": "postal_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "latitude": {
+          "name": "latitude",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "longitude": {
+          "name": "longitude",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "total_photos": {
+          "name": "total_photos",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_claimed": {
+          "name": "is_claimed",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "current_status": {
+          "name": "current_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "work_hours": {
+          "name": "work_hours",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "price_level": {
+          "name": "price_level",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "additional_categories": {
+          "name": "additional_categories",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fetched_at": {
+          "name": "fetched_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "google_business_info_installer_id_installers_id_fk": {
+          "name": "google_business_info_installer_id_installers_id_fk",
+          "tableFrom": "google_business_info",
+          "tableTo": "installers",
+          "columnsFrom": [
+            "installer_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "google_business_info_installer_id_unique": {
+          "name": "google_business_info_installer_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "installer_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.google_reviews": {
+      "name": "google_reviews",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "installer_id": {
+          "name": "installer_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "place_id": {
+          "name": "place_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rating": {
+          "name": "rating",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "review_count": {
+          "name": "review_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reviews_per_month": {
+          "name": "reviews_per_month",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "business_status": {
+          "name": "business_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fetched_at": {
+          "name": "fetched_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "google_reviews_installer_id_installers_id_fk": {
+          "name": "google_reviews_installer_id_installers_id_fk",
+          "tableFrom": "google_reviews",
+          "tableTo": "installers",
+          "columnsFrom": [
+            "installer_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "google_reviews_installer_id_unique": {
+          "name": "google_reviews_installer_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "installer_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.installer_scores": {
+      "name": "installer_scores",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "installer_id": {
+          "name": "installer_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reputation_score": {
+          "name": "reputation_score",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "marketing_activity_score": {
+          "name": "marketing_activity_score",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "overall_score": {
+          "name": "overall_score",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tier": {
+          "name": "tier",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_calculated_at": {
+          "name": "last_calculated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "installer_scores_installer_id_installers_id_fk": {
+          "name": "installer_scores_installer_id_installers_id_fk",
+          "tableFrom": "installer_scores",
+          "tableTo": "installers",
+          "columnsFrom": [
+            "installer_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "installer_scores_installer_id_unique": {
+          "name": "installer_scores_installer_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "installer_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.installer_sources": {
+      "name": "installer_sources",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "installer_id": {
+          "name": "installer_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_identifier": {
+          "name": "source_identifier",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_company_name": {
+          "name": "source_company_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_postcode": {
+          "name": "source_postcode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "imported_at": {
+          "name": "imported_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "installer_sources_installer_id_installers_id_fk": {
+          "name": "installer_sources_installer_id_installers_id_fk",
+          "tableFrom": "installer_sources",
+          "tableTo": "installers",
+          "columnsFrom": [
+            "installer_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "uq_source_identifier": {
+          "name": "uq_source_identifier",
+          "nullsNotDistinct": false,
+          "columns": [
+            "source",
+            "source_identifier"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.installer_tags": {
+      "name": "installer_tags",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "installer_id": {
+          "name": "installer_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tag_id": {
+          "name": "tag_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "installer_tags_installer_id_installers_id_fk": {
+          "name": "installer_tags_installer_id_installers_id_fk",
+          "tableFrom": "installer_tags",
+          "tableTo": "installers",
+          "columnsFrom": [
+            "installer_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "installer_tags_tag_id_tags_id_fk": {
+          "name": "installer_tags_tag_id_tags_id_fk",
+          "tableFrom": "installer_tags",
+          "tableTo": "tags",
+          "columnsFrom": [
+            "tag_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.installers": {
+      "name": "installers",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "installer_id": {
+          "name": "installer_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "company_name": {
+          "name": "company_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "alternative_names": {
+          "name": "alternative_names",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "legal_entity_name": {
+          "name": "legal_entity_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "legal_entity_number": {
+          "name": "legal_entity_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "website_status": {
+          "name": "website_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "certification_number": {
+          "name": "certification_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "certification_body": {
+          "name": "certification_body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "telephone": {
+          "name": "telephone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "website": {
+          "name": "website",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "address": {
+          "name": "address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "county": {
+          "name": "county",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "postcode": {
+          "name": "postcode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "country": {
+          "name": "country",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "latitude": {
+          "name": "latitude",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "longitude": {
+          "name": "longitude",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "website_sources": {
+          "name": "website_sources",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "email_sources": {
+          "name": "email_sources",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "telephone_sources": {
+          "name": "telephone_sources",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "address_sources": {
+          "name": "address_sources",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "company_name_sources": {
+          "name": "company_name_sources",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "in_nova": {
+          "name": "in_nova",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "in_mcs": {
+          "name": "in_mcs",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "in_trustmark": {
+          "name": "in_trustmark",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_count": {
+          "name": "source_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "boiler_upgrade_scheme": {
+          "name": "boiler_upgrade_scheme",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "technologies_certified": {
+          "name": "technologies_certified",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "regions_covered": {
+          "name": "regions_covered",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "nova_year_started": {
+          "name": "nova_year_started",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "nova_battery_storage": {
+          "name": "nova_battery_storage",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "nova_location_area": {
+          "name": "nova_location_area",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "nova_incorporated_name": {
+          "name": "nova_incorporated_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "nova_enf_profile_url": {
+          "name": "nova_enf_profile_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "trustmark_tmln": {
+          "name": "trustmark_tmln",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "trustmark_district": {
+          "name": "trustmark_district",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "trustmark_region": {
+          "name": "trustmark_region",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "trustmark_national_coverage": {
+          "name": "trustmark_national_coverage",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "trustmark_scheme_providers": {
+          "name": "trustmark_scheme_providers",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "trustmark_member_since": {
+          "name": "trustmark_member_since",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "trustmark_description": {
+          "name": "trustmark_description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "trustmark_profile_url": {
+          "name": "trustmark_profile_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "trustmark_status": {
+          "name": "trustmark_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_shortlisted": {
+          "name": "is_shortlisted",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false,
+          "default": false
+        },
+        "priority": {
+          "name": "priority",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "priority_note": {
+          "name": "priority_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pipeline_stage": {
+          "name": "pipeline_stage",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'uncontacted'"
+        },
+        "pipeline_stage_updated_at": {
+          "name": "pipeline_stage_updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "installers_installer_id_unique": {
+          "name": "installers_installer_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "installer_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.job_postings": {
+      "name": "job_postings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "installer_id": {
+          "name": "installer_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "total_postings": {
+          "name": "total_postings",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "postings": {
+          "name": "postings",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_hiring": {
+          "name": "is_hiring",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fetched_at": {
+          "name": "fetched_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "job_postings_installer_id_installers_id_fk": {
+          "name": "job_postings_installer_id_installers_id_fk",
+          "tableFrom": "job_postings",
+          "tableTo": "installers",
+          "columnsFrom": [
+            "installer_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "job_postings_installer_id_unique": {
+          "name": "job_postings_installer_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "installer_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.keyword_data": {
+      "name": "keyword_data",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "installer_id": {
+          "name": "installer_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "keyword": {
+          "name": "keyword",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "search_volume": {
+          "name": "search_volume",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cpc": {
+          "name": "cpc",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "competition": {
+          "name": "competition",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "competition_index": {
+          "name": "competition_index",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "low_top_of_page_bid": {
+          "name": "low_top_of_page_bid",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "high_top_of_page_bid": {
+          "name": "high_top_of_page_bid",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "monthly_searches": {
+          "name": "monthly_searches",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fetched_at": {
+          "name": "fetched_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "keyword_data_installer_id_installers_id_fk": {
+          "name": "keyword_data_installer_id_installers_id_fk",
+          "tableFrom": "keyword_data",
+          "tableTo": "installers",
+          "columnsFrom": [
+            "installer_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.linkedin_company_tracking": {
+      "name": "linkedin_company_tracking",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "installer_id": {
+          "name": "installer_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "linkedin_url": {
+          "name": "linkedin_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "company_slug": {
+          "name": "company_slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_searched_at": {
+          "name": "last_searched_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "linkedin_company_tracking_installer_id_installers_id_fk": {
+          "name": "linkedin_company_tracking_installer_id_installers_id_fk",
+          "tableFrom": "linkedin_company_tracking",
+          "tableTo": "installers",
+          "columnsFrom": [
+            "installer_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "linkedin_company_tracking_installer_id_unique": {
+          "name": "linkedin_company_tracking_installer_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "installer_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.marketing_signals": {
+      "name": "marketing_signals",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "installer_id": {
+          "name": "installer_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "has_meta_ads": {
+          "name": "has_meta_ads",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "meta_ad_count": {
+          "name": "meta_ad_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "meta_ad_last_seen": {
+          "name": "meta_ad_last_seen",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "has_google_analytics": {
+          "name": "has_google_analytics",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "has_google_ads": {
+          "name": "has_google_ads",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "has_meta_pixel": {
+          "name": "has_meta_pixel",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "has_crm_tool": {
+          "name": "has_crm_tool",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "crm_tool_name": {
+          "name": "crm_tool_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "has_live_chat": {
+          "name": "has_live_chat",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "live_chat_tool": {
+          "name": "live_chat_tool",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "detected_technologies": {
+          "name": "detected_technologies",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "estimated_monthly_traffic": {
+          "name": "estimated_monthly_traffic",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "estimated_ad_spend": {
+          "name": "estimated_ad_spend",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "facebook_url": {
+          "name": "facebook_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "instagram_url": {
+          "name": "instagram_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "linkedin_url": {
+          "name": "linkedin_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "twitter_url": {
+          "name": "twitter_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "youtube_url": {
+          "name": "youtube_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "detection_version": {
+          "name": "detection_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "default": 3
+        },
+        "fetched_at": {
+          "name": "fetched_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "marketing_signals_installer_id_installers_id_fk": {
+          "name": "marketing_signals_installer_id_installers_id_fk",
+          "tableFrom": "marketing_signals",
+          "tableTo": "installers",
+          "columnsFrom": [
+            "installer_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "marketing_signals_installer_id_unique": {
+          "name": "marketing_signals_installer_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "installer_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.review_items": {
+      "name": "review_items",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "installer_id": {
+          "name": "installer_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rating": {
+          "name": "rating",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "review_text": {
+          "name": "review_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reviewer_name": {
+          "name": "reviewer_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "review_date": {
+          "name": "review_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fetched_at": {
+          "name": "fetched_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "review_items_installer_id_installers_id_fk": {
+          "name": "review_items_installer_id_installers_id_fk",
+          "tableFrom": "review_items",
+          "tableTo": "installers",
+          "columnsFrom": [
+            "installer_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.seo_data": {
+      "name": "seo_data",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "installer_id": {
+          "name": "installer_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "domain_authority": {
+          "name": "domain_authority",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "backlinks_count": {
+          "name": "backlinks_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "referring_domains": {
+          "name": "referring_domains",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "organic_keywords": {
+          "name": "organic_keywords",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fetched_at": {
+          "name": "fetched_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "seo_data_installer_id_installers_id_fk": {
+          "name": "seo_data_installer_id_installers_id_fk",
+          "tableFrom": "seo_data",
+          "tableTo": "installers",
+          "columnsFrom": [
+            "installer_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "seo_data_installer_id_unique": {
+          "name": "seo_data_installer_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "installer_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.social_signals": {
+      "name": "social_signals",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "installer_id": {
+          "name": "installer_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "post_id": {
+          "name": "post_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "post_url": {
+          "name": "post_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "post_text": {
+          "name": "post_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "author_name": {
+          "name": "author_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "author_headline": {
+          "name": "author_headline",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "author_profile_url": {
+          "name": "author_profile_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "author_profile_id": {
+          "name": "author_profile_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "posted_at": {
+          "name": "posted_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "likes": {
+          "name": "likes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "comments": {
+          "name": "comments",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "shares": {
+          "name": "shares",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "signal_type": {
+          "name": "signal_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fetched_at": {
+          "name": "fetched_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "social_signals_installer_id_installers_id_fk": {
+          "name": "social_signals_installer_id_installers_id_fk",
+          "tableFrom": "social_signals",
+          "tableTo": "installers",
+          "columnsFrom": [
+            "installer_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "social_signals_post_id_unique": {
+          "name": "social_signals_post_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "post_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.tags": {
+      "name": "tags",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "color": {
+          "name": "color",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "tags_name_unique": {
+          "name": "tags_name_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "name"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.traffic_data": {
+      "name": "traffic_data",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "installer_id": {
+          "name": "installer_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "google_organic_etv": {
+          "name": "google_organic_etv",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "google_organic_count": {
+          "name": "google_organic_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "google_organic_traffic_cost": {
+          "name": "google_organic_traffic_cost",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "google_paid_etv": {
+          "name": "google_paid_etv",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "google_paid_count": {
+          "name": "google_paid_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "google_paid_traffic_cost": {
+          "name": "google_paid_traffic_cost",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "google_featured_snippet_etv": {
+          "name": "google_featured_snippet_etv",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "google_local_pack_etv": {
+          "name": "google_local_pack_etv",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "google_organic_pos_1": {
+          "name": "google_organic_pos_1",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "google_organic_pos_2_3": {
+          "name": "google_organic_pos_2_3",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "google_organic_pos_4_10": {
+          "name": "google_organic_pos_4_10",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "google_organic_pos_11_20": {
+          "name": "google_organic_pos_11_20",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "google_organic_is_new": {
+          "name": "google_organic_is_new",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "google_organic_is_up": {
+          "name": "google_organic_is_up",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "google_organic_is_down": {
+          "name": "google_organic_is_down",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "google_organic_is_lost": {
+          "name": "google_organic_is_lost",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "google_paid_pos_1": {
+          "name": "google_paid_pos_1",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "google_paid_pos_2_3": {
+          "name": "google_paid_pos_2_3",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "google_paid_pos_4_10": {
+          "name": "google_paid_pos_4_10",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "bing_organic_etv": {
+          "name": "bing_organic_etv",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "bing_organic_count": {
+          "name": "bing_organic_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "bing_paid_etv": {
+          "name": "bing_paid_etv",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "bing_paid_count": {
+          "name": "bing_paid_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fetched_at": {
+          "name": "fetched_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "traffic_data_installer_id_installers_id_fk": {
+          "name": "traffic_data_installer_id_installers_id_fk",
+          "tableFrom": "traffic_data",
+          "tableTo": "installers",
+          "columnsFrom": [
+            "installer_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "traffic_data_installer_id_unique": {
+          "name": "traffic_data_installer_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "installer_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.trustpilot_reviews": {
+      "name": "trustpilot_reviews",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "installer_id": {
+          "name": "installer_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "trustpilot_url": {
+          "name": "trustpilot_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rating": {
+          "name": "rating",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "review_count": {
+          "name": "review_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "trust_score": {
+          "name": "trust_score",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fetched_at": {
+          "name": "fetched_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "trustpilot_reviews_installer_id_installers_id_fk": {
+          "name": "trustpilot_reviews_installer_id_installers_id_fk",
+          "tableFrom": "trustpilot_reviews",
+          "tableTo": "installers",
+          "columnsFrom": [
+            "installer_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "trustpilot_reviews_installer_id_unique": {
+          "name": "trustpilot_reviews_installer_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "installer_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.website_quality": {
+      "name": "website_quality",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "installer_id": {
+          "name": "installer_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "performance_score": {
+          "name": "performance_score",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "accessibility_score": {
+          "name": "accessibility_score",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "best_practices_score": {
+          "name": "best_practices_score",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "seo_score": {
+          "name": "seo_score",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "form_type": {
+          "name": "form_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "form_details": {
+          "name": "form_details",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "site_builder": {
+          "name": "site_builder",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "has_social_links": {
+          "name": "has_social_links",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "has_favicon": {
+          "name": "has_favicon",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_mobile_responsive": {
+          "name": "is_mobile_responsive",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "has_privacy_policy": {
+          "name": "has_privacy_policy",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "has_cookie_consent": {
+          "name": "has_cookie_consent",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "copyright_year": {
+          "name": "copyright_year",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "has_schema_markup": {
+          "name": "has_schema_markup",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "has_blog": {
+          "name": "has_blog",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "wordpress_version": {
+          "name": "wordpress_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "broken_image_count": {
+          "name": "broken_image_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "image_count": {
+          "name": "image_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "has_generic_email": {
+          "name": "has_generic_email",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "agency_name": {
+          "name": "agency_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "response_time_ms": {
+          "name": "response_time_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_https": {
+          "name": "is_https",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "enrichment_version": {
+          "name": "enrichment_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fetched_at": {
+          "name": "fetched_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "website_quality_installer_id_installers_id_fk": {
+          "name": "website_quality_installer_id_installers_id_fk",
+          "tableFrom": "website_quality",
+          "tableTo": "installers",
+          "columnsFrom": [
+            "installer_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "website_quality_installer_id_unique": {
+          "name": "website_quality_installer_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "installer_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

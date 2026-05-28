@@ -374,6 +374,57 @@ export const activities = pgTable("activities", {
 
 export const installerNotes = activities;
 
+// LinkedIn company tracking (for Apify post search filtering)
+export const linkedinCompanyTracking = pgTable("linkedin_company_tracking", {
+  id: serial("id").primaryKey(),
+  installerId: integer("installer_id")
+    .notNull()
+    .unique()
+    .references(() => installers.id),
+  linkedinUrl: text("linkedin_url").notNull(), // e.g. https://linkedin.com/company/acme
+  companySlug: text("company_slug"), // e.g. "acme" — extracted from URL
+  lastSearchedAt: text("last_searched_at"), // null until first search
+});
+
+// LinkedIn contacts — auto-populated from post search results
+export const linkedinContacts = pgTable("linkedin_contacts", {
+  id: serial("id").primaryKey(),
+  installerId: integer("installer_id")
+    .notNull()
+    .references(() => installers.id),
+  linkedinUrn: text("linkedin_urn"), // numeric member ID e.g. "459825050"
+  publicIdentifier: text("public_identifier"), // e.g. "benjamin-whitla-562bb2109"
+  profileUrl: text("profile_url"),
+  name: text("name").notNull(),
+  headline: text("headline"), // job title / info from LinkedIn
+  avatarUrl: text("avatar_url"),
+  firstSeenAt: text("first_seen_at").notNull(),
+  lastSeenAt: text("last_seen_at").notNull(),
+}, (t) => [unique("uq_linkedin_contact").on(t.installerId, t.linkedinUrn)]);
+
+// Social signals from LinkedIn (posts by employees of tracked companies)
+export const socialSignals = pgTable("social_signals", {
+  id: serial("id").primaryKey(),
+  installerId: integer("installer_id")
+    .notNull()
+    .references(() => installers.id),
+  contactId: integer("contact_id")
+    .references(() => linkedinContacts.id),
+  postId: text("post_id").notNull().unique(), // LinkedIn post ID — dedupe key
+  postUrl: text("post_url"),
+  postText: text("post_text"),
+  authorName: text("author_name"),
+  authorHeadline: text("author_headline"), // info field — contains job title + company
+  authorProfileUrl: text("author_profile_url"),
+  authorProfileId: text("author_profile_id"), // LinkedIn public identifier
+  postedAt: text("posted_at"), // ISO timestamp of the post
+  likes: integer("likes"),
+  comments: integer("comments"),
+  shares: integer("shares"),
+  signalType: text("signal_type").notNull(), // "post" | "repost"
+  fetchedAt: text("fetched_at").notNull(),
+});
+
 // DataForSEO async task tracking
 export const dataforseoTasks = pgTable("dataforseo_tasks", {
   id: serial("id").primaryKey(),
