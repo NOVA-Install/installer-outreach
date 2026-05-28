@@ -35,6 +35,13 @@ export async function POST(
   const postedLimit = body.postedLimit || (tracking?.lastScrapedPostsAt ? undefined : "month");
   const postedLimitDate = tracking?.lastScrapedPostsAt || undefined;
 
+  // Load user keywords for matching
+  let userKeywords: string[] = [];
+  const [kwSetting] = await db.select().from(appSettings).where(eq(appSettings.key, "linkedin_signal_keywords")).limit(1);
+  if (kwSetting) {
+    try { userKeywords = JSON.parse(kwSetting.value); } catch {}
+  }
+
   // Get all known contacts for this installer
   const contacts = await db
     .select()
@@ -143,7 +150,7 @@ export async function POST(
             : null,
           articleTitle: (post.article as Record<string, unknown>)?.title as string || null,
           articleLink: (post.article as Record<string, unknown>)?.link as string || null,
-          matchedKeyword: null, // No keyword — scraped all posts
+          matchedKeyword: userKeywords.find((kw) => postText.toLowerCase().includes(kw.toLowerCase())) || null,
           signalType: post.repostId ? "repost" : "post",
           fetchedAt: now,
         })
