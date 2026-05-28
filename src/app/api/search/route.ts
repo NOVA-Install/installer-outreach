@@ -29,9 +29,11 @@ export async function GET(request: NextRequest) {
       .where(
         or(
           sql`${installers.companyName} ILIKE ${pattern}`,
+          sql`${installers.alternativeNames} ILIKE ${pattern}`,
           sql`${installers.legalEntityName} ILIKE ${pattern}`,
           sql`${installers.legalEntityNumber} ILIKE ${pattern}`,
-          sql`${installers.postcode} ILIKE ${pattern}`
+          sql`${installers.postcode} ILIKE ${pattern}`,
+          sql`${installers.website} ILIKE ${pattern}`
         )
       )
       .limit(20);
@@ -39,7 +41,7 @@ export async function GET(request: NextRequest) {
     // Categorise results by match type for grouping in the UI
     const lower = q.toLowerCase();
     const results = rows.map((row) => {
-      let matchType: "company" | "legal_entity" | "postcode" | "company_number" = "company";
+      let matchType: "company" | "legal_entity" | "postcode" | "company_number" | "alternative_name" | "website" = "company";
 
       if (
         row.legalEntityNumber &&
@@ -57,6 +59,15 @@ export async function GET(request: NextRequest) {
         !(row.companyName && row.companyName.toLowerCase().includes(lower))
       ) {
         matchType = "legal_entity";
+      } else if (
+        row.website &&
+        row.website.toLowerCase().includes(lower)
+      ) {
+        matchType = "website";
+      } else if (
+        !(row.companyName && row.companyName.toLowerCase().includes(lower))
+      ) {
+        matchType = "alternative_name";
       }
 
       return { ...row, matchType };

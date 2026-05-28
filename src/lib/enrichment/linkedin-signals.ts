@@ -48,7 +48,7 @@ function getApifyClient() {
  */
 function extractSlug(linkedinUrl: string): string | null {
   const match = linkedinUrl.match(
-    /linkedin\.com\/company\/([a-zA-Z0-9._-]+)/i
+    /linkedin\.com\/company\/([a-zA-Z0-9._&-]+)/i
   );
   return match ? match[1].toLowerCase().replace(/\/$/, "") : null;
 }
