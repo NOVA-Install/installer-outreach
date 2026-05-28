@@ -56,6 +56,7 @@ import { ShortlistButton } from "@/components/installers/shortlist-button";
 import { AddFieldInline } from "@/components/installers/add-field-inline";
 import { EnrichGoogleAdsButton } from "@/components/installers/enrich-google-ads-button";
 import { LinkedInSearchButton } from "@/components/installers/linkedin-search-button";
+import { ExpandablePostText } from "@/components/installers/expandable-post-text";
 
 const tierStyles: Record<string, string> = {
   high: "bg-emerald-50 text-emerald-600 border-emerald-200/60",
@@ -1090,7 +1091,6 @@ export default async function InstallerDetailPage({
                       catch { return signal.postedAt; }
                     })() : null;
                     const text = signal.postText || "";
-                    const truncated = text.length > 280 ? text.slice(0, 280) + "…" : text;
                     const contact = signal.contactId ? contactMap.get(signal.contactId) : null;
 
                     return (
@@ -1129,8 +1129,8 @@ export default async function InstallerDetailPage({
                                 {signal.matchedKeyword}
                               </span>
                             )}
-                            {truncated && (
-                              <p className="text-[12px] text-[#4a4a4a] mt-1.5 leading-relaxed whitespace-pre-line">{truncated}</p>
+                            {text && (
+                              <ExpandablePostText text={text} keyword={signal.matchedKeyword} />
                             )}
                             <div className="flex items-center gap-4 mt-2">
                               {signal.likes != null && signal.likes > 0 && (
