@@ -139,6 +139,7 @@ export async function POST(
           likes: (engagement?.likes as number) ?? null,
           comments: (engagement?.comments as number) ?? null,
           shares: (engagement?.shares as number) ?? null,
+          matchedKeyword: ((post as Record<string, unknown>).query as Record<string, unknown>)?.search as string || null,
           signalType: post.repostId ? "repost" : "post",
           fetchedAt: now,
         })

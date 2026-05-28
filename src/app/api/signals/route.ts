@@ -44,6 +44,7 @@ export async function GET(request: NextRequest) {
       likes: socialSignals.likes,
       comments: socialSignals.comments,
       shares: socialSignals.shares,
+      matchedKeyword: socialSignals.matchedKeyword,
       signalType: socialSignals.signalType,
       fetchedAt: socialSignals.fetchedAt,
       companyName: installers.companyName,

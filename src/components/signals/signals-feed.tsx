@@ -30,6 +30,7 @@ interface Signal {
   likes: number | null;
   comments: number | null;
   shares: number | null;
+  matchedKeyword: string | null;
   signalType: string;
   fetchedAt: string;
   companyName: string;
@@ -85,6 +86,23 @@ function getDomain(url: string | null): string | null {
   } catch {
     return null;
   }
+}
+
+function HighlightKeyword({ text, keyword }: { text: string; keyword: string | null }) {
+  if (!keyword || !text) return <>{text}</>;
+  const regex = new RegExp(`(${keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi");
+  const parts = text.split(regex);
+  return (
+    <>
+      {parts.map((part, i) =>
+        regex.test(part) ? (
+          <mark key={i} className="bg-amber-100 text-amber-900 rounded px-0.5">{part}</mark>
+        ) : (
+          <span key={i}>{part}</span>
+        )
+      )}
+    </>
+  );
 }
 
 function SignalBadge({ type }: { type: string }) {
@@ -289,7 +307,12 @@ export function SignalsFeed() {
                           <div className="shrink-0 text-right flex flex-col items-end gap-1">
                             <div className="flex items-center gap-1.5">
                               <SignalBadge type={signal.signalType} />
-                              <span className="text-[11px] text-[#0a66c2] max-w-[180px] truncate">
+                              {signal.matchedKeyword && (
+                                <span className="inline-flex items-center rounded-full bg-amber-50 border border-amber-200/60 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+                                  {signal.matchedKeyword}
+                                </span>
+                              )}
+                              <span className="text-[11px] text-[#0a66c2] max-w-[140px] truncate">
                                 {summarizePost(signal.postText, signal.signalType)}
                               </span>
                             </div>
@@ -395,6 +418,11 @@ export function SignalsFeed() {
             {/* Meta */}
             <div className="flex items-center gap-3 mb-4">
               <SignalBadge type={selected.signalType} />
+              {selected.matchedKeyword && (
+                <span className="inline-flex items-center rounded-full bg-amber-50 border border-amber-200/60 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                  Matched: {selected.matchedKeyword}
+                </span>
+              )}
               {selected.postedAt && (
                 <span className="text-[12px] text-[#9a9a9a]">
                   {new Date(selected.postedAt).toLocaleDateString("en-GB", {
@@ -421,7 +449,7 @@ export function SignalsFeed() {
             {selected.postText && (
               <div className="rounded-xl bg-[#fafaf9] border border-[#ebebeb] p-4 mb-4">
                 <p className="text-[13px] text-[#2a2a2a] leading-relaxed whitespace-pre-line">
-                  {selected.postText}
+                  <HighlightKeyword text={selected.postText} keyword={selected.matchedKeyword} />
                 </p>
               </div>
             )}

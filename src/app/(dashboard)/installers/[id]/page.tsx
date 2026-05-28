@@ -1124,6 +1124,11 @@ export default async function InstallerDetailPage({
                             {signal.authorHeadline && (
                               <p className="text-[11px] text-[#9a9a9a] truncate">{signal.authorHeadline}</p>
                             )}
+                            {signal.matchedKeyword && (
+                              <span className="inline-flex items-center rounded-full bg-amber-50 border border-amber-200/60 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 mt-1">
+                                {signal.matchedKeyword}
+                              </span>
+                            )}
                             {truncated && (
                               <p className="text-[12px] text-[#4a4a4a] mt-1.5 leading-relaxed whitespace-pre-line">{truncated}</p>
                             )}

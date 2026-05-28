@@ -274,6 +274,7 @@ export async function searchLinkedInPosts(options?: {
               likes: post.engagement?.likes ?? null,
               comments: post.engagement?.comments ?? null,
               shares: post.engagement?.shares ?? null,
+              matchedKeyword: post.query?.search || null,
               signalType: post.repostId ? "repost" : "post",
               fetchedAt: now,
             })
