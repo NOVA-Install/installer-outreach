@@ -1,10 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { marketingSignals } from "@/lib/db/schema";
 import { sql } from "drizzle-orm";
 
-export async function GET() {
-  // Count company LinkedIn URLs (only /company/ URLs work with authorsCompanies filter)
+export async function GET(request: NextRequest) {
+  const postedLimit = request.nextUrl.searchParams.get("postedLimit") || "week";
+
   const [result] = await db
     .select({ count: sql<number>`count(*)` })
     .from(marketingSignals)
@@ -14,13 +15,24 @@ export async function GET() {
 
   const eligible = Number(result.count);
 
-  // Cost estimate: mostly empty queries at $1/1K + a few posts at $2/1K + actor starts
+  // Post volume multiplier based on time range
+  const postMultiplier: Record<string, number> = {
+    "24h": 0.15,
+    "week": 1,
+    "month": 4,
+    "3months": 10,
+    "6months": 18,
+    "year": 30,
+  };
+  const multiplier = postMultiplier[postedLimit] ?? 1;
+
+  // Cost estimate
   const emptyQueryRate = 0.95;
-  const avgPostsPerHit = 3;
+  const avgPostsPerHit = 3 * multiplier;
   const hitRate = 1 - emptyQueryRate;
 
-  const emptyQueryCost = eligible * emptyQueryRate * (1 / 1000); // $1/1K
-  const postCost = eligible * hitRate * avgPostsPerHit * (2 / 1000); // $2/1K
+  const emptyQueryCost = eligible * emptyQueryRate * (1 / 1000);
+  const postCost = eligible * hitRate * avgPostsPerHit * (2 / 1000);
   const actorStartCost = eligible * 0.00005;
 
   const estimatedCost = emptyQueryCost + postCost + actorStartCost;
@@ -28,10 +40,6 @@ export async function GET() {
   return NextResponse.json({
     eligible,
     estimatedCost: `~$${estimatedCost.toFixed(2)}`,
-    breakdown: {
-      emptyQueries: `~${Math.round(eligible * emptyQueryRate)} @ $1/1K = $${emptyQueryCost.toFixed(2)}`,
-      posts: `~${Math.round(eligible * hitRate * avgPostsPerHit)} @ $2/1K = $${postCost.toFixed(2)}`,
-      actorStarts: `${eligible} @ $0.00005 = $${actorStartCost.toFixed(2)}`,
-    },
+    postedLimit,
   });
 }
