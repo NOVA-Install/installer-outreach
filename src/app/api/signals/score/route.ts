@@ -52,19 +52,33 @@ export async function POST() {
   }).join("\n\n");
 
   const keywordContext = userKeywords.length > 0
-    ? `\n\nThe user is specifically interested in posts mentioning these topics: ${userKeywords.join(", ")}. Posts matching these keywords should score higher.`
+    ? `\n\nThe user tracks these keywords: ${userKeywords.join(", ")}.`
     : "";
 
   try {
-    const result = await model.generateContent(`You are analyzing LinkedIn posts from employees of UK solar/renewable energy installer companies.
+    const result = await model.generateContent(`You are scoring LinkedIn posts from employees of UK solar/renewable energy installer companies. The user sells marketing, lead generation, and software services to these companies.
 
-Score each post for its relevance as a SALES SIGNAL — meaning it indicates the company is active, growing, investing, hiring, looking for leads, or could be a good prospect for selling them marketing/software services.${keywordContext}
+HIGH SCORE (70-100): The post shows the company is:
+- Actively looking for leads, buying leads, or wanting more customers
+- Interested in working with a marketing agency, growth agency, or lead gen company
+- Looking for software to improve operations (CRM, quoting tools, etc.)
+- Asking for help growing their business
+- Complaining about lead quality or needing better leads
 
-For each post, return:
-- score: 0-100 (0 = completely irrelevant personal post, 100 = strong buying signal like hiring, expanding, investing in marketing, looking for leads)
-- reason: 1 sentence explaining why this score
+MEDIUM SCORE (30-69): The post shows:
+- The company is hiring sales/marketing staff (they might want to outsource instead)
+- Expanding into new areas or services (growth signal)
+- Running their own marketing campaigns (might need help scaling)
 
-Return JSON array: [{"index": 0, "score": 75, "reason": "Company is hiring, indicates growth"}]
+LOW SCORE (0-29): The post is:
+- Just showcasing completed work or projects (normal business activity)
+- Personal content unrelated to business needs
+- Looking for installers/tradespeople to do physical work (user can't help with this)
+- General industry commentary without buying intent
+- Employee appreciation or team posts${keywordContext}
+
+For each post return: score (0-100) and reason (1 sentence).
+Return JSON array: [{"index": 0, "score": 75, "reason": "Actively seeking lead generation partners"}]
 
 Posts:
 ${postsForAi}`);

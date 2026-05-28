@@ -1113,7 +1113,7 @@ export default async function InstallerDetailPage({
             const contactMap = new Map(contacts.map((c) => [c.id, c]));
             // Only show relevant signals (scored >= 40, or has keyword match, or unscored)
             const relevantSignals = linkedInSignals.filter((s) =>
-              s.matchedKeyword || s.relevanceScore == null || s.relevanceScore >= 40
+              s.matchedKeyword || (s.relevanceScore != null && s.relevanceScore >= 50)
             );
             if (relevantSignals.length === 0) return null;
             return (
