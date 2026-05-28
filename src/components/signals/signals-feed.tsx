@@ -31,6 +31,8 @@ interface Signal {
   comments: number | null;
   shares: number | null;
   matchedKeyword: string | null;
+  relevanceScore: number | null;
+  relevanceReason: string | null;
   signalType: string;
   fetchedAt: string;
   companyName: string;
@@ -102,6 +104,18 @@ function HighlightKeyword({ text, keyword }: { text: string; keyword: string | n
         )
       )}
     </>
+  );
+}
+
+function RelevanceBadge({ score }: { score: number | null }) {
+  if (score == null) return null;
+  const color = score >= 70 ? "text-emerald-700 bg-emerald-50 border-emerald-200/60"
+    : score >= 40 ? "text-amber-700 bg-amber-50 border-amber-200/60"
+    : "text-gray-500 bg-gray-50 border-gray-200/60";
+  return (
+    <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium tabular-nums ${color}`}>
+      {score}%
+    </span>
   );
 }
 
@@ -307,13 +321,14 @@ export function SignalsFeed() {
                           <div className="shrink-0 text-right flex flex-col items-end gap-1">
                             <div className="flex items-center gap-1.5">
                               <SignalBadge type={signal.signalType} />
+                              <RelevanceBadge score={signal.relevanceScore} />
                               {signal.matchedKeyword && (
                                 <span className="inline-flex items-center rounded-full bg-amber-50 border border-amber-200/60 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
                                   {signal.matchedKeyword}
                                 </span>
                               )}
                               <span className="text-[11px] text-[#0a66c2] max-w-[140px] truncate">
-                                {summarizePost(signal.postText, signal.signalType)}
+                                <HighlightKeyword text={summarizePost(signal.postText, signal.signalType)} keyword={signal.matchedKeyword} />
                               </span>
                             </div>
                             <span className="text-[10px] text-[#b0b0b0] tabular-nums">
@@ -418,6 +433,7 @@ export function SignalsFeed() {
             {/* Meta */}
             <div className="flex items-center gap-3 mb-4">
               <SignalBadge type={selected.signalType} />
+              <RelevanceBadge score={selected.relevanceScore} />
               {selected.matchedKeyword && (
                 <span className="inline-flex items-center rounded-full bg-amber-50 border border-amber-200/60 px-2 py-0.5 text-[11px] font-medium text-amber-700">
                   Matched: {selected.matchedKeyword}
@@ -451,6 +467,14 @@ export function SignalsFeed() {
                 <p className="text-[13px] text-[#2a2a2a] leading-relaxed whitespace-pre-line">
                   <HighlightKeyword text={selected.postText} keyword={selected.matchedKeyword} />
                 </p>
+              </div>
+            )}
+
+            {/* Relevance reason */}
+            {selected.relevanceReason && (
+              <div className="rounded-lg bg-[#f0fdf4] border border-emerald-200/40 px-3 py-2 mb-4">
+                <p className="text-[11px] font-medium text-emerald-700 uppercase tracking-wider mb-0.5">Why this is relevant</p>
+                <p className="text-[12px] text-emerald-800">{selected.relevanceReason}</p>
               </div>
             )}
 
