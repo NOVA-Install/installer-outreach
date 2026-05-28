@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { db } from "@/lib/db";
-import { socialSignals, installers } from "@/lib/db/schema";
+import { socialSignals, installers, appSettings } from "@/lib/db/schema";
 import { eq, isNull, sql } from "drizzle-orm";
 
 export const maxDuration = 60;
@@ -36,6 +36,13 @@ export async function POST() {
     if (inst) installerNames.set(iId, inst.name);
   }
 
+  // Load user keywords
+  let userKeywords: string[] = [];
+  const [kwSetting] = await db.select().from(appSettings).where(eq(appSettings.key, "linkedin_signal_keywords")).limit(1);
+  if (kwSetting) {
+    try { userKeywords = JSON.parse(kwSetting.value); } catch {}
+  }
+
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
@@ -44,13 +51,17 @@ export async function POST() {
     return `[${i}] (${company}) ${s.authorName}: ${s.postText!.slice(0, 500)}`;
   }).join("\n\n");
 
+  const keywordContext = userKeywords.length > 0
+    ? `\n\nThe user is specifically interested in posts mentioning these topics: ${userKeywords.join(", ")}. Posts matching these keywords should score higher.`
+    : "";
+
   try {
     const result = await model.generateContent(`You are analyzing LinkedIn posts from employees of UK solar/renewable energy installer companies.
 
-Score each post for its relevance as a SALES SIGNAL — meaning it indicates the company is active, growing, investing, hiring, or could be a good prospect for selling them marketing/software services.
+Score each post for its relevance as a SALES SIGNAL — meaning it indicates the company is active, growing, investing, hiring, looking for leads, or could be a good prospect for selling them marketing/software services.${keywordContext}
 
 For each post, return:
-- score: 0-100 (0 = completely irrelevant personal post, 100 = strong buying signal like hiring, expanding, investing in marketing)
+- score: 0-100 (0 = completely irrelevant personal post, 100 = strong buying signal like hiring, expanding, investing in marketing, looking for leads)
 - reason: 1 sentence explaining why this score
 
 Return JSON array: [{"index": 0, "score": 75, "reason": "Company is hiring, indicates growth"}]

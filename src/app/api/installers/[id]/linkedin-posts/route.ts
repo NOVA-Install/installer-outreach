@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ApifyClient } from "apify-client";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { db } from "@/lib/db";
-import { linkedinContacts, socialSignals, installers, linkedinCompanyTracking } from "@/lib/db/schema";
+import { linkedinContacts, socialSignals, installers, linkedinCompanyTracking, appSettings } from "@/lib/db/schema";
 import { eq, sql } from "drizzle-orm";
 
 export const maxDuration = 60;
@@ -162,26 +162,35 @@ export async function POST(
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-      // Get the installer name for context
+      // Get the installer name and user keywords for context
       const [installer] = await db.select({ companyName: installers.companyName }).from(installers).where(eq(installers.id, installerId)).limit(1);
+      let userKeywords: string[] = [];
+      const [kwSetting] = await db.select().from(appSettings).where(eq(appSettings.key, "linkedin_signal_keywords")).limit(1);
+      if (kwSetting) {
+        try { userKeywords = JSON.parse(kwSetting.value); } catch {}
+      }
 
       // Get unscored signals for this installer
       const unscored = await db
         .select({ id: socialSignals.id, postText: socialSignals.postText, authorName: socialSignals.authorName })
         .from(socialSignals)
-        .where(eq(socialSignals.installerId, installerId))
+        .where(sql`${socialSignals.installerId} = ${installerId} AND ${socialSignals.relevanceScore} IS NULL`)
         .limit(50);
 
       const unscoredFiltered = unscored.filter((s) => s.postText && s.postText.length > 20);
       if (unscoredFiltered.length > 0) {
         const postsForAi = unscoredFiltered.map((s, i) => `[${i}] ${s.authorName}: ${s.postText!.slice(0, 500)}`).join("\n\n");
 
+        const keywordContext = userKeywords.length > 0
+          ? `\n\nThe user is specifically interested in posts mentioning these topics: ${userKeywords.join(", ")}. Posts matching these keywords should score higher.`
+          : "";
+
         const result = await model.generateContent(`You are analyzing LinkedIn posts from employees of "${installer?.companyName || "an installer company"}".
 
-Score each post for its relevance as a SALES SIGNAL — meaning it indicates the company is active, growing, investing, hiring, or could be a good prospect for selling them marketing/software services.
+Score each post for its relevance as a SALES SIGNAL — meaning it indicates the company is active, growing, investing, hiring, looking for leads, or could be a good prospect for selling them marketing/software services.${keywordContext}
 
 For each post, return:
-- score: 0-100 (0 = completely irrelevant personal post, 100 = strong buying signal like hiring, expanding, investing in marketing)
+- score: 0-100 (0 = completely irrelevant personal post, 100 = strong buying signal like hiring, expanding, investing in marketing, looking for leads)
 - reason: 1 sentence explaining why this score
 
 Return JSON array: [{"index": 0, "score": 75, "reason": "Company is hiring, indicates growth"}]
