@@ -567,19 +567,59 @@ function LinkedInSignalsConfig({ onRun, disabled }: { onRun: (config: { keywords
   );
 }
 
-function LinkedInCompanyLookupConfig({ onRun, disabled }: { onRun: (config: { maxCompanies: number }) => void; disabled: boolean }) {
+function LinkedInCompanyLookupConfig({ disabled }: { disabled: boolean }) {
   const [preview, setPreview] = useState<{ eligible: number; estimatedCost: string } | null>(null);
-  const [maxCompanies, setMaxCompanies] = useState<number>(100);
+  const [maxBatches, setMaxBatches] = useState<number>(10);
+  const [lookupRunning, setLookupRunning] = useState(false);
+  const [progress, setProgress] = useState<{ searched: number; matched: number; skipped: number; remaining: number } | null>(null);
 
   useEffect(() => {
     fetch("/api/enrichment/linkedin-company-lookup/preview")
       .then((r) => r.json())
       .then((data) => {
         setPreview(data);
-        setMaxCompanies(Math.min(100, data.eligible));
+        setMaxBatches(Math.min(10, Math.ceil(data.eligible / 50)));
       })
       .catch(() => {});
   }, []);
+
+  const runLookup = async () => {
+    setLookupRunning(true);
+    setProgress({ searched: 0, matched: 0, skipped: 0, remaining: preview?.eligible ?? 0 });
+
+    let totalSearched = 0;
+    let totalMatched = 0;
+    let totalSkipped = 0;
+
+    for (let batch = 0; batch < maxBatches; batch++) {
+      try {
+        const res = await fetch("/api/enrichment/linkedin-company-lookup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ batchSize: 50 }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed");
+
+        totalSearched += data.searched || 0;
+        totalMatched += data.matched || 0;
+        totalSkipped += data.skipped || 0;
+        setProgress({ searched: totalSearched, matched: totalMatched, skipped: totalSkipped, remaining: data.remaining || 0 });
+
+        if (data.remaining <= 0 || data.searched === 0) break;
+      } catch (err) {
+        toast.error(`LinkedIn Lookup batch ${batch + 1} failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+        break;
+      }
+    }
+
+    toast.success(`LinkedIn Lookup: ${totalMatched} new LinkedIn pages found from ${totalSearched} searched`);
+    setLookupRunning(false);
+    // Refresh preview
+    fetch("/api/enrichment/linkedin-company-lookup/preview").then((r) => r.json()).then(setPreview).catch(() => {});
+  };
+
+  const maxCompanies = maxBatches * 50;
 
   return (
     <div className="space-y-3 mt-3 pt-3 border-t border-[#f0f0f0]">
@@ -589,30 +629,50 @@ function LinkedInCompanyLookupConfig({ onRun, disabled }: { onRun: (config: { ma
             <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap">Companies to search:</label>
             <input
               type="range"
-              min={10}
-              max={Math.min(500, preview.eligible)}
-              step={10}
-              value={maxCompanies}
-              onChange={(e) => setMaxCompanies(Number(e.target.value))}
+              min={1}
+              max={Math.min(100, Math.ceil(preview.eligible / 50))}
+              step={1}
+              value={maxBatches}
+              onChange={(e) => setMaxBatches(Number(e.target.value))}
               className="flex-1 h-1.5 accent-[#0a66c2]"
+              disabled={lookupRunning}
             />
-            <span className="text-[12px] font-medium tabular-nums w-[60px] text-right">
-              {maxCompanies} / {preview.eligible}
+            <span className="text-[12px] font-medium tabular-nums w-[80px] text-right">
+              ~{Math.min(maxCompanies, preview.eligible)} / {preview.eligible}
             </span>
           </div>
         </div>
       )}
+
+      {/* Progress */}
+      {lookupRunning && progress && (
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2 text-[12px]">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            <span className="tabular-nums">
+              {progress.searched} searched · {progress.matched} matched · {progress.remaining} remaining
+            </span>
+          </div>
+          {preview && preview.eligible > 0 && (
+            <div className="h-1 rounded-full bg-muted overflow-hidden">
+              <div
+                className="h-full bg-[#0a66c2] rounded-full transition-all"
+                style={{ width: `${Math.round(((preview.eligible - progress.remaining) / preview.eligible) * 100)}%` }}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <div className="text-[11px] text-muted-foreground">
           {preview ? (
             <span>
               <span className="font-medium text-[#1D1D1D]">{preview.eligible}</span> companies with website but no LinkedIn URL
               {" · "}
-              Est. cost for {maxCompanies}: <span className="font-medium text-[#1D1D1D]">
-                ~${((maxCompanies / 1000) * 4).toFixed(2)}
+              Est. cost for {Math.min(maxCompanies, preview.eligible)}: <span className="font-medium text-[#1D1D1D]">
+                ~${((Math.min(maxCompanies, preview.eligible) / 1000) * 4).toFixed(2)}
               </span>
-              {" · "}
-              Domain verification ensures only correct matches are saved
             </span>
           ) : (
             "Loading preview..."
@@ -620,10 +680,14 @@ function LinkedInCompanyLookupConfig({ onRun, disabled }: { onRun: (config: { ma
         </div>
         <Button
           size="sm"
-          onClick={() => onRun({ maxCompanies })}
-          disabled={disabled || !preview || preview.eligible === 0}
+          onClick={runLookup}
+          disabled={disabled || lookupRunning || !preview || preview.eligible === 0}
         >
-          <FaLinkedinIn className="h-3 w-3" /> Search ({maxCompanies})
+          {lookupRunning ? (
+            <><Loader2 className="h-3 w-3 animate-spin" /> Running</>
+          ) : (
+            <><FaLinkedinIn className="h-3 w-3" /> Search (~{Math.min(maxCompanies, preview?.eligible ?? 0)})</>
+          )}
         </Button>
       </div>
     </div>
@@ -1028,24 +1092,6 @@ export function EnrichmentPanel() {
               {source.key === "linkedin_company_lookup" && (
                 <LinkedInCompanyLookupConfig
                   disabled={isRunning || (status?.total ?? 0) === 0}
-                  onRun={async (config) => {
-                    setRunning((prev) => new Set([...prev, source.key]));
-                    try {
-                      const res = await fetch("/api/enrichment/linkedin-company-lookup", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify(config),
-                      });
-                      const data = await res.json().catch(() => ({}));
-                      if (!res.ok) throw new Error(data.error || "Failed");
-                      toast.success(`LinkedIn Lookup: searching ${config.maxCompanies} companies. Running in background.`);
-                      fetchStatus();
-                    } catch (err) {
-                      toast.error(`LinkedIn Lookup: ${err instanceof Error ? err.message : "Failed"}`, { duration: 8000 });
-                    } finally {
-                      setRunning((prev) => { const next = new Set(prev); next.delete(source.key); return next; });
-                    }
-                  }}
                 />
               )}
 
