@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { linkedinContacts, socialSignals, installers } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 
-export const maxDuration = 120;
+export const maxDuration = 60;
 
 export async function POST(
   request: NextRequest,
@@ -25,6 +25,7 @@ export async function POST(
   const body = await request.json().catch(() => ({}));
   const postedLimit = body.postedLimit || "month";
 
+  try {
   // Get all known contacts for this installer
   const contacts = await db
     .select()
@@ -46,14 +47,32 @@ export async function POST(
 
   const client = new ApifyClient({ token });
 
-  const run = await client.actor("harvestapi/linkedin-profile-posts").call(
-    {
-      profileUrls,
-      scrapePostedLimit: postedLimit,
-      maxPosts: 10, // per profile
-    },
-    { waitSecs: 300 }
-  );
+  // Start the actor run
+  const run = await client.actor("harvestapi/linkedin-profile-posts").start({
+    profileUrls,
+    scrapePostedLimit: postedLimit,
+    maxPosts: 10, // per profile
+  });
+
+  // Poll for completion
+  const runClient = client.run(run.id);
+  const maxWaitMs = 50000;
+  const pollInterval = 3000;
+  const startTime = Date.now();
+
+  let finished = false;
+  while (Date.now() - startTime < maxWaitMs) {
+    const status = await runClient.get();
+    if (status?.status === "SUCCEEDED") { finished = true; break; }
+    if (status?.status === "FAILED" || status?.status === "ABORTED") {
+      return NextResponse.json({ error: `Actor run ${status.status}` }, { status: 500 });
+    }
+    await new Promise((r) => setTimeout(r, pollInterval));
+  }
+
+  if (!finished) {
+    return NextResponse.json({ error: "Timed out waiting for Apify. Try again — the run may still complete." }, { status: 504 });
+  }
 
   const { items } = await client.dataset(run.defaultDatasetId).listItems();
 
@@ -195,4 +214,11 @@ ${postsForAi}`);
     newSignals,
     scored,
   });
+  } catch (err) {
+    console.error("[linkedin-posts] Error:", err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Unknown error" },
+      { status: 500 }
+    );
+  }
 }
