@@ -405,9 +405,22 @@ export const scoresFn = inngest.createFunction(
 export const linkedInSignals = inngest.createFunction(
   { id: "enrich-linkedin-signals", retries: 2, triggers: [{ event: "enrichment/linkedin-signals" }] },
   async ({ event, step }) => {
-    const keywords = event.data?.keywords as string[] | undefined;
+    let keywords = event.data?.keywords as string[] | undefined;
     const postedLimit = (event.data?.postedLimit as string) || "week";
     const maxCompanies = event.data?.maxCompanies as number | undefined;
+
+    // Load keywords from database if not provided in event
+    if (!keywords) {
+      keywords = await step.run("load-keywords", async () => {
+        const { appSettings } = await import("@/lib/db/schema");
+        const { eq } = await import("drizzle-orm");
+        const [row] = await db.select().from(appSettings).where(eq(appSettings.key, "linkedin_signal_keywords")).limit(1);
+        if (row) {
+          try { return JSON.parse(row.value); } catch { return undefined; }
+        }
+        return undefined;
+      });
+    }
 
     const jobId = await step.run("create-job", () => createJob("linkedin_signals"));
 
