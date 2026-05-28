@@ -37,7 +37,7 @@ export async function POST(
     // Start the actor run
     const run = await client.actor("harvestapi/linkedin-company-employees").start({
       companies: [tracking.linkedinUrl],
-      profileScraperMode: "Short",
+      profileScraperMode: "Short ($4 per 1k)",
     });
 
     // Poll for completion (shorter intervals, fits within Vercel timeout)
