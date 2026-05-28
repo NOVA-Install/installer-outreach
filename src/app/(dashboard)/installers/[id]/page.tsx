@@ -1054,8 +1054,11 @@ export default async function InstallerDetailPage({
                           )}
                           {contact.profileUrl && <ExternalLink className="h-3 w-3 text-[#c0c0c0]" />}
                         </div>
-                        {contact.headline && (
-                          <p className="text-[11px] text-[#8a8a8a] truncate">{contact.headline}</p>
+                        {(contact.jobTitle || contact.headline) && (
+                          <p className="text-[11px] text-[#8a8a8a] truncate">{contact.jobTitle || contact.headline}</p>
+                        )}
+                        {contact.location && (
+                          <p className="text-[10px] text-[#b0b0b0] truncate">{contact.location}</p>
                         )}
                       </div>
                       <span className="text-[10px] text-[#b0b0b0] shrink-0">
