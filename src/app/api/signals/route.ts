@@ -9,6 +9,8 @@ export async function GET(request: NextRequest) {
   const pageSize = Math.min(100, parseInt(params.get("pageSize") || "50", 10));
   const search = params.get("search") || "";
   const signalType = params.get("signalType") || "";
+  const status = params.get("status") || ""; // "new" | "dismissed" | "actioned" | "" (all)
+  const minRelevance = parseInt(params.get("minRelevance") || "0", 10);
   const sortBy = params.get("sortBy") || "postedAt";
 
   const conditions: SQL[] = [];
@@ -23,10 +25,22 @@ export async function GET(request: NextRequest) {
     conditions.push(eq(socialSignals.signalType, signalType));
   }
 
+  if (status) {
+    conditions.push(sql`COALESCE(${socialSignals.status}, 'new') = ${status}`);
+  }
+
+  if (minRelevance > 0) {
+    conditions.push(sql`${socialSignals.relevanceScore} >= ${minRelevance}`);
+  }
+
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
   const orderCol =
-    sortBy === "fetchedAt" ? socialSignals.fetchedAt : socialSignals.postedAt;
+    sortBy === "fetchedAt" ? socialSignals.fetchedAt
+    : sortBy === "relevance" ? socialSignals.relevanceScore
+    : socialSignals.postedAt;
+
+  const orderDir = sortBy === "relevance" ? desc(orderCol) : desc(orderCol);
 
   const results = await db
     .select({
@@ -47,10 +61,12 @@ export async function GET(request: NextRequest) {
       matchedKeyword: socialSignals.matchedKeyword,
       relevanceScore: socialSignals.relevanceScore,
       relevanceReason: socialSignals.relevanceReason,
+      status: socialSignals.status,
       signalType: socialSignals.signalType,
       fetchedAt: socialSignals.fetchedAt,
       companyName: installers.companyName,
       companyWebsite: installers.website,
+      pipelineStage: installers.pipelineStage,
       contactAvatarUrl: linkedinContacts.avatarUrl,
       contactName: linkedinContacts.name,
       _total: sql<number>`COUNT(*) OVER()`.as("_total"),
@@ -59,7 +75,7 @@ export async function GET(request: NextRequest) {
     .innerJoin(installers, eq(socialSignals.installerId, installers.id))
     .leftJoin(linkedinContacts, eq(socialSignals.contactId, linkedinContacts.id))
     .where(whereClause)
-    .orderBy(desc(orderCol))
+    .orderBy(orderDir)
     .limit(pageSize)
     .offset((page - 1) * pageSize);
 

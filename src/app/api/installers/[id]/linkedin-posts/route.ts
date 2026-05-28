@@ -3,7 +3,7 @@ import { ApifyClient } from "apify-client";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { db } from "@/lib/db";
 import { linkedinContacts, socialSignals, installers, linkedinCompanyTracking } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 export const maxDuration = 60;
 
@@ -106,6 +106,17 @@ export async function POST(
     }
 
     try {
+      // Skip if we already have a post with the same text (different ID but same content = repost)
+      const postText = ((post.content as string) || "").slice(0, 5000);
+      if (postText.length > 20) {
+        const [existing] = await db
+          .select({ id: socialSignals.id })
+          .from(socialSignals)
+          .where(sql`${socialSignals.installerId} = ${installerId} AND LEFT(${socialSignals.postText}, 200) = LEFT(${postText}, 200)`)
+          .limit(1);
+        if (existing) continue;
+      }
+
       await db
         .insert(socialSignals)
         .values({
@@ -113,7 +124,7 @@ export async function POST(
           contactId: contact?.id ?? null,
           postId,
           postUrl: (post.linkedinUrl as string) || "",
-          postText: ((post.content as string) || "").slice(0, 5000),
+          postText,
           authorName: (author?.name as string) || "",
           authorHeadline: (author?.info as string) || "",
           authorProfileUrl: (author?.linkedinUrl as string) || "",
