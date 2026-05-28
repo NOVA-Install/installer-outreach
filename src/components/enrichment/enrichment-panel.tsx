@@ -395,13 +395,13 @@ function LinkedInSignalsConfig({ onRun, disabled }: { onRun: (config: { keywords
       .catch(() => setKeywordsLoaded(true));
   }, []);
 
-  // Fetch cost preview on mount
+  // Fetch cost preview on mount and when time range changes
   useEffect(() => {
-    fetch("/api/enrichment/linkedin-signals/preview")
+    fetch(`/api/enrichment/linkedin-signals/preview?postedLimit=${postedLimit}`)
       .then((r) => r.json())
       .then((data) => setPreview(data))
       .catch(() => {});
-  }, []);
+  }, [postedLimit]);
 
   const saveKeywords = (kw: string[]) => {
     setKeywords(kw);
