@@ -398,7 +398,9 @@ export const linkedinContacts = pgTable("linkedin_contacts", {
   profileUrl: text("profile_url"),
   name: text("name").notNull(),
   headline: text("headline"), // job title / info from LinkedIn
+  jobTitle: text("job_title"), // from currentPositions[0].title
   avatarUrl: text("avatar_url"),
+  location: text("location"), // e.g. "Clitheroe, England, United Kingdom"
   firstSeenAt: text("first_seen_at").notNull(),
   lastSeenAt: text("last_seen_at").notNull(),
 }, (t) => [unique("uq_linkedin_contact").on(t.installerId, t.linkedinUrn)]);

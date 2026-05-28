@@ -58,8 +58,10 @@ export async function POST(
       const publicIdentifier = (employee.publicIdentifier as string) || null;
       const linkedinUrl = (employee.linkedinUrl as string) || null;
       const headline = (employee.headline as string) || null;
-      const avatar = employee.avatar as Record<string, unknown> | undefined;
-      const avatarUrl = (avatar?.url as string) || null;
+      const avatarUrl = (employee.pictureUrl as string) || null;
+      const positions = employee.currentPositions as { title?: string; companyName?: string }[] | undefined;
+      const jobTitle = positions?.[0]?.title || null;
+      const location = (employee.location as Record<string, unknown>)?.linkedinText as string || null;
 
       if (!urn) continue;
 
@@ -72,7 +74,9 @@ export async function POST(
           profileUrl: linkedinUrl,
           name,
           headline,
+          jobTitle,
           avatarUrl,
+          location,
           firstSeenAt: now,
           lastSeenAt: now,
         })
@@ -81,9 +85,11 @@ export async function POST(
           set: {
             name,
             headline,
+            jobTitle,
             publicIdentifier,
             profileUrl: linkedinUrl,
             avatarUrl,
+            location,
             lastSeenAt: now,
           },
         });
