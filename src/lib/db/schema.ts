@@ -418,9 +418,15 @@ export const socialSignals = pgTable("social_signals", {
   authorProfileUrl: text("author_profile_url"),
   authorProfileId: text("author_profile_id"), // LinkedIn public identifier
   postedAt: text("posted_at"), // ISO timestamp of the post
+  postedAtTimestamp: integer("posted_at_timestamp"), // Unix timestamp
   likes: integer("likes"),
   comments: integer("comments"),
   shares: integer("shares"),
+  reactions: text("reactions"), // JSON: [{ type: "LIKE", count: 34 }, ...]
+  postImages: text("post_images"), // JSON: [{ url, width, height }]
+  postVideo: text("post_video"), // JSON: { thumbnailUrl, videoUrl }
+  articleTitle: text("article_title"),
+  articleLink: text("article_link"),
   matchedKeyword: text("matched_keyword"), // which search keyword found this post
   signalType: text("signal_type").notNull(), // "post" | "repost"
   fetchedAt: text("fetched_at").notNull(),

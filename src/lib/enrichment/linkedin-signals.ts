@@ -117,7 +117,11 @@ interface LinkedInPostResult {
     likes?: number;
     comments?: number;
     shares?: number;
+    reactions?: { type: string; count: number }[];
   };
+  postImages?: { url?: string; width?: number; height?: number }[];
+  postVideo?: { thumbnailUrl?: string; videoUrl?: string };
+  article?: { title?: string; link?: string; subtitle?: string; description?: string };
   repostId?: string | null;
   // The query object is echoed back in each result — includes which companies were filtered
   query?: {
@@ -274,6 +278,12 @@ export async function searchLinkedInPosts(options?: {
               likes: post.engagement?.likes ?? null,
               comments: post.engagement?.comments ?? null,
               shares: post.engagement?.shares ?? null,
+              reactions: post.engagement?.reactions ? JSON.stringify(post.engagement.reactions) : null,
+              postImages: post.postImages?.length ? JSON.stringify(post.postImages.map(i => ({ url: i.url, width: i.width, height: i.height }))) : null,
+              postVideo: post.postVideo?.videoUrl ? JSON.stringify(post.postVideo) : null,
+              articleTitle: post.article?.title || null,
+              articleLink: post.article?.link || null,
+              postedAtTimestamp: post.postedAt?.timestamp ? Math.floor(post.postedAt.timestamp / 1000) : null,
               matchedKeyword: post.query?.search || null,
               signalType: post.repostId ? "repost" : "post",
               fetchedAt: now,

@@ -139,6 +139,16 @@ export async function POST(
           likes: (engagement?.likes as number) ?? null,
           comments: (engagement?.comments as number) ?? null,
           shares: (engagement?.shares as number) ?? null,
+          reactions: (engagement as Record<string, unknown>)?.reactions ? JSON.stringify((engagement as Record<string, unknown>).reactions) : null,
+          postImages: Array.isArray((post as Record<string, unknown>).postImages) && ((post as Record<string, unknown>).postImages as unknown[]).length > 0
+            ? JSON.stringify(((post as Record<string, unknown>).postImages as Record<string, unknown>[]).map(i => ({ url: i.url, width: i.width, height: i.height })))
+            : null,
+          postVideo: ((post as Record<string, unknown>).postVideo as Record<string, unknown>)?.videoUrl
+            ? JSON.stringify((post as Record<string, unknown>).postVideo)
+            : null,
+          articleTitle: ((post as Record<string, unknown>).article as Record<string, unknown>)?.title as string || null,
+          articleLink: ((post as Record<string, unknown>).article as Record<string, unknown>)?.link as string || null,
+          postedAtTimestamp: (postedAt?.timestamp as number) ? Math.floor((postedAt!.timestamp as number) / 1000) : null,
           matchedKeyword: ((post as Record<string, unknown>).query as Record<string, unknown>)?.search as string || null,
           signalType: post.repostId ? "repost" : "post",
           fetchedAt: now,
