@@ -383,7 +383,8 @@ export const linkedinCompanyTracking = pgTable("linkedin_company_tracking", {
     .references(() => installers.id),
   linkedinUrl: text("linkedin_url").notNull(), // e.g. https://linkedin.com/company/acme
   companySlug: text("company_slug"), // e.g. "acme" — extracted from URL
-  lastSearchedAt: text("last_searched_at"), // null until first search
+  lastSearchedAt: text("last_searched_at"), // null until first keyword search
+  lastScrapedPostsAt: text("last_scraped_posts_at"), // null until first full post scrape
 });
 
 // LinkedIn contacts — auto-populated from post search results

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ApifyClient } from "apify-client";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { db } from "@/lib/db";
-import { linkedinContacts, socialSignals, installers } from "@/lib/db/schema";
+import { linkedinContacts, socialSignals, installers, linkedinCompanyTracking } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 
 export const maxDuration = 60;
@@ -23,9 +23,25 @@ export async function POST(
   }
 
   const body = await request.json().catch(() => ({}));
-  const postedLimit = body.postedLimit || "month";
 
   try {
+  // Auto-detect time range based on last scrape
+  const [tracking] = await db
+    .select()
+    .from(linkedinCompanyTracking)
+    .where(eq(linkedinCompanyTracking.installerId, installerId))
+    .limit(1);
+
+  let postedLimit = body.postedLimit || "month";
+  if (tracking?.lastScrapedPostsAt) {
+    const lastScrape = new Date(tracking.lastScrapedPostsAt);
+    const diffHours = (Date.now() - lastScrape.getTime()) / (1000 * 60 * 60);
+    if (diffHours < 2) postedLimit = "1h";
+    else if (diffHours < 48) postedLimit = "24h";
+    else if (diffHours < 168) postedLimit = "week";
+    else postedLimit = "month";
+  }
+
   // Get all known contacts for this installer
   const contacts = await db
     .select()
@@ -190,11 +206,20 @@ ${postsForAi}`);
     }
   }
 
+  // Update last scraped timestamp
+  if (tracking) {
+    await db
+      .update(linkedinCompanyTracking)
+      .set({ lastScrapedPostsAt: new Date().toISOString() })
+      .where(eq(linkedinCompanyTracking.id, tracking.id));
+  }
+
   return NextResponse.json({
     contactsSearched: profileUrls.length,
     postsFound: items.length,
     newSignals,
     scored,
+    postedLimit,
   });
   } catch (err) {
     console.error("[linkedin-posts] Error:", err);
