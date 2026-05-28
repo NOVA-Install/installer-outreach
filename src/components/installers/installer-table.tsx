@@ -1421,7 +1421,7 @@ export function InstallerTable({ counties: initialCounties, crmTools: initialCrm
 
         {/* Desktop table */}
         <div className="flex-1 overflow-auto bg-white hidden md:block">
-          <table className="border-collapse text-[13px]" style={{ tableLayout: "fixed", width: 36 + columns.reduce((sum, col) => sum + (colWidths[col.key] || col.width || 120), 0) }}>
+          <table className="border-collapse text-[13px] w-full" style={{ tableLayout: "fixed", minWidth: 36 + columns.reduce((sum, col) => sum + (colWidths[col.key] || col.width || 120), 0) }}>
             <colgroup>
               <col style={{ width: 36 }} />
               {columns.map((col) => (

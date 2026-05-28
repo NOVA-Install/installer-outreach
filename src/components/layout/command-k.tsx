@@ -36,7 +36,7 @@ interface SearchResult {
   county: string | null;
   website: string | null;
   pipelineStage: string | null;
-  matchType: "company" | "legal_entity" | "postcode" | "company_number";
+  matchType: "company" | "legal_entity" | "postcode" | "company_number" | "alternative_name" | "website";
 }
 
 interface QuickAction {
@@ -121,6 +121,8 @@ const matchTypeConfig: Record<
   legal_entity: { label: "Legal Entities", icon: Briefcase },
   postcode: { label: "Postcodes", icon: MapPin },
   company_number: { label: "Company Numbers", icon: Hash },
+  alternative_name: { label: "Alternative Names", icon: Search },
+  website: { label: "Websites", icon: Globe },
 };
 
 // ── The component ──────────────────────────────────────────────────────────────
