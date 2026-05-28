@@ -24,7 +24,7 @@ export function LinkedInSearchButton({ installerId }: { installerId: number }) {
       if (data.newSignals > 0) {
         toast.success(`Found ${data.newSignals} new post${data.newSignals !== 1 ? "s" : ""} from ${data.companySlug}`);
       } else {
-        toast(`No new posts found (${data.postsFound} checked)`);
+        toast.info("No new posts found (" + data.postsFound + " checked)");
       }
       router.refresh();
     } catch (err) {
