@@ -400,28 +400,95 @@ export const scoresFn = inngest.createFunction(
 );
 
 // ── LinkedIn Social Signals ──────────────────────────────────
+// Processes companies in batches of 20 per step to avoid timeouts
 
 export const linkedInSignals = inngest.createFunction(
   { id: "enrich-linkedin-signals", retries: 2, triggers: [{ event: "enrichment/linkedin-signals" }] },
   async ({ event, step }) => {
     const keywords = event.data?.keywords as string[] | undefined;
     const postedLimit = (event.data?.postedLimit as string) || "week";
-    const companyBatchSize = (event.data?.companyBatchSize as number) || 1;
     const maxCompanies = event.data?.maxCompanies as number | undefined;
 
     const jobId = await step.run("create-job", () => createJob("linkedin_signals"));
 
-    await step.run("run-enrichment", async () => {
-      const { enrichLinkedInSignalsBatch } = await import("@/lib/enrichment/linkedin-signals");
-      try {
-        await enrichLinkedInSignalsBatch(jobId, { keywords, postedLimit, companyBatchSize, maxCompanies });
-      } catch (err) {
-        await failJob(jobId, err);
-        throw err;
-      }
+    // Sync LinkedIn URLs first
+    await step.run("sync-urls", async () => {
+      const { syncLinkedInUrls } = await import("@/lib/enrichment/linkedin-signals");
+      return syncLinkedInUrls();
     });
 
-    return { jobId };
+    // Process in batches of 20 companies per step
+    let totalProcessed = 0;
+    let totalErrors = 0;
+    let totalNewSignals = 0;
+    let batch = 0;
+    const batchSize = 20;
+    const maxBatches = maxCompanies ? Math.ceil(maxCompanies / batchSize) : MAX_BATCHES_SINGLE;
+
+    while (batch < maxBatches) {
+      const result = await step.run(`signals-batch-${batch}`, async () => {
+        const { searchLinkedInPosts } = await import("@/lib/enrichment/linkedin-signals");
+        return searchLinkedInPosts({
+          keywords,
+          postedLimit,
+          companyBatchSize: 1,
+          maxCompanies: batchSize,
+        });
+      });
+
+      totalProcessed += result.processed || 0;
+      totalErrors += result.errors || 0;
+      totalNewSignals += result.newSignals || 0;
+
+      await step.run(`update-progress-${batch}`, () =>
+        updateJobProgress(jobId, totalProcessed, totalErrors)
+      );
+
+      // If no companies were processed, we're done
+      if (result.processed === 0 && result.errors === 0 && result.newSignals === 0) break;
+      batch++;
+    }
+
+    await step.run("complete-job", () => completeJob(jobId, totalProcessed, totalErrors));
+    return { jobId, totalProcessed, totalNewSignals, batches: batch + 1 };
+  }
+);
+
+// ── LinkedIn Company Lookup ──────────────────────────────────
+// Finds LinkedIn company pages for installers by name search + domain verification
+
+export const linkedInCompanyLookup = inngest.createFunction(
+  { id: "enrich-linkedin-company-lookup", retries: 2, triggers: [{ event: "enrichment/linkedin-company-lookup" }] },
+  async ({ event, step }) => {
+    const maxCompanies = (event.data?.maxCompanies as number) || 500;
+
+    const jobId = await step.run("create-job", () => createJob("linkedin_company_lookup"));
+
+    let totalSearched = 0;
+    let totalMatched = 0;
+    let batch = 0;
+    const batchSize = 50;
+    const maxBatches = Math.ceil(maxCompanies / batchSize);
+
+    while (batch < maxBatches) {
+      const result = await step.run(`lookup-batch-${batch}`, async () => {
+        const { lookupLinkedInCompaniesBatch } = await import("@/lib/enrichment/linkedin-company-lookup");
+        return lookupLinkedInCompaniesBatch({ batchSize });
+      });
+
+      totalSearched += result.searched || 0;
+      totalMatched += result.matched || 0;
+
+      await step.run(`update-progress-${batch}`, () =>
+        updateJobProgress(jobId, totalSearched, result.errors || 0)
+      );
+
+      if (result.remaining <= 0 || result.searched === 0) break;
+      batch++;
+    }
+
+    await step.run("complete-job", () => completeJob(jobId, totalSearched, 0));
+    return { jobId, totalSearched, totalMatched, batches: batch + 1 };
   }
 );
 
@@ -440,4 +507,5 @@ export const allFunctions = [
   jobPostingsFn,
   scoresFn,
   linkedInSignals,
+  linkedInCompanyLookup,
 ];
