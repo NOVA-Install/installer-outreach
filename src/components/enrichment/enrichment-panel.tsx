@@ -369,24 +369,11 @@ const DEFAULT_LINKEDIN_KEYWORDS = [
   "EV charger installation",
 ];
 
-const LINKEDIN_KEYWORDS_KEY = "linkedin-signals-keywords";
 const LINKEDIN_POSTED_LIMIT_KEY = "linkedin-signals-posted-limit";
-const LINKEDIN_BATCH_SIZE_KEY = "linkedin-signals-batch-size";
-
-function loadLinkedInKeywords(): string[] {
-  if (typeof window === "undefined") return DEFAULT_LINKEDIN_KEYWORDS;
-  try {
-    const s = localStorage.getItem(LINKEDIN_KEYWORDS_KEY);
-    if (s) { const p = JSON.parse(s); if (Array.isArray(p) && p.length > 0) return p; }
-  } catch {}
-  return DEFAULT_LINKEDIN_KEYWORDS;
-}
-function saveLinkedInKeywords(kw: string[]) {
-  try { localStorage.setItem(LINKEDIN_KEYWORDS_KEY, JSON.stringify(kw)); } catch {}
-}
 
 function LinkedInSignalsConfig({ onRun, disabled }: { onRun: (config: { keywords: string[]; postedLimit: string; maxCompanies?: number }) => void; disabled: boolean }) {
-  const [keywords, setKeywords] = useState<string[]>(loadLinkedInKeywords);
+  const [keywords, setKeywords] = useState<string[]>(DEFAULT_LINKEDIN_KEYWORDS);
+  const [keywordsLoaded, setKeywordsLoaded] = useState(false);
   const [preview, setPreview] = useState<{ eligible: number; estimatedCost: string } | null>(null);
   const [maxCompanies, setMaxCompanies] = useState<number | undefined>(undefined);
   const [newKeyword, setNewKeyword] = useState("");
@@ -394,6 +381,19 @@ function LinkedInSignalsConfig({ onRun, disabled }: { onRun: (config: { keywords
     if (typeof window === "undefined") return "week";
     return localStorage.getItem(LINKEDIN_POSTED_LIMIT_KEY) || "week";
   });
+
+  // Load keywords from database on mount
+  useEffect(() => {
+    fetch("/api/settings?key=linkedin_signal_keywords")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.value && Array.isArray(data.value) && data.value.length > 0) {
+          setKeywords(data.value);
+        }
+        setKeywordsLoaded(true);
+      })
+      .catch(() => setKeywordsLoaded(true));
+  }, []);
 
   // Fetch cost preview on mount
   useEffect(() => {
@@ -403,24 +403,28 @@ function LinkedInSignalsConfig({ onRun, disabled }: { onRun: (config: { keywords
       .catch(() => {});
   }, []);
 
+  const saveKeywords = (kw: string[]) => {
+    setKeywords(kw);
+    fetch("/api/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: "linkedin_signal_keywords", value: kw }),
+    }).catch(() => {});
+  };
+
   const addKeyword = () => {
     const trimmed = newKeyword.trim().toLowerCase();
     if (!trimmed || keywords.includes(trimmed)) return;
-    const next = [...keywords, trimmed];
-    setKeywords(next);
-    saveLinkedInKeywords(next);
+    saveKeywords([...keywords, trimmed]);
     setNewKeyword("");
   };
 
   const removeKeyword = (kw: string) => {
-    const next = keywords.filter((k) => k !== kw);
-    setKeywords(next);
-    saveLinkedInKeywords(next);
+    saveKeywords(keywords.filter((k) => k !== kw));
   };
 
   const resetToDefaults = () => {
-    setKeywords(DEFAULT_LINKEDIN_KEYWORDS);
-    saveLinkedInKeywords(DEFAULT_LINKEDIN_KEYWORDS);
+    saveKeywords(DEFAULT_LINKEDIN_KEYWORDS);
   };
 
   return (

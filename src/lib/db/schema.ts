@@ -425,6 +425,13 @@ export const socialSignals = pgTable("social_signals", {
   fetchedAt: text("fetched_at").notNull(),
 });
 
+// App-wide settings (shared across all sessions)
+export const appSettings = pgTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
 // DataForSEO async task tracking
 export const dataforseoTasks = pgTable("dataforseo_tasks", {
   id: serial("id").primaryKey(),

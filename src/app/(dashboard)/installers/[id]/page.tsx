@@ -55,6 +55,7 @@ import { CorrectEnrichment } from "@/components/installers/correct-enrichment";
 import { ShortlistButton } from "@/components/installers/shortlist-button";
 import { AddFieldInline } from "@/components/installers/add-field-inline";
 import { EnrichGoogleAdsButton } from "@/components/installers/enrich-google-ads-button";
+import { LinkedInSearchButton } from "@/components/installers/linkedin-search-button";
 
 const tierStyles: Record<string, string> = {
   high: "bg-emerald-50 text-emerald-600 border-emerald-200/60",
@@ -1016,17 +1017,20 @@ export default async function InstallerDetailPage({
           )}
 
           {/* ── LinkedIn Contacts ── */}
-          {contacts.length > 0 && (
+          {(contacts.length > 0 || mktSignals?.linkedinUrl) && (
             <Section title="LinkedIn Contacts">
               <InfoCard>
                 <div className="flex items-center gap-3 mb-4">
                   <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-[#0a66c2]/10">
                     <FaLinkedinIn className="h-4 w-4 text-[#0a66c2]" />
                   </div>
-                  <div>
-                    <p className="text-[14px] font-semibold text-[#1D1D1D]">{contacts.length} contact{contacts.length !== 1 ? "s" : ""}</p>
+                  <div className="flex-1">
+                    <p className="text-[14px] font-semibold text-[#1D1D1D]">{contacts.length > 0 ? `${contacts.length} contact${contacts.length !== 1 ? "s" : ""}` : "No contacts yet"}</p>
                     <p className="text-[11px] text-[#9a9a9a]">People discovered from LinkedIn activity</p>
                   </div>
+                  {mktSignals?.linkedinUrl && mktSignals.linkedinUrl.includes("/company/") && (
+                    <LinkedInSearchButton installerId={installerId} />
+                  )}
                 </div>
                 <div className="space-y-0">
                   {contacts.map((contact, i) => (
