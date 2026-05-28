@@ -57,6 +57,7 @@ import { AddFieldInline } from "@/components/installers/add-field-inline";
 import { EnrichGoogleAdsButton } from "@/components/installers/enrich-google-ads-button";
 import { LinkedInSearchButton } from "@/components/installers/linkedin-search-button";
 import { ExpandablePostText } from "@/components/installers/expandable-post-text";
+import { LinkedInActivityToggle } from "@/components/installers/linkedin-activity-section";
 
 const tierStyles: Record<string, string> = {
   high: "bg-emerald-50 text-emerald-600 border-emerald-200/60",
@@ -1111,25 +1112,13 @@ export default async function InstallerDetailPage({
           {linkedInSignals.length > 0 && (() => {
             // Build contact lookup for avatars
             const contactMap = new Map(contacts.map((c) => [c.id, c]));
-            // Only show relevant signals (scored >= 40, or has keyword match, or unscored)
             const relevantSignals = linkedInSignals.filter((s) =>
               s.matchedKeyword || (s.relevanceScore != null && s.relevanceScore >= 50)
             );
-            if (relevantSignals.length === 0) return null;
-            return (
-            <Section title="LinkedIn Activity">
-              <InfoCard>
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-[#0a66c2]/10">
-                    <FaLinkedinIn className="h-4 w-4 text-[#0a66c2]" />
-                  </div>
-                  <div>
-                    <p className="text-[14px] font-semibold text-[#1D1D1D]">{relevantSignals.length} relevant post{relevantSignals.length !== 1 ? "s" : ""}</p>
-                    <p className="text-[11px] text-[#9a9a9a]">Recent LinkedIn activity by employees</p>
-                  </div>
-                </div>
+
+            const renderSignals = (signals: typeof linkedInSignals) => (
                 <div className="space-y-0">
-                  {relevantSignals.map((signal, i) => {
+                  {signals.map((signal, i) => {
                     const postedDate = signal.postedAt ? (() => {
                       try { return new Date(signal.postedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }); }
                       catch { return signal.postedAt; }
@@ -1204,6 +1193,31 @@ export default async function InstallerDetailPage({
                     );
                   })}
                 </div>
+            );
+
+            return (
+            <Section title="LinkedIn Activity">
+              <InfoCard>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-[#0a66c2]/10">
+                    <FaLinkedinIn className="h-4 w-4 text-[#0a66c2]" />
+                  </div>
+                  <div>
+                    <p className="text-[14px] font-semibold text-[#1D1D1D]">
+                      {relevantSignals.length} relevant post{relevantSignals.length !== 1 ? "s" : ""}
+                      {linkedInSignals.length > relevantSignals.length && (
+                        <span className="text-[#9a9a9a] font-normal"> of {linkedInSignals.length} total</span>
+                      )}
+                    </p>
+                    <p className="text-[11px] text-[#9a9a9a]">Recent LinkedIn activity by employees</p>
+                  </div>
+                </div>
+                <LinkedInActivityToggle
+                  relevantCount={relevantSignals.length}
+                  totalCount={linkedInSignals.length}
+                  relevantChildren={renderSignals(relevantSignals)}
+                  allChildren={renderSignals(linkedInSignals)}
+                />
               </InfoCard>
             </Section>
             );

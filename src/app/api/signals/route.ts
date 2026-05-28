@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
   const search = params.get("search") || "";
   const signalType = params.get("signalType") || "";
   const status = params.get("status") || ""; // "new" | "dismissed" | "actioned" | "" (all)
-  const minRelevance = parseInt(params.get("minRelevance") || "0", 10);
+  const minRelevance = parseInt(params.get("minRelevance") || "50", 10);
   const sortBy = params.get("sortBy") || "postedAt";
 
   const conditions: SQL[] = [];
