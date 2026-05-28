@@ -421,6 +421,7 @@ export const socialSignals = pgTable("social_signals", {
   likes: integer("likes"),
   comments: integer("comments"),
   shares: integer("shares"),
+  matchedKeyword: text("matched_keyword"), // which search keyword found this post
   signalType: text("signal_type").notNull(), // "post" | "repost"
   fetchedAt: text("fetched_at").notNull(),
 });
