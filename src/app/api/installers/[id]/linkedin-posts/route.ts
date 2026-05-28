@@ -25,22 +25,15 @@ export async function POST(
   const body = await request.json().catch(() => ({}));
 
   try {
-  // Auto-detect time range based on last scrape
+  // Use exact date range if previously scraped, otherwise default to month
   const [tracking] = await db
     .select()
     .from(linkedinCompanyTracking)
     .where(eq(linkedinCompanyTracking.installerId, installerId))
     .limit(1);
 
-  let postedLimit = body.postedLimit || "month";
-  if (tracking?.lastScrapedPostsAt) {
-    const lastScrape = new Date(tracking.lastScrapedPostsAt);
-    const diffHours = (Date.now() - lastScrape.getTime()) / (1000 * 60 * 60);
-    if (diffHours < 2) postedLimit = "1h";
-    else if (diffHours < 48) postedLimit = "24h";
-    else if (diffHours < 168) postedLimit = "week";
-    else postedLimit = "month";
-  }
+  const postedLimit = body.postedLimit || (tracking?.lastScrapedPostsAt ? undefined : "month");
+  const postedLimitDate = tracking?.lastScrapedPostsAt || undefined;
 
   // Get all known contacts for this installer
   const contacts = await db
@@ -66,7 +59,7 @@ export async function POST(
   // Start the actor run and wait
   const run = await client.actor("harvestapi/linkedin-profile-posts").start({
     targetUrls: profileUrls,
-    postedLimit,
+    ...(postedLimitDate ? { postedLimitDate } : { postedLimit: postedLimit || "month" }),
     maxPosts: 10, // per profile
   });
 
