@@ -54,7 +54,7 @@ function domainsMatch(installerDomain: string, linkedinDomain: string): boolean 
 }
 
 function extractSlug(linkedinUrl: string): string | null {
-  const match = linkedinUrl.match(/linkedin\.com\/company\/([a-zA-Z0-9._-]+)/i);
+  const match = linkedinUrl.match(/linkedin\.com\/company\/([a-zA-Z0-9._&-]+)/i);
   return match ? match[1].toLowerCase().replace(/\/$/, "") : null;
 }
 
@@ -74,7 +74,13 @@ async function processResults(
   for (const candidate of candidates) {
     try {
       const installerDomain = extractDomain(candidate.website!);
-      if (!installerDomain) { skipped++; continue; }
+      if (!installerDomain) {
+        await db.insert(linkedinCompanyTracking)
+          .values({ installerId: candidate.installerId, linkedinUrl: "", companySlug: "__not_found__" })
+          .onConflictDoNothing();
+        skipped++;
+        continue;
+      }
 
       let bestResult: LinkedInCompanyResult | null = null;
       let bestIdx = -1;
