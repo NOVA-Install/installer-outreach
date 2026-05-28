@@ -11,6 +11,7 @@ import {
   Upload,
   Download,
   Wrench,
+  Radio,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CommandK } from "@/components/layout/command-k";
@@ -19,6 +20,7 @@ const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/installers", label: "Installers", icon: Building2 },
   { href: "/map", label: "Map View", icon: Map },
+  { href: "/signals", label: "Social Signals", icon: Radio },
   { href: "/cleanup", label: "Data Cleanup", icon: Wrench },
   { href: "/enrichment", label: "Enrichment", icon: Sparkles },
   { href: "/import", label: "Import Data", icon: Upload },

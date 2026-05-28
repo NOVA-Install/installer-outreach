@@ -106,6 +106,8 @@ interface Installer {
   linkedinUrl: string | null;
   twitterUrl: string | null;
   youtubeUrl: string | null;
+  // Social signals
+  socialSignalCount: number | null;
   // Computed
   distance: number | null;
 }
@@ -296,6 +298,7 @@ function CopyButton({ text }: { text: string }) {
 interface ColumnDef {
   key: string;
   label: string;
+  width?: number;
   sortKey?: string;
   editable?: boolean;
   render: (row: Installer, onUpdate: (id: number, field: string, val: string) => void) => ReactNode;
@@ -343,6 +346,7 @@ const ALL_COLUMNS: ColumnDef[] = [
   {
     key: "companyName",
     label: "Company",
+    width: 220,
     sortKey: "companyName",
     render: (row) => {
       const domain = getDomain(row.website);
@@ -367,11 +371,11 @@ const ALL_COLUMNS: ColumnDef[] = [
         return true;
       });
       return (
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 min-w-0">
           <CompanyLogo domain={domain} name={row.companyName} />
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
-              <Link href={`/installers/${row.id}`} className="text-[13px] font-semibold text-[#1D1D1D] hover:text-[#4ABDE8] transition-colors truncate">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <Link href={`/installers/${row.id}`} className="text-[13px] font-semibold text-[#1D1D1D] hover:text-[#4ABDE8] transition-colors truncate block">
                 {row.companyName}
               </Link>
               {row.website && (
@@ -407,6 +411,7 @@ const ALL_COLUMNS: ColumnDef[] = [
   {
     key: "legalEntityName",
     label: "Companies House Name",
+    width: 180,
     sortKey: "legalEntityName",
     render: (row) =>
       row.legalEntityName && row.legalEntityName !== "__no_match__"
@@ -416,6 +421,7 @@ const ALL_COLUMNS: ColumnDef[] = [
   {
     key: "county",
     label: "Location",
+    width: 130,
     sortKey: "county",
     render: (row) => {
       const county = row.county && !row.county.toLowerCase().includes("unspecified") ? row.county : null;
@@ -431,12 +437,14 @@ const ALL_COLUMNS: ColumnDef[] = [
   {
     key: "postcode",
     label: "Postcode",
+    width: 90,
     sortKey: "postcode",
     render: (row) => <span className="text-[#6a6a6a] font-mono text-[12px]">{row.postcode || "—"}</span>,
   },
   {
     key: "distance",
     label: "Distance",
+    width: 80,
     sortKey: "distance",
     render: (row) => {
       if (row.distance == null) return <span className="text-[#d5d5d5]">—</span>;
@@ -447,6 +455,7 @@ const ALL_COLUMNS: ColumnDef[] = [
   {
     key: "email",
     label: "Email",
+    width: 200,
     sortKey: "email",
     editable: true,
     render: (row, onUpdate) => (
@@ -464,6 +473,7 @@ const ALL_COLUMNS: ColumnDef[] = [
   {
     key: "telephone",
     label: "Phone",
+    width: 130,
     sortKey: "telephone",
     editable: true,
     render: (row, onUpdate) => (
@@ -481,6 +491,7 @@ const ALL_COLUMNS: ColumnDef[] = [
   {
     key: "stage",
     label: "Stage",
+    width: 120,
     sortKey: "pipelineStage",
     render: (row, onUpdate) => {
       const stageKey = row.pipelineStage || "uncontacted";
@@ -499,6 +510,7 @@ const ALL_COLUMNS: ColumnDef[] = [
   {
     key: "googleReviews",
     label: "Google",
+    width: 100,
     sortKey: "googleReviewCount",
     render: (row) => {
       if (row.googleRating == null) return <span className="text-[#d5d5d5]">—</span>;
@@ -520,6 +532,7 @@ const ALL_COLUMNS: ColumnDef[] = [
   {
     key: "trustpilotReviews",
     label: "Trustpilot",
+    width: 130,
     sortKey: "trustpilotReviewCount",
     render: (row) => {
       if (row.trustpilotRating == null) return <span className="text-[#d5d5d5]">—</span>;
@@ -553,6 +566,7 @@ const ALL_COLUMNS: ColumnDef[] = [
   {
     key: "totalReviews",
     label: "Reviews",
+    width: 80,
     sortKey: "totalReviews",
     render: (row) => {
       const total = (row.googleReviewCount || 0) + (row.trustpilotReviewCount || 0);
@@ -563,6 +577,7 @@ const ALL_COLUMNS: ColumnDef[] = [
   {
     key: "tier",
     label: "Tier",
+    width: 80,
     render: (row) => {
       if (!row.tier) return <span className="text-[#d5d5d5]">—</span>;
       const dot: Record<string, string> = { high: "bg-green-500", medium: "bg-yellow-500", low: "bg-gray-400" };
@@ -577,6 +592,7 @@ const ALL_COLUMNS: ColumnDef[] = [
   {
     key: "score",
     label: "Score",
+    width: 60,
     sortKey: "overallScore",
     render: (row) => {
       if (row.overallScore == null) return <span className="text-[#d5d5d5]">—</span>;
@@ -600,6 +616,7 @@ const ALL_COLUMNS: ColumnDef[] = [
   {
     key: "website",
     label: "Website",
+    width: 150,
     sortKey: "website",
     render: (row) => {
       const domain = getDomain(row.website);
@@ -618,6 +635,7 @@ const ALL_COLUMNS: ColumnDef[] = [
   {
     key: "technologies",
     label: "Technologies",
+    width: 200,
     render: (row) => {
       if (!row.technologiesCertified) return <span className="text-[#d5d5d5]">—</span>;
       const techs = row.technologiesCertified.split(",").map((t) => t.trim()).filter(Boolean);
@@ -638,18 +656,21 @@ const ALL_COLUMNS: ColumnDef[] = [
   {
     key: "address",
     label: "Address",
+    width: 200,
     render: (row) =>
       row.address ? <span className="text-[12px] text-[#6a6a6a] truncate block max-w-[200px]">{row.address}</span> : <span className="text-[#d5d5d5]">—</span>,
   },
   {
     key: "alternativeNames",
     label: "Alt Names",
+    width: 160,
     render: (row) =>
       row.alternativeNames ? <span className="text-[12px] text-[#6a6a6a] truncate block max-w-[180px]">{row.alternativeNames}</span> : <span className="text-[#d5d5d5]">—</span>,
   },
   {
     key: "legalEntityNumber",
     label: "CH Number",
+    width: 100,
     render: (row) =>
       row.legalEntityNumber
         ? <a href={`https://find-and-update.company-information.service.gov.uk/company/${row.legalEntityNumber}`} target="_blank" rel="noopener noreferrer" className="text-[12px] text-[#6a6a6a] hover:text-[#4ABDE8] font-mono">{row.legalEntityNumber}</a>
@@ -658,50 +679,59 @@ const ALL_COLUMNS: ColumnDef[] = [
   {
     key: "certificationBody",
     label: "Cert Body",
+    width: 120,
     render: (row) =>
       row.certificationBody ? <span className="text-[12px] text-[#6a6a6a]">{row.certificationBody}</span> : <span className="text-[#d5d5d5]">—</span>,
   },
   {
     key: "reputationScore",
     label: "Reputation",
+    width: 80,
     render: (row) =>
       row.reputationScore != null ? <span className="font-medium tabular-nums text-[12px]">{row.reputationScore.toFixed(0)}</span> : <span className="text-[#d5d5d5]">—</span>,
   },
   {
     key: "marketingScore",
     label: "Marketing Score",
+    width: 100,
     render: (row) =>
       row.marketingActivityScore != null ? <span className="font-medium tabular-nums text-[12px]">{row.marketingActivityScore.toFixed(0)}</span> : <span className="text-[#d5d5d5]">—</span>,
   },
   {
     key: "reviewsPerMonth",
     label: "Reviews/mo",
+    width: 90,
     render: (row) =>
       row.googleReviewsPerMonth != null ? <span className="tabular-nums text-[12px] text-[#6a6a6a]">{row.googleReviewsPerMonth.toFixed(1)}</span> : <span className="text-[#d5d5d5]">—</span>,
   },
   {
     key: "googleAds",
     label: "Google Ads",
+    width: 80,
     render: (row) => row.hasGoogleAds ? <CheckCircle2 className="h-3.5 w-3.5 text-green-500" /> : <span className="text-[#d5d5d5]">—</span>,
   },
   {
     key: "metaPixel",
     label: "Meta Pixel",
+    width: 80,
     render: (row) => row.hasMetaPixel ? <CheckCircle2 className="h-3.5 w-3.5 text-green-500" /> : <span className="text-[#d5d5d5]">—</span>,
   },
   {
     key: "crmTool",
     label: "CRM Tool",
+    width: 80,
     render: (row) => row.hasCrmTool ? <CheckCircle2 className="h-3.5 w-3.5 text-green-500" /> : <span className="text-[#d5d5d5]">—</span>,
   },
   {
     key: "liveChat",
     label: "Live Chat",
+    width: 80,
     render: (row) => row.hasLiveChat ? <CheckCircle2 className="h-3.5 w-3.5 text-green-500" /> : <span className="text-[#d5d5d5]">—</span>,
   },
   {
     key: "organicTraffic",
     label: "Organic Traffic",
+    width: 110,
     sortKey: "googleOrganicEtv",
     render: (row) =>
       row.googleOrganicEtv != null ? <span className="tabular-nums text-[12px] text-[#6a6a6a]">{Math.round(row.googleOrganicEtv).toLocaleString()}</span> : <span className="text-[#d5d5d5]">—</span>,
@@ -709,6 +739,7 @@ const ALL_COLUMNS: ColumnDef[] = [
   {
     key: "paidTraffic",
     label: "Paid Traffic",
+    width: 100,
     sortKey: "googlePaidEtv",
     render: (row) =>
       row.googlePaidEtv != null && row.googlePaidEtv > 0 ? <span className="tabular-nums text-[12px] text-[#4ABDE8]">{Math.round(row.googlePaidEtv).toLocaleString()}</span> : <span className="text-[#d5d5d5]">—</span>,
@@ -716,6 +747,7 @@ const ALL_COLUMNS: ColumnDef[] = [
   {
     key: "shortlist",
     label: "Shortlist",
+    width: 80,
     sortKey: "isShortlisted",
     render: (row, onUpdate) => {
       const isOn = row.isShortlisted === true;
@@ -746,6 +778,7 @@ const ALL_COLUMNS: ColumnDef[] = [
   {
     key: "priority",
     label: "Priority",
+    width: 90,
     sortKey: "priority",
     render: (row, onUpdate) => {
       const p = row.priority;
@@ -780,6 +813,7 @@ const ALL_COLUMNS: ColumnDef[] = [
   {
     key: "sources",
     label: "Sources",
+    width: 120,
     render: (row) => {
       const sources = [
         row.inMcs && { label: "MCS", color: "bg-blue-50 text-blue-600" },
@@ -801,18 +835,21 @@ const ALL_COLUMNS: ColumnDef[] = [
   {
     key: "novaYearStarted",
     label: "Year Started",
+    width: 90,
     render: (row) =>
       row.novaYearStarted ? <span className="text-[12px] text-[#6a6a6a]">{row.novaYearStarted}</span> : <span className="text-[#d5d5d5]">—</span>,
   },
   {
     key: "trustmarkStatus",
     label: "TM Status",
+    width: 90,
     render: (row) =>
       row.trustmarkStatus ? <span className="text-[12px] text-[#6a6a6a]">{row.trustmarkStatus}</span> : <span className="text-[#d5d5d5]">—</span>,
   },
   {
     key: "formType",
     label: "Form Type",
+    width: 100,
     render: (row) => {
       if (!row.formType) return <span className="text-[#d5d5d5]">—</span>;
       const styles: Record<string, string> = {
@@ -833,6 +870,7 @@ const ALL_COLUMNS: ColumnDef[] = [
   {
     key: "performanceScore",
     label: "PageSpeed",
+    width: 80,
     sortKey: "performanceScore",
     render: (row) => {
       if (row.performanceScore == null) return <span className="text-[#d5d5d5]">—</span>;
@@ -843,12 +881,30 @@ const ALL_COLUMNS: ColumnDef[] = [
   {
     key: "siteBuilder",
     label: "Site Builder",
+    width: 110,
     render: (row) =>
       row.siteBuilder ? <span className="text-[12px] text-[#6a6a6a]">{row.siteBuilder}</span> : <span className="text-[#d5d5d5]">—</span>,
   },
   {
+    key: "socialSignals",
+    label: "LinkedIn Signals",
+    width: 110,
+    sortKey: "socialSignalCount",
+    render: (row) => {
+      const count = row.socialSignalCount ?? 0;
+      if (count === 0) return <span className="text-[#d5d5d5]">—</span>;
+      return (
+        <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[#0a66c2]">
+          <FaLinkedinIn className="h-3 w-3" />
+          {count}
+        </span>
+      );
+    },
+  },
+  {
     key: "social",
     label: "Social",
+    width: 130,
     render: (row) => {
       const links = [
         row.linkedinUrl && { icon: <FaLinkedinIn className="h-3 w-3" />, color: "#0a66c2", url: row.linkedinUrl, name: "LinkedIn" },
@@ -1121,9 +1177,10 @@ export function InstallerTable({ counties: initialCounties, crmTools: initialCrm
 
     const onMove = (ev: MouseEvent) => {
       if (!resizingRef.current) return;
-      const delta = ev.clientX - resizingRef.current.startX;
-      const newW = Math.max(60, resizingRef.current.startW + delta);
-      setColWidths((prev) => ({ ...prev, [resizingRef.current!.key]: newW }));
+      const { key: colKey, startX, startW } = resizingRef.current;
+      const delta = ev.clientX - startX;
+      const newW = Math.max(60, startW + delta);
+      setColWidths((prev) => ({ ...prev, [colKey]: newW }));
     };
     const onUp = () => {
       resizingRef.current = null;
@@ -1364,11 +1421,11 @@ export function InstallerTable({ counties: initialCounties, crmTools: initialCrm
 
         {/* Desktop table */}
         <div className="flex-1 overflow-auto bg-white hidden md:block">
-          <table className="border-collapse text-[13px]" style={{ tableLayout: "fixed", minWidth: "100%" }}>
+          <table className="border-collapse text-[13px]" style={{ tableLayout: "fixed", width: 36 + columns.reduce((sum, col) => sum + (colWidths[col.key] || col.width || 120), 0) }}>
             <colgroup>
               <col style={{ width: 36 }} />
               {columns.map((col) => (
-                <col key={col.key} style={colWidths[col.key] ? { width: colWidths[col.key] } : undefined} />
+                <col key={col.key} style={{ width: colWidths[col.key] || col.width }} />
               ))}
             </colgroup>
             <thead className="sticky top-0 z-10">
@@ -1377,7 +1434,7 @@ export function InstallerTable({ counties: initialCounties, crmTools: initialCrm
                   <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} className="h-3.5 w-3.5 rounded accent-[#4ABDE8]" />
                 </th>
                 {columns.map((col) => (
-                  <th key={col.key} className="text-left font-medium text-[#6a6a6a] text-[12px] px-4 py-2.5 whitespace-nowrap relative group/th">
+                  <th key={col.key} className="text-left font-medium text-[#6a6a6a] text-[12px] px-4 py-2.5 whitespace-nowrap relative group/th overflow-hidden">
                     {col.sortKey ? <SortHeader label={col.label} column={col.sortKey} /> : col.label}
                     <div
                       onMouseDown={(e) => startResize(col.key, e)}

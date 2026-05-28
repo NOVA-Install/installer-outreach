@@ -23,7 +23,10 @@ import {
   XCircle,
   AlertCircle,
   RefreshCw,
+  X,
+  Plus,
 } from "lucide-react";
+import { FaLinkedinIn } from "react-icons/fa6";
 import { toast } from "sonner";
 
 interface TaskProgress {
@@ -140,6 +143,20 @@ const SOURCES = [
     endpoint: "/api/enrichment/job-postings",
     description: "Detect if company is hiring via Indeed, LinkedIn, Reed, Totaljobs, etc.",
     cost: "~$0.002/search",
+  },
+  {
+    key: "linkedin_signals",
+    label: "LinkedIn Social Signals",
+    endpoint: "/api/enrichment/linkedin-signals",
+    description: "Search LinkedIn for recent posts by employees of tracked companies. Requires LinkedIn URLs from Site Analysis.",
+    cost: "~$2/1K posts (Apify)",
+  },
+  {
+    key: "linkedin_company_lookup",
+    label: "LinkedIn Company Lookup",
+    endpoint: "/api/enrichment/linkedin-company-lookup",
+    description: "Find LinkedIn company pages for installers that don't have one. Searches by company name and verifies by matching website domain. Only saves high-confidence matches.",
+    cost: "~$4/1K companies (Apify)",
   },
   {
     key: "creditsafe",
@@ -334,6 +351,279 @@ function GoogleAdsFilter({ onRun, disabled }: { onRun: (minTraffic: number) => v
           disabled={disabled || !preview || preview.eligible === 0}
         >
           <Play className="h-3.5 w-3.5" /> Run ({preview?.eligible || 0})
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+const DEFAULT_LINKEDIN_KEYWORDS = [
+  "solar installation",
+  "solar panel",
+  "heat pump",
+  "renewable energy installer",
+  "MCS certified",
+  "solar PV",
+  "air source heat pump",
+  "battery storage",
+  "EV charger installation",
+];
+
+const LINKEDIN_KEYWORDS_KEY = "linkedin-signals-keywords";
+const LINKEDIN_POSTED_LIMIT_KEY = "linkedin-signals-posted-limit";
+const LINKEDIN_BATCH_SIZE_KEY = "linkedin-signals-batch-size";
+
+function loadLinkedInKeywords(): string[] {
+  if (typeof window === "undefined") return DEFAULT_LINKEDIN_KEYWORDS;
+  try {
+    const s = localStorage.getItem(LINKEDIN_KEYWORDS_KEY);
+    if (s) { const p = JSON.parse(s); if (Array.isArray(p) && p.length > 0) return p; }
+  } catch {}
+  return DEFAULT_LINKEDIN_KEYWORDS;
+}
+function saveLinkedInKeywords(kw: string[]) {
+  try { localStorage.setItem(LINKEDIN_KEYWORDS_KEY, JSON.stringify(kw)); } catch {}
+}
+
+function LinkedInSignalsConfig({ onRun, disabled }: { onRun: (config: { keywords: string[]; postedLimit: string; companyBatchSize: number; maxCompanies?: number }) => void; disabled: boolean }) {
+  const [keywords, setKeywords] = useState<string[]>(loadLinkedInKeywords);
+  const [preview, setPreview] = useState<{ eligible: number; estimatedCost: string } | null>(null);
+  const [maxCompanies, setMaxCompanies] = useState<number | undefined>(undefined);
+  const [newKeyword, setNewKeyword] = useState("");
+  const [postedLimit, setPostedLimit] = useState(() => {
+    if (typeof window === "undefined") return "week";
+    return localStorage.getItem(LINKEDIN_POSTED_LIMIT_KEY) || "week";
+  });
+  const [companyBatchSize, setCompanyBatchSize] = useState(() => {
+    if (typeof window === "undefined") return 10;
+    const s = typeof window !== "undefined" ? localStorage.getItem(LINKEDIN_BATCH_SIZE_KEY) : null;
+    return s ? Number(s) : 1;
+  });
+
+  // Fetch cost preview on mount
+  useEffect(() => {
+    fetch("/api/enrichment/linkedin-signals/preview")
+      .then((r) => r.json())
+      .then((data) => setPreview(data))
+      .catch(() => {});
+  }, []);
+
+  const addKeyword = () => {
+    const trimmed = newKeyword.trim().toLowerCase();
+    if (!trimmed || keywords.includes(trimmed)) return;
+    const next = [...keywords, trimmed];
+    setKeywords(next);
+    saveLinkedInKeywords(next);
+    setNewKeyword("");
+  };
+
+  const removeKeyword = (kw: string) => {
+    const next = keywords.filter((k) => k !== kw);
+    setKeywords(next);
+    saveLinkedInKeywords(next);
+  };
+
+  const resetToDefaults = () => {
+    setKeywords(DEFAULT_LINKEDIN_KEYWORDS);
+    saveLinkedInKeywords(DEFAULT_LINKEDIN_KEYWORDS);
+  };
+
+  return (
+    <div className="space-y-3 mt-3 pt-3 border-t border-[#f0f0f0]">
+      {/* Search Keywords */}
+      <div>
+        <div className="flex items-center justify-between mb-1.5">
+          <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Search Keywords</label>
+          <button onClick={resetToDefaults} className="text-[10px] text-primary hover:underline">Reset to defaults</button>
+        </div>
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {keywords.map((kw) => (
+            <span
+              key={kw}
+              className="inline-flex items-center gap-1 rounded-full bg-[#0a66c2]/8 border border-[#0a66c2]/20 px-2.5 py-1 text-[11px] text-[#0a66c2]"
+            >
+              {kw}
+              <button
+                onClick={() => removeKeyword(kw)}
+                className="hover:text-red-500 transition-colors"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+        <div className="flex gap-1.5">
+          <input
+            type="text"
+            value={newKeyword}
+            onChange={(e) => setNewKeyword(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addKeyword(); } }}
+            placeholder="Add keyword..."
+            className="flex-1 h-7 rounded-md border border-input bg-background px-2.5 text-[12px] placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+          <Button size="sm" variant="outline" className="h-7 px-2" onClick={addKeyword} disabled={!newKeyword.trim()}>
+            <Plus className="h-3 w-3" />
+          </Button>
+        </div>
+      </div>
+
+      {/* Options row */}
+      <div className="flex flex-wrap gap-3 items-end">
+        <div className="space-y-1">
+          <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Time Range</label>
+          <Select
+            value={postedLimit}
+            onValueChange={(v: string | null) => {
+              if (v) {
+                setPostedLimit(v);
+                try { localStorage.setItem(LINKEDIN_POSTED_LIMIT_KEY, v); } catch {}
+              }
+            }}
+          >
+            <SelectTrigger className="w-[140px] h-7 text-[12px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="24h">Last 24 hours</SelectItem>
+              <SelectItem value="week">Last week</SelectItem>
+              <SelectItem value="month">Last month</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Company Batch Size</label>
+          <Select
+            value={String(companyBatchSize)}
+            onValueChange={(v: string | null) => {
+              if (v) {
+                setCompanyBatchSize(Number(v));
+                try { localStorage.setItem(LINKEDIN_BATCH_SIZE_KEY, v); } catch {}
+              }
+            }}
+          >
+            <SelectTrigger className="w-[100px] h-7 text-[12px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="1">1 (precise)</SelectItem>
+              <SelectItem value="5">5</SelectItem>
+              <SelectItem value="10">10 (default)</SelectItem>
+              <SelectItem value="20">20 (faster)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {/* Company limit */}
+      {preview && preview.eligible > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-3">
+            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap">Max companies:</label>
+            <input
+              type="range"
+              min={10}
+              max={preview.eligible}
+              step={10}
+              value={maxCompanies ?? preview.eligible}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                setMaxCompanies(v >= preview.eligible ? undefined : v);
+              }}
+              className="flex-1 h-1.5 accent-[#0a66c2]"
+            />
+            <span className="text-[12px] font-medium tabular-nums w-[60px] text-right">
+              {maxCompanies ?? preview.eligible} / {preview.eligible}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Cost estimate + Run */}
+      <div className="flex items-center justify-between pt-1">
+        <div className="text-[11px] text-muted-foreground">
+          {preview ? (
+            <span>
+              <span className="font-medium text-[#1D1D1D]">{maxCompanies ?? preview.eligible}</span> companies with LinkedIn URLs
+              {" · "}
+              Est. cost: <span className="font-medium text-[#1D1D1D]">
+                {maxCompanies
+                  ? `~$${((maxCompanies / preview.eligible) * parseFloat(preview.estimatedCost.replace(/[^0-9.]/g, ""))).toFixed(2)}`
+                  : preview.estimatedCost}
+              </span>
+            </span>
+          ) : (
+            "Loading preview..."
+          )}
+        </div>
+        <Button
+          size="sm"
+          onClick={() => onRun({ keywords, postedLimit, companyBatchSize, maxCompanies })}
+          disabled={disabled || keywords.length === 0}
+        >
+          <FaLinkedinIn className="h-3 w-3" /> Run
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function LinkedInCompanyLookupConfig({ onRun, disabled }: { onRun: (config: { maxCompanies: number }) => void; disabled: boolean }) {
+  const [preview, setPreview] = useState<{ eligible: number; estimatedCost: string } | null>(null);
+  const [maxCompanies, setMaxCompanies] = useState<number>(100);
+
+  useEffect(() => {
+    fetch("/api/enrichment/linkedin-company-lookup/preview")
+      .then((r) => r.json())
+      .then((data) => {
+        setPreview(data);
+        setMaxCompanies(Math.min(100, data.eligible));
+      })
+      .catch(() => {});
+  }, []);
+
+  return (
+    <div className="space-y-3 mt-3 pt-3 border-t border-[#f0f0f0]">
+      {preview && preview.eligible > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-3">
+            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap">Companies to search:</label>
+            <input
+              type="range"
+              min={10}
+              max={Math.min(500, preview.eligible)}
+              step={10}
+              value={maxCompanies}
+              onChange={(e) => setMaxCompanies(Number(e.target.value))}
+              className="flex-1 h-1.5 accent-[#0a66c2]"
+            />
+            <span className="text-[12px] font-medium tabular-nums w-[60px] text-right">
+              {maxCompanies} / {preview.eligible}
+            </span>
+          </div>
+        </div>
+      )}
+      <div className="flex items-center justify-between">
+        <div className="text-[11px] text-muted-foreground">
+          {preview ? (
+            <span>
+              <span className="font-medium text-[#1D1D1D]">{preview.eligible}</span> companies with website but no LinkedIn URL
+              {" · "}
+              Est. cost for {maxCompanies}: <span className="font-medium text-[#1D1D1D]">
+                ~${((maxCompanies / 1000) * 4).toFixed(2)}
+              </span>
+              {" · "}
+              Domain verification ensures only correct matches are saved
+            </span>
+          ) : (
+            "Loading preview..."
+          )}
+        </div>
+        <Button
+          size="sm"
+          onClick={() => onRun({ maxCompanies })}
+          disabled={disabled || !preview || preview.eligible === 0}
+        >
+          <FaLinkedinIn className="h-3 w-3" /> Search ({maxCompanies})
         </Button>
       </div>
     </div>
@@ -708,6 +998,56 @@ export function EnrichmentPanel() {
                   </Button>
                 </div>
               </div>
+
+              {/* LinkedIn Signals config */}
+              {source.key === "linkedin_signals" && (
+                <LinkedInSignalsConfig
+                  disabled={isRunning || (status?.total ?? 0) === 0}
+                  onRun={async (config: { keywords: string[]; postedLimit: string; companyBatchSize: number; maxCompanies?: number }) => {
+                    setRunning((prev) => new Set([...prev, source.key]));
+                    try {
+                      const res = await fetch("/api/enrichment/linkedin-signals", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(config),
+                      });
+                      const data = await res.json().catch(() => ({}));
+                      if (!res.ok) throw new Error(data.error || "Failed");
+                      toast.success(`LinkedIn Signals: started with ${config.keywords.length} keywords. Running in background.`);
+                      fetchStatus();
+                    } catch (err) {
+                      toast.error(`LinkedIn Signals: ${err instanceof Error ? err.message : "Failed"}`, { duration: 8000 });
+                    } finally {
+                      setRunning((prev) => { const next = new Set(prev); next.delete(source.key); return next; });
+                    }
+                  }}
+                />
+              )}
+
+              {/* LinkedIn Company Lookup config */}
+              {source.key === "linkedin_company_lookup" && (
+                <LinkedInCompanyLookupConfig
+                  disabled={isRunning || (status?.total ?? 0) === 0}
+                  onRun={async (config) => {
+                    setRunning((prev) => new Set([...prev, source.key]));
+                    try {
+                      const res = await fetch("/api/enrichment/linkedin-company-lookup", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(config),
+                      });
+                      const data = await res.json().catch(() => ({}));
+                      if (!res.ok) throw new Error(data.error || "Failed");
+                      toast.success(`LinkedIn Lookup: searching ${config.maxCompanies} companies. Running in background.`);
+                      fetchStatus();
+                    } catch (err) {
+                      toast.error(`LinkedIn Lookup: ${err instanceof Error ? err.message : "Failed"}`, { duration: 8000 });
+                    } finally {
+                      setRunning((prev) => { const next = new Set(prev); next.delete(source.key); return next; });
+                    }
+                  }}
+                />
+              )}
 
               {/* Google Ads filter */}
               {source.key === "google_ads_transparency" && (

@@ -7,6 +7,7 @@ import {
   marketingSignals,
   trafficData,
   websiteQuality,
+  socialSignals,
 } from "@/lib/db/schema";
 import { sql, eq, like, or, and, count, desc, asc, inArray, type SQL } from "drizzle-orm";
 import { getPrefixesForZones } from "@/lib/constants";
@@ -97,6 +98,7 @@ export async function getInstallers(filters: InstallerFilters = {}) {
   if (search) {
     const searchCondition = or(
       like(installers.companyName, `%${search}%`),
+      like(installers.alternativeNames, `%${search}%`),
       like(installers.postcode, `%${search}%`),
       like(installers.email, `%${search}%`)
     );
@@ -367,6 +369,8 @@ export async function getInstallers(filters: InstallerFilters = {}) {
             ))) * 3958.8
           ELSE NULL END`
         : sql<number | null>`NULL`,
+      // LinkedIn social signal count (safe — returns 0 if table not yet created)
+      socialSignalCount: sql<number>`CASE WHEN to_regclass('social_signals') IS NOT NULL THEN (SELECT COUNT(*) FROM social_signals WHERE social_signals.installer_id = ${installers.id}) ELSE 0 END`.as("social_signal_count"),
       // Window function: total matching rows (avoids separate count query)
       _total: sql<number>`COUNT(*) OVER()`.as("_total"),
     })
