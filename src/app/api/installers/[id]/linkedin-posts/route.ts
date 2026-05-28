@@ -49,8 +49,8 @@ export async function POST(
 
   // Start the actor run
   const run = await client.actor("harvestapi/linkedin-profile-posts").start({
-    profileUrls,
-    scrapePostedLimit: postedLimit,
+    targetUrls: profileUrls,
+    postedLimit,
     maxPosts: 10, // per profile
   });
 
