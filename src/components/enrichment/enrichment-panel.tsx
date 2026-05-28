@@ -385,7 +385,7 @@ function saveLinkedInKeywords(kw: string[]) {
   try { localStorage.setItem(LINKEDIN_KEYWORDS_KEY, JSON.stringify(kw)); } catch {}
 }
 
-function LinkedInSignalsConfig({ onRun, disabled }: { onRun: (config: { keywords: string[]; postedLimit: string; companyBatchSize: number; maxCompanies?: number }) => void; disabled: boolean }) {
+function LinkedInSignalsConfig({ onRun, disabled }: { onRun: (config: { keywords: string[]; postedLimit: string; maxCompanies?: number }) => void; disabled: boolean }) {
   const [keywords, setKeywords] = useState<string[]>(loadLinkedInKeywords);
   const [preview, setPreview] = useState<{ eligible: number; estimatedCost: string } | null>(null);
   const [maxCompanies, setMaxCompanies] = useState<number | undefined>(undefined);
@@ -393,11 +393,6 @@ function LinkedInSignalsConfig({ onRun, disabled }: { onRun: (config: { keywords
   const [postedLimit, setPostedLimit] = useState(() => {
     if (typeof window === "undefined") return "week";
     return localStorage.getItem(LINKEDIN_POSTED_LIMIT_KEY) || "week";
-  });
-  const [companyBatchSize, setCompanyBatchSize] = useState(() => {
-    if (typeof window === "undefined") return 10;
-    const s = typeof window !== "undefined" ? localStorage.getItem(LINKEDIN_BATCH_SIZE_KEY) : null;
-    return s ? Number(s) : 1;
   });
 
   // Fetch cost preview on mount
@@ -490,28 +485,6 @@ function LinkedInSignalsConfig({ onRun, disabled }: { onRun: (config: { keywords
             </SelectContent>
           </Select>
         </div>
-        <div className="space-y-1">
-          <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Company Batch Size</label>
-          <Select
-            value={String(companyBatchSize)}
-            onValueChange={(v: string | null) => {
-              if (v) {
-                setCompanyBatchSize(Number(v));
-                try { localStorage.setItem(LINKEDIN_BATCH_SIZE_KEY, v); } catch {}
-              }
-            }}
-          >
-            <SelectTrigger className="w-[100px] h-7 text-[12px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="1">1 (precise)</SelectItem>
-              <SelectItem value="5">5</SelectItem>
-              <SelectItem value="10">10 (default)</SelectItem>
-              <SelectItem value="20">20 (faster)</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
       </div>
 
       {/* Company limit */}
@@ -557,7 +530,7 @@ function LinkedInSignalsConfig({ onRun, disabled }: { onRun: (config: { keywords
         </div>
         <Button
           size="sm"
-          onClick={() => onRun({ keywords, postedLimit, companyBatchSize, maxCompanies })}
+          onClick={() => onRun({ keywords, postedLimit, maxCompanies })}
           disabled={disabled || keywords.length === 0}
         >
           <FaLinkedinIn className="h-3 w-3" /> Run
@@ -567,100 +540,37 @@ function LinkedInSignalsConfig({ onRun, disabled }: { onRun: (config: { keywords
   );
 }
 
-function LinkedInCompanyLookupConfig({ disabled }: { disabled: boolean }) {
+function LinkedInCompanyLookupConfig({ onRun, disabled }: { onRun: (config: { maxCompanies: number }) => void; disabled: boolean }) {
   const [preview, setPreview] = useState<{ eligible: number; estimatedCost: string } | null>(null);
-  const [maxBatches, setMaxBatches] = useState<number>(10);
-  const [lookupRunning, setLookupRunning] = useState(false);
-  const [progress, setProgress] = useState<{ searched: number; matched: number; skipped: number; remaining: number } | null>(null);
+  const [maxCompanies, setMaxCompanies] = useState(500);
 
   useEffect(() => {
     fetch("/api/enrichment/linkedin-company-lookup/preview")
       .then((r) => r.json())
       .then((data) => {
         setPreview(data);
-        setMaxBatches(Math.min(10, Math.ceil(data.eligible / 50)));
+        setMaxCompanies(Math.min(500, data.eligible));
       })
       .catch(() => {});
   }, []);
 
-  const runLookup = async () => {
-    setLookupRunning(true);
-    setProgress({ searched: 0, matched: 0, skipped: 0, remaining: preview?.eligible ?? 0 });
-
-    let totalSearched = 0;
-    let totalMatched = 0;
-    let totalSkipped = 0;
-
-    for (let batch = 0; batch < maxBatches; batch++) {
-      try {
-        const res = await fetch("/api/enrichment/linkedin-company-lookup", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ batchSize: 50 }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Failed");
-
-        totalSearched += data.searched || 0;
-        totalMatched += data.matched || 0;
-        totalSkipped += data.skipped || 0;
-        setProgress({ searched: totalSearched, matched: totalMatched, skipped: totalSkipped, remaining: data.remaining || 0 });
-
-        if (data.remaining <= 0 || data.searched === 0) break;
-      } catch (err) {
-        toast.error(`LinkedIn Lookup batch ${batch + 1} failed: ${err instanceof Error ? err.message : "Unknown error"}`);
-        break;
-      }
-    }
-
-    toast.success(`LinkedIn Lookup: ${totalMatched} new LinkedIn pages found from ${totalSearched} searched`);
-    setLookupRunning(false);
-    // Refresh preview
-    fetch("/api/enrichment/linkedin-company-lookup/preview").then((r) => r.json()).then(setPreview).catch(() => {});
-  };
-
-  const maxCompanies = maxBatches * 50;
-
   return (
     <div className="space-y-3 mt-3 pt-3 border-t border-[#f0f0f0]">
       {preview && preview.eligible > 0 && (
-        <div className="space-y-2">
-          <div className="flex items-center gap-3">
-            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap">Companies to search:</label>
-            <input
-              type="range"
-              min={1}
-              max={Math.min(100, Math.ceil(preview.eligible / 50))}
-              step={1}
-              value={maxBatches}
-              onChange={(e) => setMaxBatches(Number(e.target.value))}
-              className="flex-1 h-1.5 accent-[#0a66c2]"
-              disabled={lookupRunning}
-            />
-            <span className="text-[12px] font-medium tabular-nums w-[80px] text-right">
-              ~{Math.min(maxCompanies, preview.eligible)} / {preview.eligible}
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Progress */}
-      {lookupRunning && progress && (
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-2 text-[12px]">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            <span className="tabular-nums">
-              {progress.searched} searched · {progress.matched} matched · {progress.remaining} remaining
-            </span>
-          </div>
-          {preview && preview.eligible > 0 && (
-            <div className="h-1 rounded-full bg-muted overflow-hidden">
-              <div
-                className="h-full bg-[#0a66c2] rounded-full transition-all"
-                style={{ width: `${Math.round(((preview.eligible - progress.remaining) / preview.eligible) * 100)}%` }}
-              />
-            </div>
-          )}
+        <div className="flex items-center gap-3">
+          <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap">Companies to search:</label>
+          <input
+            type="range"
+            min={50}
+            max={Math.min(5000, preview.eligible)}
+            step={50}
+            value={maxCompanies}
+            onChange={(e) => setMaxCompanies(Number(e.target.value))}
+            className="flex-1 h-1.5 accent-[#0a66c2]"
+          />
+          <span className="text-[12px] font-medium tabular-nums w-[80px] text-right">
+            {Math.min(maxCompanies, preview.eligible)} / {preview.eligible}
+          </span>
         </div>
       )}
 
@@ -670,24 +580,19 @@ function LinkedInCompanyLookupConfig({ disabled }: { disabled: boolean }) {
             <span>
               <span className="font-medium text-[#1D1D1D]">{preview.eligible}</span> companies with website but no LinkedIn URL
               {" · "}
-              Est. cost for {Math.min(maxCompanies, preview.eligible)}: <span className="font-medium text-[#1D1D1D]">
+              Est. cost: <span className="font-medium text-[#1D1D1D]">
                 ~${((Math.min(maxCompanies, preview.eligible) / 1000) * 4).toFixed(2)}
               </span>
+              {" · "}Domain verification ensures only correct matches
             </span>
-          ) : (
-            "Loading preview..."
-          )}
+          ) : "Loading preview..."}
         </div>
         <Button
           size="sm"
-          onClick={runLookup}
-          disabled={disabled || lookupRunning || !preview || preview.eligible === 0}
+          onClick={() => onRun({ maxCompanies })}
+          disabled={disabled || !preview || preview.eligible === 0}
         >
-          {lookupRunning ? (
-            <><Loader2 className="h-3 w-3 animate-spin" /> Running</>
-          ) : (
-            <><FaLinkedinIn className="h-3 w-3" /> Search (~{Math.min(maxCompanies, preview?.eligible ?? 0)})</>
-          )}
+          <FaLinkedinIn className="h-3 w-3" /> Search ({Math.min(maxCompanies, preview?.eligible ?? 0)})
         </Button>
       </div>
     </div>
@@ -1067,7 +972,7 @@ export function EnrichmentPanel() {
               {source.key === "linkedin_signals" && (
                 <LinkedInSignalsConfig
                   disabled={isRunning || (status?.total ?? 0) === 0}
-                  onRun={async (config: { keywords: string[]; postedLimit: string; companyBatchSize: number; maxCompanies?: number }) => {
+                  onRun={async (config) => {
                     setRunning((prev) => new Set([...prev, source.key]));
                     try {
                       const res = await fetch("/api/enrichment/linkedin-signals", {
@@ -1077,7 +982,7 @@ export function EnrichmentPanel() {
                       });
                       const data = await res.json().catch(() => ({}));
                       if (!res.ok) throw new Error(data.error || "Failed");
-                      toast.success(`LinkedIn Signals: started with ${config.keywords.length} keywords. Running in background.`);
+                      toast.success("LinkedIn Signals: started. Running in background — you can close this page.");
                       fetchStatus();
                     } catch (err) {
                       toast.error(`LinkedIn Signals: ${err instanceof Error ? err.message : "Failed"}`, { duration: 8000 });
@@ -1092,6 +997,24 @@ export function EnrichmentPanel() {
               {source.key === "linkedin_company_lookup" && (
                 <LinkedInCompanyLookupConfig
                   disabled={isRunning || (status?.total ?? 0) === 0}
+                  onRun={async (config) => {
+                    setRunning((prev) => new Set([...prev, source.key]));
+                    try {
+                      const res = await fetch("/api/enrichment/linkedin-company-lookup", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(config),
+                      });
+                      const data = await res.json().catch(() => ({}));
+                      if (!res.ok) throw new Error(data.error || "Failed");
+                      toast.success("LinkedIn Lookup: started. Running in background — you can close this page.");
+                      fetchStatus();
+                    } catch (err) {
+                      toast.error(`LinkedIn Lookup: ${err instanceof Error ? err.message : "Failed"}`, { duration: 8000 });
+                    } finally {
+                      setRunning((prev) => { const next = new Set(prev); next.delete(source.key); return next; });
+                    }
+                  }}
                 />
               )}
 
