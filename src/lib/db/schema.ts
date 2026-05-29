@@ -385,6 +385,7 @@ export const linkedinCompanyTracking = pgTable("linkedin_company_tracking", {
   companySlug: text("company_slug"), // e.g. "acme" — extracted from URL
   lastSearchedAt: text("last_searched_at"), // null until first keyword search
   lastScrapedPostsAt: text("last_scraped_posts_at"), // null until first full post scrape
+  lastScrapedEmployeesAt: text("last_scraped_employees_at"), // null until first employee scrape
 });
 
 // LinkedIn contacts — auto-populated from post search results

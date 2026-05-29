@@ -1,7 +1,7 @@
 import { ApifyClient } from "apify-client";
 import { db } from "@/lib/db";
 import { installers, linkedinCompanyTracking, linkedinContacts } from "@/lib/db/schema";
-import { eq, and, isNotNull, sql } from "drizzle-orm";
+import { eq, and, isNotNull, isNull, sql } from "drizzle-orm";
 
 const LINKEDIN_EMPLOYEES_ACTOR = "harvestapi/linkedin-company-employees";
 
@@ -22,13 +22,14 @@ export async function scrapeLinkedInEmployeesBatch(
   const token = process.env.APIFY_API_TOKEN;
   if (!token) throw new Error("APIFY_API_TOKEN not set");
 
-  // Find shortlisted companies with LinkedIn tracking but no employees scraped yet
+  // Find shortlisted companies with LinkedIn tracking but never employee-scraped
   const candidates = await db
     .select({
       installerId: installers.id,
       companyName: installers.companyName,
       linkedinUrl: linkedinCompanyTracking.linkedinUrl,
       companySlug: linkedinCompanyTracking.companySlug,
+      trackingId: linkedinCompanyTracking.id,
     })
     .from(installers)
     .innerJoin(
@@ -40,11 +41,7 @@ export async function scrapeLinkedInEmployeesBatch(
         eq(installers.isShortlisted, true),
         isNotNull(linkedinCompanyTracking.linkedinUrl),
         sql`${linkedinCompanyTracking.companySlug} != '__not_found__'`,
-        // No employees scraped yet for this installer
-        sql`NOT EXISTS (
-          SELECT 1 FROM linkedin_contacts lc
-          WHERE lc.installer_id = ${installers.id}
-        )`
+        isNull(linkedinCompanyTracking.lastScrapedEmployeesAt)
       )
     )
     .limit(batchSize);
@@ -61,10 +58,7 @@ export async function scrapeLinkedInEmployeesBatch(
         eq(installers.isShortlisted, true),
         isNotNull(linkedinCompanyTracking.linkedinUrl),
         sql`${linkedinCompanyTracking.companySlug} != '__not_found__'`,
-        sql`NOT EXISTS (
-          SELECT 1 FROM linkedin_contacts lc
-          WHERE lc.installer_id = ${installers.id}
-        )`
+        isNull(linkedinCompanyTracking.lastScrapedEmployeesAt)
       )
     )
     .then((r) => Number(r[0]?.count ?? 0) - candidates.length);
@@ -159,6 +153,12 @@ export async function scrapeLinkedInEmployeesBatch(
         totalEmployees++;
       }
 
+      // Mark as scraped regardless of how many employees were found
+      await db
+        .update(linkedinCompanyTracking)
+        .set({ lastScrapedEmployeesAt: new Date().toISOString() })
+        .where(eq(linkedinCompanyTracking.id, candidate.trackingId));
+
       totalProcessed++;
       console.log(
         `[linkedin-employees-bulk] ${candidate.companyName}: ${items.length} employees found`
@@ -168,6 +168,12 @@ export async function scrapeLinkedInEmployeesBatch(
         `[linkedin-employees-bulk] Failed for ${candidate.companyName}:`,
         err instanceof Error ? err.message : err
       );
+      // Still mark as scraped so we don't retry endlessly
+      await db
+        .update(linkedinCompanyTracking)
+        .set({ lastScrapedEmployeesAt: new Date().toISOString() })
+        .where(eq(linkedinCompanyTracking.id, candidate.trackingId))
+        .catch(() => {});
       totalErrors++;
     }
   }
@@ -190,9 +196,7 @@ export async function previewLinkedInEmployeesBulk() {
         WHERE i.is_shortlisted = true
           AND lct.linkedin_url IS NOT NULL
           AND lct.company_slug != '__not_found__'
-          AND NOT EXISTS (
-            SELECT 1 FROM linkedin_contacts lc WHERE lc.installer_id = i.id
-          )
+          AND lct.last_scraped_employees_at IS NULL
       ) as eligible,
       COUNT(*) FILTER (
         WHERE i.is_shortlisted = true

@@ -105,6 +105,12 @@ export async function POST(
       newContacts++;
     }
 
+    // Mark as scraped
+    await db
+      .update(linkedinCompanyTracking)
+      .set({ lastScrapedEmployeesAt: new Date().toISOString() })
+      .where(eq(linkedinCompanyTracking.id, tracking.id));
+
     return NextResponse.json({
       employees: items.length,
       newContacts,
