@@ -514,6 +514,15 @@ export const linkedInEmployeesBulk = inngest.createFunction(
   async ({ step }) => {
     const jobId = await step.run("create-job", () => createJob("linkedin_employees_bulk"));
 
+    // Calculate total once upfront so the progress bar doesn't drift
+    const totalItems = await step.run("count-eligible", async () => {
+      const { previewLinkedInEmployeesBulk } = await import("@/lib/enrichment/linkedin-employees-bulk");
+      const preview = await previewLinkedInEmployeesBulk();
+      return preview.eligible;
+    });
+
+    await step.run("set-total", () => updateJobProgress(jobId, 0, 0, totalItems));
+
     let totalProcessed = 0;
     let totalEmployees = 0;
     let totalErrors = 0;
@@ -531,7 +540,7 @@ export const linkedInEmployeesBulk = inngest.createFunction(
       totalErrors += result.errors || 0;
 
       await step.run(`update-progress-${batch}`, () =>
-        updateJobProgress(jobId, totalProcessed, totalErrors, totalProcessed + (result.remaining || 0))
+        updateJobProgress(jobId, totalProcessed, totalErrors)
       );
 
       if ((result.remaining || 0) <= 0 && result.processed === 0) break;
@@ -551,6 +560,15 @@ export const linkedInPostsBulk = inngest.createFunction(
   async ({ step }) => {
     const jobId = await step.run("create-job", () => createJob("linkedin_posts_bulk"));
 
+    // Calculate total once upfront so the progress bar doesn't drift
+    const totalItems = await step.run("count-eligible", async () => {
+      const { previewLinkedInPostsBulk } = await import("@/lib/enrichment/linkedin-posts-bulk");
+      const preview = await previewLinkedInPostsBulk();
+      return preview.eligible;
+    });
+
+    await step.run("set-total", () => updateJobProgress(jobId, 0, 0, totalItems));
+
     let totalProcessed = 0;
     let totalNewSignals = 0;
     let totalErrors = 0;
@@ -568,7 +586,7 @@ export const linkedInPostsBulk = inngest.createFunction(
       totalErrors += result.errors || 0;
 
       await step.run(`update-progress-${batch}`, () =>
-        updateJobProgress(jobId, totalProcessed, totalErrors, totalProcessed + (result.remaining || 0))
+        updateJobProgress(jobId, totalProcessed, totalErrors)
       );
 
       if ((result.remaining || 0) <= 0 && result.processed === 0) break;
