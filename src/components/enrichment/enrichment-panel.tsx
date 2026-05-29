@@ -166,6 +166,13 @@ const SOURCES = [
     cost: "~$4/1K employees (Apify)",
   },
   {
+    key: "linkedin_posts_bulk",
+    label: "LinkedIn Posts (Shortlisted)",
+    endpoint: "/api/enrichment/linkedin-posts-bulk",
+    description: "Scrape recent posts from employees of shortlisted companies, then AI-score for relevance. Skips companies scraped in the last 7 days.",
+    cost: "~$2/1K posts (Apify) + Gemini scoring",
+  },
+  {
     key: "creditsafe",
     label: "CreditSafe",
     endpoint: "",
@@ -668,6 +675,42 @@ function LinkedInEmployeesBulkConfig({ onRun, disabled }: { onRun: () => void; d
   );
 }
 
+function LinkedInPostsBulkConfig({ onRun, disabled }: { onRun: () => void; disabled: boolean }) {
+  const [preview, setPreview] = useState<{ eligible: number; totalWithContacts: number; estimatedCost: string } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/enrichment/linkedin-posts-bulk/preview")
+      .then((r) => r.json())
+      .then((data) => setPreview(data))
+      .catch(() => {});
+  }, []);
+
+  return (
+    <div className="space-y-2 mt-2 pt-2 border-t border-[#f0f0f0]">
+      <div className="flex items-center justify-between text-[12px]">
+        <span className="text-muted-foreground">
+          {preview ? (
+            <span>
+              <span className="font-medium text-[#1D1D1D]">{preview.eligible}</span> companies due for post scraping
+              {" · "}
+              {preview.totalWithContacts} shortlisted with contacts
+              {" · "}
+              Est. cost: <span className="font-medium text-[#1D1D1D]">{preview.estimatedCost}</span>
+            </span>
+          ) : "Loading preview..."}
+        </span>
+        <Button
+          size="sm"
+          onClick={() => onRun()}
+          disabled={disabled || !preview || preview.eligible === 0}
+        >
+          <FaLinkedinIn className="h-3 w-3" /> Scrape Posts ({preview?.eligible || 0})
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function EnrichmentPanel() {
   const [status, setStatus] = useState<EnrichmentStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1104,6 +1147,30 @@ export function EnrichmentPanel() {
                       fetchStatus();
                     } catch (err) {
                       toast.error(`LinkedIn Employees: ${err instanceof Error ? err.message : "Failed"}`, { duration: 8000 });
+                    } finally {
+                      setRunning((prev) => { const next = new Set(prev); next.delete(source.key); return next; });
+                    }
+                  }}
+                />
+              )}
+
+              {/* LinkedIn Posts Bulk config */}
+              {source.key === "linkedin_posts_bulk" && (
+                <LinkedInPostsBulkConfig
+                  disabled={isRunning || (status?.total ?? 0) === 0}
+                  onRun={async () => {
+                    setRunning((prev) => new Set([...prev, source.key]));
+                    try {
+                      const res = await fetch("/api/enrichment/linkedin-posts-bulk", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                      });
+                      const data = await res.json().catch(() => ({}));
+                      if (!res.ok) throw new Error(data.error || "Failed");
+                      toast.success("LinkedIn Posts: started. Running in background — you can close this page.");
+                      fetchStatus();
+                    } catch (err) {
+                      toast.error(`LinkedIn Posts: ${err instanceof Error ? err.message : "Failed"}`, { duration: 8000 });
                     } finally {
                       setRunning((prev) => { const next = new Set(prev); next.delete(source.key); return next; });
                     }

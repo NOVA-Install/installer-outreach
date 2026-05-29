@@ -543,6 +543,43 @@ export const linkedInEmployeesBulk = inngest.createFunction(
   }
 );
 
+// ── LinkedIn Posts Bulk (Shortlisted) ─────────────────────────
+// Scrapes posts from employees of shortlisted companies + AI relevance scoring
+
+export const linkedInPostsBulk = inngest.createFunction(
+  { id: "enrich-linkedin-posts-bulk", retries: 2, triggers: [{ event: "enrichment/linkedin-posts-bulk" }] },
+  async ({ step }) => {
+    const jobId = await step.run("create-job", () => createJob("linkedin_posts_bulk"));
+
+    let totalProcessed = 0;
+    let totalNewSignals = 0;
+    let totalErrors = 0;
+    let batch = 0;
+    const batchSize = 3; // 3 companies per step (each Apify run can take ~60-120s)
+
+    while (batch < 100) {
+      const result = await step.run(`posts-batch-${batch}`, async () => {
+        const { scrapeLinkedInPostsBatch } = await import("@/lib/enrichment/linkedin-posts-bulk");
+        return scrapeLinkedInPostsBatch(batchSize);
+      });
+
+      totalProcessed += result.processed || 0;
+      totalNewSignals += result.newSignals || 0;
+      totalErrors += result.errors || 0;
+
+      await step.run(`update-progress-${batch}`, () =>
+        updateJobProgress(jobId, totalProcessed, totalErrors, totalProcessed + (result.remaining || 0))
+      );
+
+      if ((result.remaining || 0) <= 0 && result.processed === 0) break;
+      batch++;
+    }
+
+    await step.run("complete-job", () => completeJob(jobId, totalProcessed, totalErrors));
+    return { jobId, totalProcessed, totalNewSignals, batches: batch + 1 };
+  }
+);
+
 // Export all functions for the serve handler
 export const allFunctions = [
   siteAnalysis,
@@ -560,4 +597,5 @@ export const allFunctions = [
   linkedInSignals,
   linkedInCompanyLookup,
   linkedInEmployeesBulk,
+  linkedInPostsBulk,
 ];
