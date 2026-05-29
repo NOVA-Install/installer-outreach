@@ -330,6 +330,7 @@ export const googleAds = inngest.createFunction(
   { id: "enrich-google-ads", retries: 3, triggers: [{ event: "enrichment/google-ads" }] },
   async ({ event, step }) => {
     const minTraffic = event.data?.minTraffic ?? 0;
+    const shortlistedOnly = event.data?.shortlistedOnly === true;
     const jobId = await step.run("create-job", () => createJob("google_ads_transparency"));
     let totalProcessed = 0;
     let totalErrors = 0;
@@ -337,7 +338,7 @@ export const googleAds = inngest.createFunction(
 
     while (batch < MAX_BATCHES_BULK) {
       const result = await step.run(`gads-batch-${batch}`, () =>
-        callEdgeFunction("google-ads-transparency", { minTraffic, skipJob: true })
+        callEdgeFunction("google-ads-transparency", { minTraffic, shortlistedOnly, skipJob: true })
       );
 
       totalProcessed += result.processed || 0;
@@ -505,6 +506,43 @@ export const linkedInCompanyLookup = inngest.createFunction(
   }
 );
 
+// ── LinkedIn Employees Bulk (Shortlisted) ────────────────────
+// Scrapes all employees from LinkedIn company pages for shortlisted installers
+
+export const linkedInEmployeesBulk = inngest.createFunction(
+  { id: "enrich-linkedin-employees-bulk", retries: 2, triggers: [{ event: "enrichment/linkedin-employees-bulk" }] },
+  async ({ step }) => {
+    const jobId = await step.run("create-job", () => createJob("linkedin_employees_bulk"));
+
+    let totalProcessed = 0;
+    let totalEmployees = 0;
+    let totalErrors = 0;
+    let batch = 0;
+    const batchSize = 5; // 5 companies per step (each takes ~60s on Apify)
+
+    while (batch < 100) {
+      const result = await step.run(`employees-batch-${batch}`, async () => {
+        const { scrapeLinkedInEmployeesBatch } = await import("@/lib/enrichment/linkedin-employees-bulk");
+        return scrapeLinkedInEmployeesBatch(batchSize);
+      });
+
+      totalProcessed += result.processed || 0;
+      totalEmployees += result.totalEmployees || 0;
+      totalErrors += result.errors || 0;
+
+      await step.run(`update-progress-${batch}`, () =>
+        updateJobProgress(jobId, totalProcessed, totalErrors, totalProcessed + (result.remaining || 0))
+      );
+
+      if ((result.remaining || 0) <= 0 && result.processed === 0) break;
+      batch++;
+    }
+
+    await step.run("complete-job", () => completeJob(jobId, totalProcessed, totalErrors));
+    return { jobId, totalProcessed, totalEmployees, batches: batch + 1 };
+  }
+);
+
 // Export all functions for the serve handler
 export const allFunctions = [
   siteAnalysis,
@@ -521,4 +559,5 @@ export const allFunctions = [
   scoresFn,
   linkedInSignals,
   linkedInCompanyLookup,
+  linkedInEmployeesBulk,
 ];

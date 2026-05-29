@@ -159,6 +159,13 @@ const SOURCES = [
     cost: "~$4/1K companies (Apify)",
   },
   {
+    key: "linkedin_employees_bulk",
+    label: "LinkedIn Employees (Shortlisted)",
+    endpoint: "/api/enrichment/linkedin-employees-bulk",
+    description: "Scrape all employees from LinkedIn company pages for shortlisted installers that haven't been scraped yet. Requires LinkedIn Company Lookup first.",
+    cost: "~$4/1K employees (Apify)",
+  },
+  {
     key: "creditsafe",
     label: "CreditSafe",
     endpoint: "",
@@ -297,20 +304,20 @@ function MatchBreakdown({ data }: { data: { source: string; match_method: string
   );
 }
 
-function GoogleAdsFilter({ onRun, disabled }: { onRun: (minTraffic: number) => void; disabled: boolean }) {
+function GoogleAdsFilter({ onRun, disabled }: { onRun: (minTraffic: number, shortlistedOnly: boolean) => void; disabled: boolean }) {
   const [minTraffic, setMinTraffic] = useState(50);
+  const [shortlistedOnly, setShortlistedOnly] = useState(false);
   const [preview, setPreview] = useState<{ eligible: number; estimatedCost: string } | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
 
   // Debounced preview fetch - triggers 500ms after user stops dragging
-  const handleChange = useCallback((val: number) => {
-    setMinTraffic(val);
+  const fetchPreview = useCallback((traffic: number, shortlisted: boolean) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       setLoadingPreview(true);
       try {
-        const res = await fetch(`/api/enrichment/google-ads/preview?minTraffic=${val}`);
+        const res = await fetch(`/api/enrichment/google-ads/preview?minTraffic=${traffic}&shortlistedOnly=${shortlisted}`);
         if (res.ok) {
           const data = await res.json();
           setPreview(data);
@@ -320,9 +327,19 @@ function GoogleAdsFilter({ onRun, disabled }: { onRun: (minTraffic: number) => v
     }, 500);
   }, []);
 
+  const handleTrafficChange = useCallback((val: number) => {
+    setMinTraffic(val);
+    fetchPreview(val, shortlistedOnly);
+  }, [fetchPreview, shortlistedOnly]);
+
+  const handleShortlistToggle = useCallback((checked: boolean) => {
+    setShortlistedOnly(checked);
+    fetchPreview(minTraffic, checked);
+  }, [fetchPreview, minTraffic]);
+
   // Initial fetch
   useEffect(() => {
-    handleChange(minTraffic);
+    fetchPreview(minTraffic, shortlistedOnly);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -336,10 +353,22 @@ function GoogleAdsFilter({ onRun, disabled }: { onRun: (minTraffic: number) => v
           max={500}
           step={10}
           value={minTraffic}
-          onChange={(e) => handleChange(Number(e.target.value))}
+          onChange={(e) => handleTrafficChange(Number(e.target.value))}
           className="flex-1 h-1.5 accent-primary"
         />
         <span className="text-[12px] font-medium tabular-nums w-[40px] text-right">{minTraffic}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          id="gads-shortlisted"
+          checked={shortlistedOnly}
+          onChange={(e) => handleShortlistToggle(e.target.checked)}
+          className="h-3.5 w-3.5 rounded border-gray-300 accent-primary"
+        />
+        <label htmlFor="gads-shortlisted" className="text-[11px] text-muted-foreground cursor-pointer">
+          Shortlisted companies only (skip those with existing data)
+        </label>
       </div>
       <div className="flex items-center justify-between text-[12px]">
         <span className="text-muted-foreground">
@@ -347,7 +376,7 @@ function GoogleAdsFilter({ onRun, disabled }: { onRun: (minTraffic: number) => v
         </span>
         <Button
           size="sm"
-          onClick={() => onRun(minTraffic)}
+          onClick={() => onRun(minTraffic, shortlistedOnly)}
           disabled={disabled || !preview || preview.eligible === 0}
         >
           <Play className="h-3.5 w-3.5" /> Run ({preview?.eligible || 0})
@@ -597,6 +626,42 @@ function LinkedInCompanyLookupConfig({ onRun, disabled }: { onRun: (config: { ma
           disabled={disabled || !preview || preview.eligible === 0}
         >
           <FaLinkedinIn className="h-3 w-3" /> Search ({Math.min(maxCompanies, preview?.eligible ?? 0)})
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function LinkedInEmployeesBulkConfig({ onRun, disabled }: { onRun: () => void; disabled: boolean }) {
+  const [preview, setPreview] = useState<{ eligible: number; totalWithLinkedIn: number; totalShortlisted: number; estimatedCost: string } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/enrichment/linkedin-employees-bulk/preview")
+      .then((r) => r.json())
+      .then((data) => setPreview(data))
+      .catch(() => {});
+  }, []);
+
+  return (
+    <div className="space-y-2 mt-2 pt-2 border-t border-[#f0f0f0]">
+      <div className="flex items-center justify-between text-[12px]">
+        <span className="text-muted-foreground">
+          {preview ? (
+            <span>
+              <span className="font-medium text-[#1D1D1D]">{preview.eligible}</span> shortlisted companies without employees
+              {" · "}
+              {preview.totalShortlisted} shortlisted total, {preview.totalWithLinkedIn} with LinkedIn
+              {" · "}
+              Est. cost: <span className="font-medium text-[#1D1D1D]">{preview.estimatedCost}</span>
+            </span>
+          ) : "Loading preview..."}
+        </span>
+        <Button
+          size="sm"
+          onClick={() => onRun()}
+          disabled={disabled || !preview || preview.eligible === 0}
+        >
+          <FaLinkedinIn className="h-3 w-3" /> Scrape ({preview?.eligible || 0})
         </Button>
       </div>
     </div>
@@ -1022,21 +1087,45 @@ export function EnrichmentPanel() {
                 />
               )}
 
+              {/* LinkedIn Employees Bulk config */}
+              {source.key === "linkedin_employees_bulk" && (
+                <LinkedInEmployeesBulkConfig
+                  disabled={isRunning || (status?.total ?? 0) === 0}
+                  onRun={async () => {
+                    setRunning((prev) => new Set([...prev, source.key]));
+                    try {
+                      const res = await fetch("/api/enrichment/linkedin-employees-bulk", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                      });
+                      const data = await res.json().catch(() => ({}));
+                      if (!res.ok) throw new Error(data.error || "Failed");
+                      toast.success("LinkedIn Employees: started. Running in background — you can close this page.");
+                      fetchStatus();
+                    } catch (err) {
+                      toast.error(`LinkedIn Employees: ${err instanceof Error ? err.message : "Failed"}`, { duration: 8000 });
+                    } finally {
+                      setRunning((prev) => { const next = new Set(prev); next.delete(source.key); return next; });
+                    }
+                  }}
+                />
+              )}
+
               {/* Google Ads filter */}
               {source.key === "google_ads_transparency" && (
                 <GoogleAdsFilter
                   disabled={isRunning || (status?.total ?? 0) === 0}
-                  onRun={async (minTraffic) => {
+                  onRun={async (minTraffic, shortlistedOnly) => {
                     setRunning((prev) => new Set([...prev, source.key]));
                     try {
                       const res = await fetch("/api/enrichment/google-ads", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ minTraffic }),
+                        body: JSON.stringify({ minTraffic, shortlistedOnly }),
                       });
                       const data = await res.json().catch(() => ({}));
                       if (!res.ok) throw new Error(data.error || "Failed");
-                      toast.success(`Google Ads: started with min traffic ${minTraffic}. Running in background — you can close this page.`);
+                      toast.success(`Google Ads: started${shortlistedOnly ? " (shortlisted only)" : ""} with min traffic ${minTraffic}. Running in background — you can close this page.`);
                       fetchStatus();
                     } catch (err) {
                       toast.error(`Google Ads: ${err instanceof Error ? err.message : "Failed"}`, { duration: 8000 });

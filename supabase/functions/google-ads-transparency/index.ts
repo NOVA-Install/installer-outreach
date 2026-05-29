@@ -19,17 +19,21 @@ serve(async (req) => {
   // Parse options
   const body = await req.json().catch(() => ({}));
   const minTraffic = body.minTraffic || 0;
+  const shortlistedOnly = body.shortlistedOnly === true;
 
   // Get eligible installers (paginated)
   let allInstallers: { id: number; website: string }[] = [];
   let pg = 0;
   while (true) {
-    const { data } = await supabase
+    let query = supabase
       .from("installers")
       .select("id, website")
       .not("website", "is", null)
-      .neq("website", "")
-      .range(pg * 1000, (pg + 1) * 1000 - 1);
+      .neq("website", "");
+    if (shortlistedOnly) {
+      query = query.eq("is_shortlisted", true);
+    }
+    const { data } = await query.range(pg * 1000, (pg + 1) * 1000 - 1);
     if (!data || data.length === 0) break;
     allInstallers = allInstallers.concat(data);
     if (data.length < 1000) break;

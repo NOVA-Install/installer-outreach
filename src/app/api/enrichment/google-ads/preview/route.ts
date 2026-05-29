@@ -6,6 +6,9 @@ import { eq, sql } from "drizzle-orm";
 // GET: count eligible installers for google ads based on traffic threshold
 export async function GET(request: NextRequest) {
   const minTraffic = Number(request.nextUrl.searchParams.get("minTraffic") || "0");
+  const shortlistedOnly = request.nextUrl.searchParams.get("shortlistedOnly") === "true";
+
+  const whereClause = shortlistedOnly ? sql`WHERE i.is_shortlisted = true` : sql`WHERE 1=1`;
 
   const results = await db.execute(sql`
     SELECT
@@ -15,6 +18,7 @@ export async function GET(request: NextRequest) {
     FROM installers i
     LEFT JOIN traffic_data t ON i.id = t.installer_id
     LEFT JOIN google_ads_data ga ON i.id = ga.installer_id
+    ${whereClause}
   `);
 
   const row = (results as unknown as Record<string, unknown>[])[0] || {};
@@ -25,5 +29,6 @@ export async function GET(request: NextRequest) {
     alreadyEnriched: Number(row.already_enriched || 0),
     estimatedCost: `$${(Number(row.eligible || 0) * 0.002).toFixed(2)}`,
     minTraffic,
+    shortlistedOnly,
   });
 }
