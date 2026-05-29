@@ -169,7 +169,7 @@ const SOURCES = [
     key: "linkedin_posts_bulk",
     label: "LinkedIn Posts (Shortlisted)",
     endpoint: "/api/enrichment/linkedin-posts-bulk",
-    description: "Scrape recent posts from employees of shortlisted companies, then AI-score for relevance. Skips companies scraped in the last 7 days.",
+    description: "Scrape posts from employees of shortlisted companies since last scrape, then AI-score for relevance. Previously scraped companies only fetch new posts.",
     cost: "~$2/1K posts (Apify) + Gemini scoring",
   },
   {

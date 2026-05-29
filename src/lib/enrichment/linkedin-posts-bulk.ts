@@ -66,14 +66,10 @@ export async function scrapeLinkedInPostsBatch(
         sql`EXISTS (
           SELECT 1 FROM linkedin_contacts lc
           WHERE lc.installer_id = ${installers.id}
-        )`,
-        // Never scraped posts, or last scraped >7 days ago
-        sql`(
-          ${linkedinCompanyTracking.lastScrapedPostsAt} IS NULL
-          OR ${linkedinCompanyTracking.lastScrapedPostsAt} < ${new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()}
         )`
       )
     )
+    // Process never-scraped first, then oldest-scraped
     .orderBy(sql`${linkedinCompanyTracking.lastScrapedPostsAt} ASC NULLS FIRST`)
     .limit(batchSize);
 
@@ -96,10 +92,6 @@ export async function scrapeLinkedInPostsBatch(
         sql`EXISTS (
           SELECT 1 FROM linkedin_contacts lc
           WHERE lc.installer_id = ${installers.id}
-        )`,
-        sql`(
-          ${linkedinCompanyTracking.lastScrapedPostsAt} IS NULL
-          OR ${linkedinCompanyTracking.lastScrapedPostsAt} < ${new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()}
         )`
       )
     );
@@ -421,10 +413,6 @@ export async function previewLinkedInPostsBulk() {
           AND lct.company_slug != '__not_found__'
           AND EXISTS (
             SELECT 1 FROM linkedin_contacts lc WHERE lc.installer_id = i.id
-          )
-          AND (
-            lct.last_scraped_posts_at IS NULL
-            OR lct.last_scraped_posts_at < ${new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()}
           )
       ) as eligible,
       COUNT(*) FILTER (
