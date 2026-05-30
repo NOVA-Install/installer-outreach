@@ -11,6 +11,10 @@ import { scrapeBoxtApi } from "./scrapers/boxt-api";
 import { scrapeSolarFastApi } from "./scrapers/solarfast-api";
 import { scrapeIheat } from "./scrapers/iheat-api";
 import { scrapeHeatable } from "./scrapers/heatable";
+import { scrapeEcoProviders } from "./scrapers/ecoproviders";
+import { scrapeMakeMyHouseGreen } from "./scrapers/makemyhousegreen";
+import { scrapeGlowGreen } from "./scrapers/glowgreen";
+import { scrapeEseSolar } from "./scrapers/esesolar";
 import { scrapeGeneric } from "./scrapers/generic";
 import { extractPostcodeArea, UK_ZONES } from "@/lib/constants";
 import type { Page } from "playwright";
@@ -52,15 +56,39 @@ export const CALCULATOR_REGISTRY: ScraperConfig[] = [
     calculatorUrl: "https://heatable.co.uk/solar/quote",
     scraperFn: scrapeHeatable,
   },
-  // Wickes isn't in the installer DB but SolarFast (their provider) has a clean API.
-  // Uncomment and set the correct installerId if you add Wickes/SolarFast to the DB.
-  // {
-  //   installerId: 0,
-  //   companyName: "Wickes (SolarFast)",
-  //   calculatorUrl: "https://www.wickes.co.uk/wickes-solar/solar-price-estimator",
-  //   useApi: true,
-  //   scraperFn: scrapeSolarFastApi,
-  // },
+  {
+    installerId: 2483,
+    companyName: "Wickes Solar (Gas Fast Limited)",
+    calculatorUrl: "https://www.wickes.co.uk/wickes-solar/solar-price-estimator",
+    useApi: true,
+    scraperFn: scrapeSolarFastApi,
+  },
+  {
+    installerId: 1775,
+    companyName: "Eco Providers Ltd",
+    calculatorUrl: "https://www.ecoproviders.co.uk/solar-battery-quote-form/",
+    useApi: true,
+    scraperFn: scrapeEcoProviders,
+  },
+  {
+    installerId: 5941,
+    companyName: "MakeMyHouseGreen (Switchd Ltd)",
+    calculatorUrl: "https://makemyhousegreen.com/",
+    useApi: true,
+    scraperFn: scrapeMakeMyHouseGreen,
+  },
+  {
+    installerId: 2570,
+    companyName: "Glow Green Limited",
+    calculatorUrl: "https://www.glowgreenltd.com/solar/quote",
+    scraperFn: scrapeGlowGreen,
+  },
+  {
+    installerId: 2192,
+    companyName: "ESE Solar Limited",
+    calculatorUrl: "https://esesolar.co.uk/solar-form/",
+    scraperFn: scrapeEseSolar,
+  },
 ];
 
 /**
