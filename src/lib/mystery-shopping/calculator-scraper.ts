@@ -8,6 +8,9 @@ import { eq, and, sql } from "drizzle-orm";
 import { getBrowser, createContext, closeBrowser, type PropertyInput, type ScraperResult } from "./scrapers/base";
 import { scrapeBoxt } from "./scrapers/boxt";
 import { scrapeBoxtApi } from "./scrapers/boxt-api";
+import { scrapeSolarFastApi } from "./scrapers/solarfast-api";
+import { scrapeIheat } from "./scrapers/iheat-api";
+import { scrapeHeatable } from "./scrapers/heatable";
 import { scrapeGeneric } from "./scrapers/generic";
 import { extractPostcodeArea, UK_ZONES } from "@/lib/constants";
 import type { Page } from "playwright";
@@ -25,7 +28,8 @@ export interface ScraperConfig {
   companyName: string;
   calculatorUrl: string;
   useApi?: boolean;
-  scraperFn: (page: Page | unknown, url: string, property: PropertyInput) => Promise<ScraperResult>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  scraperFn: (page: any, url: string, property: PropertyInput) => Promise<ScraperResult>;
 }
 
 export const CALCULATOR_REGISTRY: ScraperConfig[] = [
@@ -36,12 +40,26 @@ export const CALCULATOR_REGISTRY: ScraperConfig[] = [
     useApi: true,
     scraperFn: scrapeBoxtApi,
   },
-  // Add more installers as you find them:
+  {
+    installerId: 3103,
+    companyName: "iHeat",
+    calculatorUrl: "https://iheat.co.uk/quote/solar",
+    scraperFn: scrapeIheat,
+  },
+  {
+    installerId: 2917,
+    companyName: "Heatable Ltd",
+    calculatorUrl: "https://heatable.co.uk/solar/quote",
+    scraperFn: scrapeHeatable,
+  },
+  // Wickes isn't in the installer DB but SolarFast (their provider) has a clean API.
+  // Uncomment and set the correct installerId if you add Wickes/SolarFast to the DB.
   // {
-  //   installerId: 1234,
-  //   companyName: "Example Solar",
-  //   calculatorUrl: "https://example.com/quote",
-  //   scraperFn: scrapeExampleSolar,
+  //   installerId: 0,
+  //   companyName: "Wickes (SolarFast)",
+  //   calculatorUrl: "https://www.wickes.co.uk/wickes-solar/solar-price-estimator",
+  //   useApi: true,
+  //   scraperFn: scrapeSolarFastApi,
   // },
 ];
 
