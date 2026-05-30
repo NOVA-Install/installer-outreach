@@ -1,30 +1,27 @@
 import type { Page } from "playwright";
 import type { ScraperResult, PropertyInput } from "./base";
-import { navigateAndSettle, takeScreenshot, getPageText } from "./base";
+import { takeScreenshot } from "./base";
 
 /**
  * iHeat Solar Quote scraper — browser-based.
  *
- * iHeat shows instant pricing but the results page is server-rendered HTML,
- * not a JSON API. We need Playwright to:
- *   1. Navigate through the multi-step form (8-9 questions)
- *   2. Wait for the results page to render
- *   3. Extract pricing from the HTML
+ * Flow (tested May 2026):
+ *   1. Address autocomplete (Ideal Postcodes API)
+ *   2. Map confirmation — Continue button at bottom of satellite view
+ *   3. Homeowner / Renting / Landlord → Homeowner
+ *   4. Property type → Detached/Semi/Terraced/Bungalow/Apartment
+ *   5. How soon to install → Within 3 months
+ *   6. Know yearly usage? → No
+ *   7. People in home → 3-4
+ *   8. Electric vehicle? → No
+ *   9. When at home? → Half the day
+ *   10. Bird protection? → No (may auto-skip)
+ *   → Results page at /quote/solar/results/{ref} with pricing cards
+ *   → "Save your quote" popup appears first — dismiss with "Continue without saving"
  *
- * Form flow:
- *   1. Address lookup (via Ideal Postcodes API)
- *   2. Map confirmation
- *   3. Homeowner/renter/landlord
- *   4. Property type (detached/semi/terraced/bungalow/apartment)
- *   5. How soon to install
- *   6. Yearly electricity usage (kWh or skip)
- *   7. People in home (1-2 / 3-4 / 5+)
- *   8. Electric vehicle? (yes/no)
- *   9. When at home? (all day / half day / hardly)
- *   10. Bird protection? (yes/no)
- *
- * Results page: /quote/solar/results/{quoteRef}
- * Shows multiple brand options with panel counts, battery sizes, and prices.
+ * Click strategy: Options are large card divs, not buttons.
+ * Use div.filter({ hasText: /^Answer$/ }) to find cards, then mouse.click
+ * at their center coordinates.
  */
 export async function scrapeIheat(
   page: Page,
@@ -32,145 +29,132 @@ export async function scrapeIheat(
   property: PropertyInput
 ): Promise<ScraperResult> {
   try {
-    await navigateAndSettle(page, url, { timeout: 30000 });
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+    await page.waitForTimeout(3000);
+
+    // Dismiss cookies
+    await page.locator('button:has-text("Deny")').first().click().catch(() => {});
+    await page.waitForTimeout(1000);
+
+    // Step 1: Address autocomplete
+    await page.locator('input[placeholder*="Start typing"]').first().fill(property.postcode);
     await page.waitForTimeout(2000);
 
-    // Dismiss cookie banner
-    const cookieBtn = page.locator('button:has-text("Accept"), button:has-text("Got it"), [id*="cookie"] button').first();
-    if (await cookieBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await cookieBtn.click().catch(() => {});
-      await page.waitForTimeout(500);
+    // Select first non-flat address from dropdown
+    const addrItems = page.locator("li").filter({ hasNotText: /[Ff]lat/ });
+    const firstAddr = addrItems.first();
+    if (await firstAddr.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await firstAddr.click();
     }
+    await page.waitForTimeout(3000);
 
-    // Step 1: Address lookup
-    const addressInput = page.locator('input[placeholder*="address" i], input[placeholder*="postcode" i], input[type="search"], input[type="text"]').first();
-    await addressInput.waitFor({ state: "visible", timeout: 10000 });
-    await addressInput.fill(property.postcode);
-    await page.waitForTimeout(2000);
-
-    // Select first suggestion from autocomplete
-    const suggestion = page.locator('[class*="suggestion"], [class*="autocomplete"] li, [role="option"], [class*="dropdown"] li, [class*="result"]').first();
-    if (await suggestion.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await suggestion.click();
-      await page.waitForTimeout(2000);
-    } else {
-      // Try pressing Enter
-      await page.keyboard.press("Enter");
-      await page.waitForTimeout(2000);
-    }
-
-    // Step 2: Map confirmation — look for a "Confirm" or "Next" button
-    await clickNextButton(page);
-
-    // Steps 3-10: Answer questions by clicking matching options
-    const answers: Record<string, string[]> = {
-      homeowner: ["Homeowner", "homeowner", "I own"],
-      propertyType: [
-        mapPropertyTypeIheat(property.propertyType),
-        "Detached", "Semi-Detached", "Terraced",
-      ],
-      timeline: ["Within 3 months", "ASAP", "Unsure"],
-      usage: ["No", "no"], // Skip the "do you know usage" step
-      people: ["3-4", "1-2"],
-      ev: ["No", "no"],
-      atHome: ["Half the day", "All day"],
-      birdProtection: ["No", "no"],
-    };
-
-    // Walk through steps — try each answer set, click what's visible
-    for (let step = 0; step < 12; step++) {
-      await page.waitForTimeout(1500);
-
-      // Check if we've reached the results page
-      if (page.url().includes("/results")) break;
-
-      // Try clicking relevant answer options
-      let clicked = false;
-      for (const answerSet of Object.values(answers)) {
-        for (const answer of answerSet) {
-          const option = page.locator(`text="${answer}"`).first();
-          if (await option.isVisible({ timeout: 500 }).catch(() => false)) {
-            await option.click().catch(() => {});
-            clicked = true;
-            await page.waitForTimeout(1000);
-            break;
-          }
+    // Step 2: Map confirmation — find the visible Continue button
+    const contBox = await page.evaluate(() => {
+      for (const btn of document.querySelectorAll("button")) {
+        if (btn.textContent?.trim() === "Continue") {
+          const r = btn.getBoundingClientRect();
+          if (r.height > 0) return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
         }
-        if (clicked) break;
       }
+      return null;
+    });
+    if (contBox) await page.mouse.click(contBox.x, contBox.y);
+    await page.waitForTimeout(3000);
 
-      // If no answer matched, try clicking Next/Continue
-      if (!clicked) {
-        await clickNextButton(page);
-      }
+    // Steps 3-10: Answer questions
+    const answers = [
+      "Homeowner",
+      mapPropertyType(property.propertyType),
+      "Within 3 months",
+      "No",            // know usage?
+      mapPeople(property.bedrooms),
+      "No",            // EV?
+      "Half the day",  // at home?
+      "No",            // bird protection?
+    ];
+
+    for (const answer of answers) {
+      if (page.url().includes("/results")) break;
+      await clickCard(page, answer);
+      await page.waitForTimeout(2500);
     }
 
-    // Wait for results page
-    await page.waitForTimeout(5000);
+    // Wait for results page to load
+    for (let i = 0; i < 30; i++) {
+      if (page.url().includes("/results")) break;
+      await page.waitForTimeout(1000);
+    }
+    await page.waitForTimeout(3000);
 
-    // Take screenshot and extract data
+    // Dismiss "Save your quote" popup
+    const dismissBtn = page.locator('text="Continue without saving"');
+    if (await dismissBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await dismissBtn.click().catch(() => {});
+      await page.waitForTimeout(2000);
+    }
+
+    // Extract pricing from results page
     const screenshotPath = await takeScreenshot(page, "iheat");
-    const pageText = await getPageText(page);
 
-    // Extract pricing from the results page HTML
     const priceData = await page.evaluate(() => {
       const text = document.body.innerText;
+
+      // Annual savings
+      const savingsMatch = text.match(/£([\d,]+)\s*annual bill savings/i);
+      const annualSavings = savingsMatch ? parseFloat(savingsMatch[1].replace(/,/g, "")) : null;
+
+      // Energy reduction percentage
+      const reductionMatch = text.match(/(\d+)%\s*energy bill reduction/i);
+      const reductionPct = reductionMatch ? parseInt(reductionMatch[1]) : null;
+
+      // Usage info
+      const usageMatch = text.match(/([\d,]+)\s*kWh annual usage/i);
+      const annualUsage = usageMatch ? parseInt(usageMatch[1].replace(/,/g, "")) : null;
+
+      // Find package cards — look for price + brand patterns
       const packages: Array<{
         brand: string;
-        panels: number | null;
-        panelWattage: number | null;
-        batteryKwh: number | null;
         totalPrice: number | null;
         monthlyPrice: number | null;
         annualSavings: number | null;
-        paybackYears: number | null;
       }> = [];
 
-      // Look for price patterns
-      const priceMatches = [...text.matchAll(/£([\d,]+(?:\.\d{2})?)/g)];
-      const panelMatches = [...text.matchAll(/(\d+)\s*x?\s*panels?/gi)];
-      const wattageMatches = [...text.matchAll(/(\d+)\s*[Ww]/g)];
-      const batteryMatches = [...text.matchAll(/([\d.]+)\s*kWh/gi)];
-      const savingsMatches = [...text.matchAll(/£([\d,]+)\s*(?:\/yr|per year|annual|yearly)/gi)];
-      const paybackMatches = [...text.matchAll(/([\d.]+)\s*(?:yr|year)\s*payback/gi)];
+      // iHeat shows brand-grouped packages with prices
+      const brands = ["Duracell Energy", "Fox ESS", "Alpha ESS", "Tesla", "Hanchu", "Sigenergy"];
+      const allPrices = [...text.matchAll(/£([\d,]+(?:\.\d{2})?)/g)].map((m) => ({
+        raw: m[0],
+        value: parseFloat(m[1].replace(/,/g, "")),
+        index: m.index || 0,
+      }));
 
-      // Look for brand names
-      const brands = ["Duracell", "Fox ESS", "Alpha ESS", "Tesla", "Hanchu", "Sigenergy", "Longi", "Aiko", "JA Solar"];
+      // Try to extract from structured cards
+      const cards = document.querySelectorAll('[class*="card"], [class*="package"], [class*="product"]');
+      cards.forEach((card) => {
+        const cardText = (card as HTMLElement).innerText || "";
+        const brand = brands.find((b) => cardText.includes(b));
+        if (!brand) return;
 
-      // Try to find structured package cards
-      const cards = document.querySelectorAll('[class*="card"], [class*="package"], [class*="option"], [class*="product"]');
-      if (cards.length > 0) {
-        cards.forEach((card) => {
-          const cardText = (card as HTMLElement).innerText || "";
-          const brand = brands.find((b) => cardText.includes(b)) || null;
-          if (!brand) return;
+        const priceMatch = cardText.match(/£([\d,]+(?:\.\d{2})?)/);
+        const monthlyMatch = cardText.match(/£([\d.]+)\s*(?:\/mo|per month|monthly)/i);
+        const savMatch = cardText.match(/£([\d,]+)\s*(?:\/yr|savings|annual)/i);
 
-          const price = cardText.match(/£([\d,]+(?:\.\d{2})?)/);
-          const panels = cardText.match(/(\d+)\s*x?\s*panels?/i);
-          const wattage = cardText.match(/(\d+)\s*[Ww]/);
-          const battery = cardText.match(/([\d.]+)\s*kWh/i);
-          const savings = cardText.match(/£([\d,]+)\s*(?:\/yr|savings)/i);
-          const payback = cardText.match(/([\d.]+)\s*(?:yr|year)/i);
-          const monthly = cardText.match(/£([\d.]+)\s*(?:\/mo|per month|monthly)/i);
+        // Avoid duplicates
+        if (packages.some((p) => p.brand === brand)) return;
 
-          packages.push({
-            brand,
-            panels: panels ? parseInt(panels[1]) : null,
-            panelWattage: wattage ? parseInt(wattage[1]) : null,
-            batteryKwh: battery ? parseFloat(battery[1]) : null,
-            totalPrice: price ? parseFloat(price[1].replace(/,/g, "")) : null,
-            monthlyPrice: monthly ? parseFloat(monthly[1]) : null,
-            annualSavings: savings ? parseFloat(savings[1].replace(/,/g, "")) : null,
-            paybackYears: payback ? parseFloat(payback[1]) : null,
-          });
+        packages.push({
+          brand,
+          totalPrice: priceMatch ? parseFloat(priceMatch[1].replace(/,/g, "")) : null,
+          monthlyPrice: monthlyMatch ? parseFloat(monthlyMatch[1]) : null,
+          annualSavings: savMatch ? parseFloat(savMatch[1].replace(/,/g, "")) : null,
         });
-      }
+      });
 
       return {
+        annualSavings,
+        reductionPct,
+        annualUsage,
         packages,
-        allPrices: priceMatches.map((m) => m[0]),
-        url: window.location.href,
-        hasResults: text.includes("your quote") || text.includes("Your Quote") || text.includes("package") || packages.length > 0,
+        allPrices: allPrices.filter((p) => p.value > 100).map((p) => p.value),
       };
     });
 
@@ -180,35 +164,33 @@ export async function scrapeIheat(
       roofType: property.roofType || "pitched",
       panelModel: null as string | null,
       panelWarrantyYears: null,
-      recommendedPanelCount: null as number | null,
+      recommendedPanelCount: null,
       pricePerPanel: null,
       panelOnlyPrice: null,
       totalPrice: null as number | null,
+      annualSavings: priceData.annualSavings,
+      monthlySavings: priceData.annualSavings ? Math.round(priceData.annualSavings / 12) : null,
+      reductionPct: priceData.reductionPct,
       batteryOptions: priceData.packages.map((p) => ({
-        name: `${p.brand} ${p.panels ? p.panels + "x" : ""} ${p.panelWattage ? p.panelWattage + "W" : ""}`.trim(),
-        model: p.brand,
-        capacityKwh: p.batteryKwh,
+        name: p.brand,
         price: p.totalPrice,
         monthlyPrice: p.monthlyPrice,
-        annualSavings: p.annualSavings,
-        paybackYears: p.paybackYears,
-        panels: p.panels,
-        panelWattage: p.panelWattage,
+        capacityKwh: null,
       })),
-      _raw: priceData,
+      allPrices: priceData.allPrices,
+      resultsUrl: page.url(),
     };
 
-    if (priceData.packages.length > 0) {
-      const first = priceData.packages[0];
-      priceMatrix.panelModel = first.brand ? `${first.brand} ${first.panelWattage || ""}W` : null;
-      priceMatrix.recommendedPanelCount = first.panels;
-      priceMatrix.totalPrice = first.totalPrice;
+    // Set total price from cheapest package
+    const validPrices = priceData.allPrices.filter((p) => p > 2000 && p < 30000).sort((a, b) => a - b);
+    if (validPrices.length > 0) {
+      priceMatrix.totalPrice = validPrices[0];
     }
 
     return {
       success: true,
       platform: "iheat",
-      rawData: { priceMatrix, pageText: pageText.slice(0, 5000), url: page.url() },
+      rawData: { priceMatrix },
       screenshotPath,
       error: null,
     };
@@ -224,27 +206,36 @@ export async function scrapeIheat(
   }
 }
 
-async function clickNextButton(page: Page): Promise<void> {
-  const nextSelectors = [
-    'button:has-text("Next")',
-    'button:has-text("Continue")',
-    'button:has-text("Confirm")',
-    'button:has-text("Get Quote")',
-    'button:has-text("See Results")',
-    'button[type="submit"]',
-    '[class*="next"]',
-  ];
-  for (const sel of nextSelectors) {
-    const btn = page.locator(sel).first();
-    if (await btn.isVisible({ timeout: 500 }).catch(() => false)) {
-      await btn.click().catch(() => {});
-      await page.waitForTimeout(1500);
-      return;
+/** Click a card option by finding the div with exact text match and clicking at its center */
+async function clickCard(page: Page, text: string): Promise<boolean> {
+  const cards = page.locator("div").filter({ hasText: new RegExp(`^${escapeRegex(text)}$`) });
+  const count = await cards.count();
+
+  for (let i = count - 1; i >= 0; i--) {
+    const card = cards.nth(i);
+    if (await card.isVisible({ timeout: 300 }).catch(() => false)) {
+      const box = await card.boundingBox();
+      if (box && box.height > 40) {
+        await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+        return true;
+      }
     }
+  }
+
+  // Fallback: getByText with force
+  try {
+    await page.getByText(text, { exact: true }).last().click({ force: true, timeout: 2000 });
+    return true;
+  } catch {
+    return false;
   }
 }
 
-function mapPropertyTypeIheat(type?: string): string {
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function mapPropertyType(type?: string): string {
   if (!type) return "Detached";
   const l = type.toLowerCase();
   if (l.includes("semi")) return "Semi-Detached";
@@ -252,4 +243,10 @@ function mapPropertyTypeIheat(type?: string): string {
   if (l.includes("bungalow")) return "Bungalow";
   if (l.includes("flat")) return "Apartment";
   return "Detached";
+}
+
+function mapPeople(bedrooms?: number): string {
+  if (!bedrooms || bedrooms <= 2) return "1-2";
+  if (bedrooms <= 4) return "3-4";
+  return "5+";
 }
