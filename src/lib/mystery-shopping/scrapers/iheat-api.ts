@@ -37,14 +37,22 @@ export async function scrapeIheat(
     await page.waitForTimeout(1000);
 
     // Step 1: Address autocomplete
+    console.log("[iHeat] Filling address:", property.postcode);
     await page.locator('input[placeholder*="Start typing"]').first().fill(property.postcode);
     await page.waitForTimeout(2000);
 
     // Select first non-flat address from dropdown
     const addrItems = page.locator("li").filter({ hasNotText: /[Ff]lat/ });
-    const firstAddr = addrItems.first();
-    if (await firstAddr.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await firstAddr.click();
+    const addrCount = await addrItems.count();
+    console.log("[iHeat] Address suggestions:", addrCount);
+    if (addrCount > 0) {
+      await addrItems.first().click();
+    } else {
+      // Try any li element
+      const anyLi = page.locator("ul li").first();
+      if (await anyLi.isVisible({ timeout: 3000 }).catch(() => false)) {
+        await anyLi.click();
+      }
     }
     await page.waitForTimeout(3000);
 
@@ -58,6 +66,7 @@ export async function scrapeIheat(
       }
       return null;
     });
+    console.log("[iHeat] Continue button:", contBox ? `at (${contBox.x}, ${contBox.y})` : "not found");
     if (contBox) await page.mouse.click(contBox.x, contBox.y);
     await page.waitForTimeout(3000);
 
@@ -75,15 +84,26 @@ export async function scrapeIheat(
 
     for (const answer of answers) {
       if (page.url().includes("/results")) break;
-      await clickCard(page, answer);
+      const clicked = await clickCard(page, answer);
+      const heading = await page.evaluate(() => {
+        const els = document.querySelectorAll("h1, h2, h3");
+        for (const el of els) {
+          const r = el.getBoundingClientRect();
+          if (r.height > 0 && r.y > 50) return el.textContent?.trim();
+        }
+        return null;
+      });
+      console.log(`[iHeat] Q: ${heading} -> ${answer}: ${clicked}`);
       await page.waitForTimeout(2500);
     }
 
     // Wait for results page to load
+    console.log("[iHeat] Waiting for results page...");
     for (let i = 0; i < 30; i++) {
       if (page.url().includes("/results")) break;
       await page.waitForTimeout(1000);
     }
+    console.log("[iHeat] Final URL:", page.url());
     await page.waitForTimeout(3000);
 
     // Dismiss "Save your quote" popup

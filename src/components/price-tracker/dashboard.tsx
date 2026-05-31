@@ -287,45 +287,76 @@ export function PriceTrackerDashboard() {
                   </div>
                 </div>
 
-                {/* Battery options table */}
-                {matrix.batteryOptions.length > 0 && (
+                {/* Packages / battery options table */}
+                {matrix.batteryOptions.length > 0 && (() => {
+                  // Detect if packages are full systems (have panelModel) or just battery add-ons
+                  const isFullSystem = matrix.batteryOptions.some(
+                    (b) => (b as unknown as Record<string, unknown>).panelModel || (b as unknown as Record<string, unknown>).panelCount || (b as unknown as Record<string, unknown>).systemSizeKw
+                  );
+                  const bundleDiscount = (matrix.originalTotalPrice && matrix.totalPrice)
+                    ? matrix.originalTotalPrice - matrix.totalPrice : 0;
+
+                  return (
                   <div className="mb-3">
                     <div className="text-[12px] font-medium text-[#9a9a9a] mb-1.5">
-                      Battery Options
+                      {isFullSystem ? "Packages" : "Battery Options"}
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-[13px]">
                         <thead>
                           <tr className="border-b text-[#9a9a9a]">
-                            <th className="text-left py-1.5 pr-3 font-medium">Battery</th>
-                            <th className="text-right py-1.5 pr-3 font-medium">Capacity</th>
-                            <th className="text-right py-1.5 pr-3 font-medium">Battery Price</th>
-                            <th className="text-right py-1.5 pr-3 font-medium">System Total</th>
+                            <th className="text-left py-1.5 pr-3 font-medium">Package</th>
+                            {isFullSystem && <th className="text-left py-1.5 pr-3 font-medium">Panels</th>}
+                            <th className="text-left py-1.5 pr-3 font-medium">{isFullSystem ? "Battery" : "Model"}</th>
+                            {isFullSystem && <th className="text-right py-1.5 pr-3 font-medium">System</th>}
+                            <th className="text-right py-1.5 pr-3 font-medium">Price</th>
+                            {isFullSystem && <th className="text-right py-1.5 pr-3 font-medium">Monthly</th>}
+                            {!isFullSystem && matrix.panelOnlyPrice && (
+                              <th className="text-right py-1.5 pr-3 font-medium">System Total</th>
+                            )}
                           </tr>
                         </thead>
                         <tbody>
                           {matrix.batteryOptions.map((b, i) => {
-                            const batteryPrice = b.totalPrice ?? b.price ?? 0;
-                            const bName = b.model || b.name || "—";
-                            const bCap = b.capacityKwh ?? "—";
-                            // The system total includes a bundle discount (panels+battery).
-                            // Calculate: raw total minus the known discount amount.
-                            const bundleDiscount = (matrix.originalTotalPrice && matrix.totalPrice)
-                              ? matrix.originalTotalPrice - matrix.totalPrice
-                              : 0;
+                            const pkg = b as unknown as Record<string, unknown>;
+                            const price = (b.totalPrice ?? b.price ?? 0) as number;
+                            const bName = b.name || b.model || "—";
                             const systemTotal = matrix.panelOnlyPrice
-                              ? matrix.panelOnlyPrice + batteryPrice - bundleDiscount
-                              : null;
+                              ? matrix.panelOnlyPrice + price - bundleDiscount : null;
+
                             return (
                             <tr key={i} className="border-b last:border-0">
-                              <td className="py-1.5 pr-3 font-medium">{bName}</td>
-                              <td className="py-1.5 pr-3 text-right">{bCap} kWh</td>
-                              <td className="py-1.5 pr-3 text-right">
-                                £{batteryPrice.toLocaleString()}
+                              <td className="py-1.5 pr-3 font-medium text-[#1D1D1D] max-w-[200px]">
+                                <div className="truncate">{bName}</div>
                               </td>
-                              <td className="py-1.5 pr-3 text-right font-medium">
-                                {systemTotal ? `£${systemTotal.toLocaleString()}` : "—"}
+                              {isFullSystem && (
+                                <td className="py-1.5 pr-3 text-[12px] text-[#7a7a7a]">
+                                  {pkg.panelCount ? `${pkg.panelCount}x ` : ""}
+                                  {pkg.panelModel ? String(pkg.panelModel).replace(/\(.*\)/, "").trim() : "—"}
+                                </td>
+                              )}
+                              <td className="py-1.5 pr-3 text-[#7a7a7a]">
+                                {b.model || "—"}
+                                {b.capacityKwh ? ` ${b.capacityKwh}kWh` : ""}
                               </td>
+                              {isFullSystem && (
+                                <td className="py-1.5 pr-3 text-right text-[#7a7a7a]">
+                                  {pkg.systemSizeKw ? `${pkg.systemSizeKw}kW` : "—"}
+                                </td>
+                              )}
+                              <td className="py-1.5 pr-3 text-right font-medium text-[#1D1D1D]">
+                                £{price.toLocaleString()}
+                              </td>
+                              {isFullSystem && (
+                                <td className="py-1.5 pr-3 text-right text-[#7a7a7a]">
+                                  {pkg.monthlyPayment ? `£${pkg.monthlyPayment}/mo` : "—"}
+                                </td>
+                              )}
+                              {!isFullSystem && matrix.panelOnlyPrice && (
+                                <td className="py-1.5 pr-3 text-right font-medium">
+                                  {systemTotal ? `£${systemTotal.toLocaleString()}` : "—"}
+                                </td>
+                              )}
                             </tr>
                             );
                           })}
@@ -333,7 +364,8 @@ export function PriceTrackerDashboard() {
                       </table>
                     </div>
                   </div>
-                )}
+                  );
+                })()}
 
                 {/* Included extras */}
                 {(matrix.includedExtras ?? []).length > 0 && (

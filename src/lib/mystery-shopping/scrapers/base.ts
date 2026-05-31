@@ -29,8 +29,12 @@ let browserInstance: Browser | null = null;
 export async function getBrowser(): Promise<Browser> {
   if (browserInstance?.isConnected()) return browserInstance;
   browserInstance = await chromium.launch({
-    headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    headless: false,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-blink-features=AutomationControlled",
+    ],
   });
   return browserInstance;
 }
