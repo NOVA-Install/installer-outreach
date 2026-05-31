@@ -134,27 +134,42 @@ export async function scrapeSolarFastApi(
           ? pricing.totalSalePrice - pricingMinus.totalSalePrice
           : null;
 
-      // Extract product details from nested fields or top-level
-      const panelModel = pkg.panelProduct?.name || (pkg as Record<string, unknown>).panelProductName as string || null;
-      const panelWattage = pkg.panelProduct?.wattage || (pkg as Record<string, unknown>).panelWattage as number || null;
-      const batteryModel = pkg.batteryProduct?.name || (pkg as Record<string, unknown>).batteryProductName as string || null;
-      const batteryKwh = pkg.batteryProduct?.capacityKwh || (pkg as Record<string, unknown>).batteryCapacityKwh as number || null;
+      // Extract product details from nested arrays
+      const raw = pkg as Record<string, unknown>;
+      const panels = raw.panels as Array<{ product: { name: string; pmax: number; warranty: number }; quantity: number }> | undefined;
+      const batteries = raw.batteries as Array<{ product: { name: string; nominalCapacity: number; usableCapacity: number; warranty: number }; quantity: number }> | undefined;
+      const inverters = raw.inverters as Array<{ product: { name: string; usableCapacity: number; warranty: number }; quantity: number }> | undefined;
+
+      const panel = panels?.[0];
+      const battery = batteries?.[0];
+      const inverter = inverters?.[0];
+
+      const panelWatts = panel?.product?.pmax ? Math.round(panel.product.pmax * 1000) : null;
+      const systemSizeW = raw.systemSize as number | undefined;
+      const annualGenKwh = raw.averageGenerationAnnualKwh as number | undefined;
+      const emi = raw.emi as string | undefined;
 
       packageDetails.push({
         id: pkg.id,
         name: pkg.name,
-        panelModel,
-        panelWattage,
-        batteryModel,
-        batteryCapacityKwh: batteryKwh,
-        inverterModel: pkg.inverterProduct?.name || null,
+        panelModel: panel?.product?.name || null,
+        panelWattage: panelWatts,
+        panelWarranty: panel?.product?.warranty || null,
+        panelCount: panel?.quantity || null,
+        batteryModel: battery?.product?.name || null,
+        batteryCapacityKwh: battery?.product?.usableCapacity || battery?.product?.nominalCapacity || null,
+        batteryWarranty: battery?.product?.warranty || null,
+        inverterModel: inverter?.product?.name || null,
+        inverterCapacityKwh: inverter?.product?.usableCapacity || null,
+        systemSizeKw: systemSizeW ? systemSizeW / 1000 : null,
+        annualGenerationKwh: annualGenKwh || null,
+        monthlyPayment: emi ? parseFloat(emi) : null,
         minPanels: pkg.minPanels,
         maxPanels: pkg.maxPanels,
-        recommendedPanels: pkg.recommendedPanels,
+        recommendedPanels: pkg.recommendedPanels || panel?.quantity || null,
         totalPrice: pricing?.totalSalePrice ?? pkg.totalSalePrice,
         pricePerPanel,
         projections,
-        _raw: pkg, // Keep raw data for debugging
       });
     }
 
@@ -167,29 +182,40 @@ export async function scrapeSolarFastApi(
 
       // Panel info from the first/recommended package
       panelModel: recommended?.panelModel || null,
-      panelWarrantyYears: null,
-      recommendedPanelCount: recommended?.recommendedPanels || null,
+      panelWarrantyYears: recommended?.panelWarranty || null,
+      recommendedPanelCount: recommended?.recommendedPanels || recommended?.panelCount || null,
       pricePerPanel: recommended?.pricePerPanel || null,
 
       // Pricing
-      panelOnlyPrice: null as number | null, // SolarFast bundles panels+inverter
+      panelOnlyPrice: null as number | null,
       totalPrice: recommended?.totalPrice || null,
+      monthlyPayment: recommended?.monthlyPayment || null,
+
+      // System info
+      systemSizeKw: recommended?.systemSizeKw || null,
+      annualGenerationKwh: recommended?.annualGenerationKwh || null,
 
       // Savings
       annualSavings: (recommended?.projections as Record<string, unknown>)?.yearOneSaving as number | null ?? null,
       monthlySavings: null as number | null,
 
-      // All packages as "battery options" equivalent
+      // All packages
       batteryOptions: packageDetails.map((p) => ({
         name: p.name,
-        model: p.batteryModel || "No battery",
+        model: p.batteryModel || "Panels only",
         capacityKwh: p.batteryCapacityKwh,
         price: p.totalPrice,
         panelModel: p.panelModel,
         panelWattage: p.panelWattage,
+        panelCount: p.panelCount,
+        panelWarranty: p.panelWarranty,
+        batteryWarranty: p.batteryWarranty,
+        inverterModel: p.inverterModel,
+        systemSizeKw: p.systemSizeKw,
+        annualGenerationKwh: p.annualGenerationKwh,
+        monthlyPayment: p.monthlyPayment,
         recommendedPanels: p.recommendedPanels,
         pricePerPanel: p.pricePerPanel,
-        projections: p.projections,
       })),
 
       // Raw package data
