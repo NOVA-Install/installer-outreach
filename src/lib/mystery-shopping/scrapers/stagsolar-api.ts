@@ -19,7 +19,7 @@ const DEFAULT_QUOTE_ID = "1HYY7FC6SR";
 export interface SimplifiedEnergyConfig {
   host: string;
   tenantId: string;
-  quoteId: string;
+  quoteId: string; // Can be empty — will auto-generate from planner page
 }
 
 /**
@@ -58,18 +58,51 @@ export async function scrapeStagSolarApi(
   });
 }
 
+/**
+ * Get a quote ID by visiting the solar planner entry page.
+ * The page auto-redirects to a URL containing a fresh quote ID.
+ */
+async function getQuoteId(tenantId: string, existingQuoteId?: string): Promise<string> {
+  if (existingQuoteId) return existingQuoteId;
+
+  // Visit the entry page — it redirects to /solar-planner-v2/{tenantId}/{newQuoteId}
+  const res = await fetch(`https://solar.simplified.energy/${tenantId}`, {
+    headers: { "User-Agent": "Mozilla/5.0", Accept: "text/html" },
+    redirect: "follow",
+  });
+  const finalUrl = res.url;
+  await res.text(); // consume body
+
+  // Extract quote ID from the redirect URL
+  const match = finalUrl.match(/\/([A-Z0-9]{10})$/);
+  if (match) return match[1];
+
+  // Try broader pattern
+  const parts = finalUrl.split("/");
+  const lastPart = parts[parts.length - 1];
+  if (lastPart && lastPart.length >= 8 && /^[A-Z0-9]+$/.test(lastPart)) {
+    return lastPart;
+  }
+
+  throw new Error(`Could not extract quote ID from redirect URL: ${finalUrl}`);
+}
+
 async function scrapeSimplifiedEnergyApi(
   _page: unknown,
   _url: string,
   property: PropertyInput,
   config: SimplifiedEnergyConfig
 ): Promise<ScraperResult> {
-  const BASE_URL = `https://${config.host.replace(/^https?:\/\//, "")}`;
+  // Use the installer's custom host if available, fall back to solar.simplified.energy
+  const customHost = config.host?.replace(/^https?:\/\//, "");
+  const API_HOST = `https://${customHost || "solar.simplified.energy"}`;
 
   try {
+    // Get or generate a quote ID
+    const quoteId = await getQuoteId(config.tenantId, config.quoteId || undefined);
     // Step 1: Look up address for coordinates
     const addrRes = await fetch(
-      `${BASE_URL}/api/addresses/autocomplete?query=${encodeURIComponent(property.postcode)}`
+      `${API_HOST}/api/addresses/autocomplete?query=${encodeURIComponent(property.postcode)}`
     ).catch(() => null);
 
     let coords = { lng: -0.6, lat: 51.24 };
@@ -97,7 +130,7 @@ async function scrapeSimplifiedEnergyApi(
       const body = buildRequestBody(property, addressOneLiner, coords, numPanels);
 
       const res = await fetch(
-        `${BASE_URL}/api/solar-quote-v2/${config.tenantId}/${config.quoteId}/user-inputs`,
+        `${API_HOST}/api/solar-quote-v2/${config.tenantId}/${quoteId}/user-inputs`,
         { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
       );
 
@@ -238,10 +271,10 @@ function parsePackage(raw: Record<string, unknown>, numPanels: number): ParsedPa
   });
 
   const panel = products.find((p) => p.type === "PV Panel");
-  const battery = products.find((p) => p.type === "Battery" || p.type === "Combined Hybrid Inverter Battery");
-  const inverter = products.find((p) =>
-    p.type === "Hybrid Inverter" || p.type === "String Inverter" || p.type === "Combined Hybrid Inverter Battery"
-  );
+  const batteryTypes = ["Battery", "Combined Hybrid Inverter Battery", "Combined AC Coupled Inverter Battery"];
+  const battery = products.find((p) => batteryTypes.includes(p.type));
+  const inverterTypes = ["Hybrid Inverter", "String Inverter", "Combined Hybrid Inverter Battery", "Combined AC Coupled Inverter Battery"];
+  const inverter = products.find((p) => inverterTypes.includes(p.type));
 
   // Parse battery capacity from product name
   let batteryCapacityKwh: number | null = null;
