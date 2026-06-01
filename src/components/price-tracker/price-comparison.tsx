@@ -280,7 +280,7 @@ function QuoteTable({
                   </td>
                 )}
                 <td className="py-2 pr-3 text-right font-semibold text-[#1D1D1D] tabular-nums">
-                  £{q.pkg.systemPrice.toLocaleString()}
+                  £{Math.round(q.pkg.systemPrice).toLocaleString()}
                 </td>
                 <td className="py-2 text-right text-[#7a7a7a] tabular-nums">
                   {q.pkg.monthlyPayment ? `£${q.pkg.monthlyPayment}/mo` : "—"}
