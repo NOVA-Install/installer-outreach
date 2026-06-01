@@ -98,13 +98,11 @@ export function PriceComparison({ configs }: { configs: ScraperConfig[] }) {
 
         if (exactCandidates.length > 0) {
           exact.push({ installerId, companyName, pkg: exactCandidates[0], isExactMatch: true });
-        }
-        if (similarCandidates.length > 0) {
+        } else if (similarCandidates.length > 0) {
+          // Only show in similar if NOT already in exact
           similar.push({ installerId, companyName, pkg: similarCandidates[0], isExactMatch: false });
-        }
-        // If no exact match, also check similar for the "exact" list (installer with no close match)
-        if (exactCandidates.length === 0 && similarCandidates.length === 0) {
-          // Try cheapest battery as fallback in similar
+        } else {
+          // No match within 5kWh — try cheapest battery as last resort in similar
           const cheapestBat = withBattery.sort((a, b) => a.systemPrice - b.systemPrice)[0];
           if (cheapestBat) {
             similar.push({ installerId, companyName, pkg: cheapestBat, isExactMatch: false });
