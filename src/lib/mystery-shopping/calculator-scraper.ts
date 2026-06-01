@@ -112,9 +112,8 @@ export const CALCULATOR_REGISTRY: ScraperConfig[] = [
     installerId: 4368,
     companyName: "Octopus Energy",
     calculatorUrl: "https://octopus.energy/order/solar/",
+    useApi: true, // Manages its own Browserbase session — don't launch local Playwright
     scraperFn: scrapeOctopusEnergy,
-    // Not useApi — requires Browserbase (remote Chrome via CDP)
-    // Set BROWSERBASE_API_KEY and BROWSERBASE_PROJECT_ID to enable
   },
   // All Simplified Energy installers (same API, different tenants)
   ...SIMPLIFIED_ENERGY_INSTALLERS

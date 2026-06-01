@@ -82,7 +82,7 @@ export async function scrapeOctopusEnergy(
           fingerprint: { locales: ["en-GB"] },
           viewport: { width: 1280, height: 800 },
         },
-        proxies: true,
+        // proxies: true, // paid plan only — enable if Cloudflare blocks without
       }),
     });
 
@@ -101,8 +101,10 @@ export async function scrapeOctopusEnergy(
     const page = ctx.pages()[0] || (await ctx.newPage());
 
     // === Step 1: Navigate to the solar order page ===
+    console.log("[Octopus] Navigating to order page...");
     await page.goto("https://octopus.energy/order/solar/", { waitUntil: "domcontentloaded", timeout: 30000 });
     await page.waitForTimeout(3000);
+    console.log("[Octopus] Page loaded, URL:", page.url());
 
     // Dismiss cookie banner
     const cookieBtn = page.locator('button:has-text("That\'s cool")').first();
@@ -112,16 +114,20 @@ export async function scrapeOctopusEnergy(
     }
 
     // Enter postcode
+    console.log("[Octopus] Entering postcode:", property.postcode);
     const postcodeInput = page.locator('input[type="text"]').first();
     await postcodeInput.fill(property.postcode);
     await page.waitForTimeout(500);
 
     // Click "Get a quote"
+    console.log("[Octopus] Clicking Get a quote...");
     await page.locator('button:has-text("Get a quote")').first().click();
     await page.waitForTimeout(5000);
+    console.log("[Octopus] Property page URL:", page.url());
 
     // === Step 2: Property page — select address and usage ===
     // Open the address combobox
+    console.log("[Octopus] Opening address combobox...");
     const combobox = page.locator('[role="combobox"]').first();
     await combobox.click();
     await page.waitForTimeout(2000);
@@ -148,12 +154,21 @@ export async function scrapeOctopusEnergy(
     await page.waitForTimeout(1000);
 
     // Click "Let's go!"
+    console.log("[Octopus] Clicking Let's go...");
     await page.locator('button:has-text("Let\'s go")').click();
     await page.waitForTimeout(8000);
+    console.log("[Octopus] Estimate page URL:", page.url());
 
     // Wait for the estimate page to hydrate
-    await page.waitForSelector('text=Your estimate', { timeout: 30000 }).catch(() => {});
+    console.log("[Octopus] Waiting for estimate to hydrate...");
+    await page.waitForSelector('text=Your estimate', { timeout: 30000 }).catch(() => {
+      console.log("[Octopus] WARNING: 'Your estimate' not found after 30s");
+    });
     await page.waitForTimeout(3000);
+
+    // Check if we got real pricing or £--
+    const initialPricing = await readPricing(page);
+    console.log("[Octopus] Initial pricing:", JSON.stringify(initialPricing));
 
     // === Step 3: Scrape pricing for different configurations ===
     const allQuotes: OctopusQuote[] = [];
