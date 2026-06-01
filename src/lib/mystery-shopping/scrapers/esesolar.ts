@@ -1,6 +1,7 @@
 import type { Page } from "playwright";
 import type { ScraperResult, PropertyInput } from "./base";
 import { navigateAndSettle, takeScreenshot, getPageText } from "./base";
+import { BURNER_IDENTITY } from "./burner-identity";
 
 /**
  * ESE Solar scraper — browser-based.
@@ -52,13 +53,13 @@ export async function scrapeEseSolar(
     // Fill contact details (required to proceed)
     const firstNameInput = page.locator('input[name*="firstname" i], input[placeholder*="First" i]').first();
     if (await firstNameInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await firstNameInput.fill("Sarah");
+      await firstNameInput.fill(BURNER_IDENTITY.firstName);
       const lastNameInput = page.locator('input[name*="lastname" i], input[placeholder*="Last" i]').first();
-      await lastNameInput.fill("Jones").catch(() => {});
+      await lastNameInput.fill(BURNER_IDENTITY.lastName).catch(() => {});
       const emailInput = page.locator('input[type="email"], input[name*="email" i]').first();
-      await emailInput.fill("quote@example.com").catch(() => {});
+      await emailInput.fill(BURNER_IDENTITY.email).catch(() => {});
       const phoneInput = page.locator('input[type="tel"], input[name*="phone" i]').first();
-      await phoneInput.fill("07700900000").catch(() => {});
+      await phoneInput.fill(BURNER_IDENTITY.phone).catch(() => {});
     }
 
     await clickBtn(page, "Next");

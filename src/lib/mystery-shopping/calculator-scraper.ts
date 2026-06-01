@@ -12,6 +12,7 @@ import { scrapeSolarFastApi } from "./scrapers/solarfast-api";
 import { scrapeIheat } from "./scrapers/iheat-api";
 import { scrapeHeatable } from "./scrapers/heatable";
 import { scrapeEcoProviders } from "./scrapers/ecoproviders";
+import { scrapeEcoProvidersSolar } from "./scrapers/ecoproviders-solar";
 import { scrapeMakeMyHouseGreen } from "./scrapers/makemyhousegreen";
 import { scrapeGlowGreen } from "./scrapers/glowgreen";
 import { scrapeEseSolar } from "./scrapers/esesolar";
@@ -63,14 +64,12 @@ export const CALCULATOR_REGISTRY: ScraperConfig[] = [
     useApi: true,
     scraperFn: scrapeSolarFastApi,
   },
-  // Eco Providers (ID 1775) — battery-only, no solar panels. Not comparable.
-  // {
-  //   installerId: 1775,
-  //   companyName: "Eco Providers Ltd",
-  //   calculatorUrl: "https://www.ecoproviders.co.uk/solar-battery-quote-form/",
-  //   useApi: true,
-  //   scraperFn: scrapeEcoProviders,
-  // },
+  {
+    installerId: 1775,
+    companyName: "Eco Providers Ltd",
+    calculatorUrl: "https://www.ecoproviders.co.uk/solar-fixed-quote-form/",
+    scraperFn: scrapeEcoProvidersSolar,
+  },
   {
     installerId: 5941,
     companyName: "MakeMyHouseGreen (Switchd Ltd)",
