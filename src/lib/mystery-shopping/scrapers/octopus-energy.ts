@@ -155,18 +155,50 @@ export async function scrapeOctopusEnergy(
 
     // Tick the homeowner confirmation checkbox
     console.log("[Octopus] Ticking homeowner confirmation...");
-    const confirmCheckbox = page.locator('text=I confirm that I am the homeowner').first();
-    if (await confirmCheckbox.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await confirmCheckbox.click();
-      await page.waitForTimeout(500);
-    } else {
-      // Try clicking the checkbox input directly
-      const checkbox = page.locator('input[type="checkbox"]').first();
-      if (await checkbox.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await checkbox.click();
+    let checkboxTicked = false;
+
+    // Try multiple selectors — the checkbox might be a label, input, or custom element
+    const checkboxSelectors = [
+      'text=I confirm',
+      'label:has-text("confirm")',
+      'label:has-text("homeowner")',
+      '[type="checkbox"]',
+      'input[type="checkbox"]',
+      '[role="checkbox"]',
+    ];
+
+    for (const sel of checkboxSelectors) {
+      const el = page.locator(sel).first();
+      if (await el.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await el.click();
+        checkboxTicked = true;
+        console.log("[Octopus] Checkbox ticked via:", sel);
         await page.waitForTimeout(500);
+        break;
       }
     }
+
+    if (!checkboxTicked) {
+      // Last resort: find and click via evaluate
+      await page.evaluate(() => {
+        // Find checkbox inputs
+        const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+        for (const cb of checkboxes) {
+          const label = cb.closest("label") || cb.parentElement;
+          const text = label?.textContent || "";
+          if (text.toLowerCase().includes("confirm") || text.toLowerCase().includes("homeowner")) {
+            (cb as HTMLInputElement).click();
+            return;
+          }
+        }
+        // Click any visible checkbox as fallback
+        if (checkboxes.length > 0) {
+          (checkboxes[0] as HTMLInputElement).click();
+        }
+      });
+      console.log("[Octopus] Checkbox ticked via evaluate fallback");
+    }
+    await page.waitForTimeout(1000);
 
     // Click "Let's go!"
     console.log("[Octopus] Clicking Let's go...");
