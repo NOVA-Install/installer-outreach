@@ -90,13 +90,16 @@ export async function scrapeSolarFastApi(
         body: JSON.stringify(pricingBody),
       });
 
-      let pricing: SolarFastPricing | null = null;
+      // The pricing endpoint returns either a plain number or an object with totalSalePrice
+      let pricingValue: number | null = null;
       if (priceRes.ok) {
-        pricing = await priceRes.json();
+        const pricingRaw = await priceRes.json();
+        pricingValue = typeof pricingRaw === "number" ? pricingRaw
+          : pricingRaw?.totalSalePrice ?? null;
       }
 
       // Get pricing with one fewer panel to calculate incremental price
-      let pricingMinus: SolarFastPricing | null = null;
+      let pricingMinusValue: number | null = null;
       if (pkg.recommendedPanels > pkg.minPanels) {
         const minusRes = await fetch(`${BASE_URL}/api/package/pricing`, {
           method: "POST",
@@ -104,16 +107,21 @@ export async function scrapeSolarFastApi(
           body: JSON.stringify({ ...pricingBody, panelCount: pkg.recommendedPanels - 1 }),
         });
         if (minusRes.ok) {
-          pricingMinus = await minusRes.json();
+          const minusRaw = await minusRes.json();
+          pricingMinusValue = typeof minusRaw === "number" ? minusRaw
+            : minusRaw?.totalSalePrice ?? null;
         }
       }
+
+      // Use the pricing endpoint value (correct) or fall back to package listing (stale)
+      const actualPrice = pricingValue ?? pkg.totalSalePrice;
 
       // Get savings projections
       let projections: Record<string, unknown> | null = null;
       const projBody = {
         annualConsumptionKwh: property.annualElectricityUsage || 4000,
         unitRatePerKwPence: 10,
-        systemSalePrice: pricing?.totalSalePrice || pkg.totalSalePrice,
+        systemSalePrice: actualPrice,
         occupancyArchetype: "InMostOfDay",
         panelProduct: pkg.panelProduct?.name,
         shading: false,
@@ -130,8 +138,8 @@ export async function scrapeSolarFastApi(
       }
 
       const pricePerPanel =
-        pricing && pricingMinus
-          ? pricing.totalSalePrice - pricingMinus.totalSalePrice
+        pricingValue != null && pricingMinusValue != null
+          ? pricingValue - pricingMinusValue
           : null;
 
       // Extract product details from nested arrays
@@ -167,7 +175,7 @@ export async function scrapeSolarFastApi(
         minPanels: pkg.minPanels,
         maxPanels: pkg.maxPanels,
         recommendedPanels: pkg.recommendedPanels || panel?.quantity || null,
-        totalPrice: pricing?.totalSalePrice ?? pkg.totalSalePrice,
+        totalPrice: actualPrice,
         pricePerPanel,
         projections,
       });
