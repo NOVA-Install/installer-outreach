@@ -271,7 +271,7 @@ export function InstallerPriceTracker({
                       <p className="text-[14px] font-semibold text-[#1D1D1D]">{p.panelCount}</p>
                       <p className="text-[10px] text-[#9a9a9a]">{p.systemKw}</p>
                       <p className="text-[12px] font-medium text-[#1D1D1D] mt-0.5">
-                        £{p.totalPrice.toLocaleString()}
+                        £{(p.totalPrice ?? 0).toLocaleString()}
                       </p>
                     </div>
                   ))}
