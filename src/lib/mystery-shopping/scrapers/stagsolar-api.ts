@@ -11,9 +11,25 @@ import type { ScraperResult, PropertyInput } from "./base";
  * the products[] array contains a Battery or Combined Hybrid Inverter Battery.
  */
 
-const BASE_URL = "https://quote.stagsolar.com";
-const TENANT_ID = "lRCr4ktLaMGx7wfIj7TFI";
-const QUOTE_ID = "1HYY7FC6SR";
+// Default config for Stag Solar — can be overridden via options
+const DEFAULT_HOST = "https://quote.stagsolar.com";
+const DEFAULT_TENANT_ID = "lRCr4ktLaMGx7wfIj7TFI";
+const DEFAULT_QUOTE_ID = "1HYY7FC6SR";
+
+export interface SimplifiedEnergyConfig {
+  host: string;
+  tenantId: string;
+  quoteId: string;
+}
+
+/**
+ * Create a scraper function for any Simplified Energy installer.
+ * All Simplified Energy installers use the same API — just different host/tenant/quote IDs.
+ */
+export function createSimplifiedEnergyScraper(config: SimplifiedEnergyConfig) {
+  return (page: unknown, url: string, property: PropertyInput) =>
+    scrapeSimplifiedEnergyApi(page, url, property, config);
+}
 
 interface ParsedPackage {
   name: string;
@@ -29,11 +45,27 @@ interface ParsedPackage {
   pricingBreakdown: Array<{ item: string; cost: number }>;
 }
 
+/** Backwards-compatible export for Stag Solar specifically */
 export async function scrapeStagSolarApi(
-  _page: unknown,
-  _url: string,
+  page: unknown,
+  url: string,
   property: PropertyInput
 ): Promise<ScraperResult> {
+  return scrapeSimplifiedEnergyApi(page, url, property, {
+    host: DEFAULT_HOST,
+    tenantId: DEFAULT_TENANT_ID,
+    quoteId: DEFAULT_QUOTE_ID,
+  });
+}
+
+async function scrapeSimplifiedEnergyApi(
+  _page: unknown,
+  _url: string,
+  property: PropertyInput,
+  config: SimplifiedEnergyConfig
+): Promise<ScraperResult> {
+  const BASE_URL = `https://${config.host.replace(/^https?:\/\//, "")}`;
+
   try {
     // Step 1: Look up address for coordinates
     const addrRes = await fetch(
@@ -65,7 +97,7 @@ export async function scrapeStagSolarApi(
       const body = buildRequestBody(property, addressOneLiner, coords, numPanels);
 
       const res = await fetch(
-        `${BASE_URL}/api/solar-quote-v2/${TENANT_ID}/${QUOTE_ID}/user-inputs`,
+        `${BASE_URL}/api/solar-quote-v2/${config.tenantId}/${config.quoteId}/user-inputs`,
         { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
       );
 
@@ -178,7 +210,7 @@ export async function scrapeStagSolarApi(
 
     return {
       success: true,
-      platform: "stagsolar-api",
+      platform: "simplified-energy",
       rawData: { priceMatrix },
       screenshotPath: null,
       error: null,
@@ -186,7 +218,7 @@ export async function scrapeStagSolarApi(
   } catch (err) {
     return {
       success: false,
-      platform: "stagsolar-api",
+      platform: "simplified-energy",
       rawData: null,
       screenshotPath: null,
       error: err instanceof Error ? err.message : String(err),
