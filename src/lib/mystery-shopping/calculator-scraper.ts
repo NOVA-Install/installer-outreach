@@ -48,18 +48,19 @@ const SIMPLIFIED_ENERGY_INSTALLERS: Array<{ installerId: number; name: string; h
   { installerId: 5652, name: "Solr", host: "", tenantId: "X9OeZf3r9a1Sx1MJTB7Ts", quoteId: "" },
   { installerId: 5712, name: "Spark Energy UK", host: "", tenantId: "VhmuJgD0avzqgfI32IAwH", quoteId: "" },
   { installerId: 5943, name: "Switched On", host: "", tenantId: "-ng4Ba8FXMcUNjz04cHcv", quoteId: "" },
+  // Confirmed v2-active — redirect at / or direct GET to /solar-planner-v2/
+  { installerId: 2252, name: "EVi Renewables", host: "app.eviuk.co.uk", tenantId: "S5h3NUrlWqmlLk0Gzqw1s", quoteId: "" },
+  { installerId: 1511, name: "Devon Renewables", host: "quote.devonrenewables.co.uk", tenantId: "eYuyS_kGQvg9x_bL1YgR9", quoteId: "" },
+  { installerId: 1229, name: "Conscious Energy", host: "quote.consciousenergy.co.uk", tenantId: "yPflvX3t_4Wp8gPO1--eo", quoteId: "" },
+  { installerId: 2242, name: "Evergreen Power UK Ltd", host: "solarquote.evergreenpoweruk.com", tenantId: "Q7T-pbkeY25KnjAGMqwMQ", quoteId: "" },
+  { installerId: 794, name: "Bloom Renewables", host: "solar.simplified.energy", tenantId: "93C4wXMVbD2TKXweU4xih", quoteId: "" },
+  { installerId: 6211, name: "Total Renewable Solutions", host: "quote.totalrenewablesolutions.com", tenantId: "0DL7MAIf0fz3CJ8PCIGcB", quoteId: "" },
+  { installerId: 3128, name: "Infinite Energy", host: "solar.infiniteenergy.io", tenantId: "dOHeeiE5VFu6VyBoqq6nx", quoteId: "" },
+  { installerId: 6312, name: "Urbn Solar", host: "quote.urbnsolar.uk", tenantId: "xFVGLsKZl3HrE5AE3ray8", quoteId: "" },
 ];
 
-// Removed — NOT on v2 planner (use v1 or don't redirect, data may be incomplete):
+// Removed — NOT on v2 planner:
 // Solar Star Power (5548) — v1 planner, missing solar-only packages
-// Evergreen Power UK (2242) — no redirect to v2
-// Infinite Energy (3128) — no redirect to v2
-// Bloom Renewables (794) — redirects to generic simplified.energy
-// Urbn Solar (6312) — no redirect to v2
-// Conscious Energy (1229) — no redirect to v2
-// Total Renewable Solutions (6211) — no redirect to v2
-// Devon Renewables (1511) — no redirect to v2
-// EVi Renewables (2252) — no redirect to v2
 // Solar Techs (5560) — no redirect to planner
 import { extractPostcodeArea, UK_ZONES } from "@/lib/constants";
 import type { Page } from "playwright";
