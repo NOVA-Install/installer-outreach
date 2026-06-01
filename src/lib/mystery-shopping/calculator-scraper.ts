@@ -16,6 +16,7 @@ import { scrapeEcoProvidersApi } from "./scrapers/ecoproviders-api";
 import { scrapeMakeMyHouseGreen } from "./scrapers/makemyhousegreen";
 import { scrapeGlowGreen } from "./scrapers/glowgreen";
 import { scrapeEseSolar } from "./scrapers/esesolar";
+import { scrapeStagSolarApi } from "./scrapers/stagsolar-api";
 import { scrapeGeneric } from "./scrapers/generic";
 import { extractPostcodeArea, UK_ZONES } from "@/lib/constants";
 import type { Page } from "playwright";
@@ -90,6 +91,13 @@ export const CALCULATOR_REGISTRY: ScraperConfig[] = [
     companyName: "ESE Solar Limited",
     calculatorUrl: "https://esesolar.co.uk/solar-form/",
     scraperFn: scrapeEseSolar,
+  },
+  {
+    installerId: 5775,
+    companyName: "Stag Solar Solutions",
+    calculatorUrl: "https://quote.stagsolar.com/solar",
+    useApi: true,
+    scraperFn: scrapeStagSolarApi,
   },
 ];
 

@@ -312,7 +312,7 @@ export function PriceTrackerDashboard() {
                             {isFullSystem && <th className="text-left py-1.5 pr-3 font-medium">Panels</th>}
                             <th className="text-left py-1.5 pr-3 font-medium">{isFullSystem ? "Battery" : "Model"}</th>
                             {isFullSystem && <th className="text-right py-1.5 pr-3 font-medium">System</th>}
-                            <th className="text-right py-1.5 pr-3 font-medium">Price</th>
+                            <th className="text-right py-1.5 pr-3 font-medium">{isFullSystem ? "Price" : "Battery Price"}</th>
                             {isFullSystem && <th className="text-right py-1.5 pr-3 font-medium">Monthly</th>}
                             {!isFullSystem && matrix.panelOnlyPrice && (
                               <th className="text-right py-1.5 pr-3 font-medium">System Total</th>
@@ -322,10 +322,27 @@ export function PriceTrackerDashboard() {
                         <tbody>
                           {matrix.batteryOptions.map((b, i) => {
                             const pkg = b as unknown as Record<string, unknown>;
-                            const price = (b.totalPrice ?? b.price ?? 0) as number;
                             const bName = b.name || b.model || "—";
-                            const systemTotal = matrix.panelOnlyPrice
-                              ? matrix.panelOnlyPrice + price - bundleDiscount : null;
+                            // For battery add-on installers: price = battery cost, totalPrice = system total
+                            // For full system installers: price = system total
+                            const batteryPrice = (b.price ?? 0) as number;
+                            const explicitTotal = pkg.totalPrice as number | undefined;
+                            let price: number;
+                            let systemTotal: number | null;
+
+                            if (isFullSystem) {
+                              price = (b.totalPrice ?? b.price ?? 0) as number;
+                              systemTotal = null;
+                            } else if (explicitTotal) {
+                              // Has both battery price and system total (Eco Providers, Stag Solar)
+                              price = batteryPrice;
+                              systemTotal = explicitTotal;
+                            } else {
+                              // Battery add-on only (Boxt) — calculate system total
+                              price = batteryPrice;
+                              systemTotal = matrix.panelOnlyPrice
+                                ? matrix.panelOnlyPrice + batteryPrice - bundleDiscount : null;
+                            }
 
                             return (
                             <tr key={i} className="border-b last:border-0">
