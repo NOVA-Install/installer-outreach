@@ -62,7 +62,7 @@ export const UK_ZONES = [
   {
     id: "west-midlands",
     name: "West Midlands",
-    postcodePrefixes: ["B", "WS", "DY", "WV", "CV", "WR", "ST"],
+    postcodePrefixes: ["B", "WS", "DY", "WV", "CV", "WR", "ST", "HR", "TF"],
   },
   {
     id: "east-midlands",
