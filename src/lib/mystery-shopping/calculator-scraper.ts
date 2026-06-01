@@ -47,7 +47,7 @@ const SIMPLIFIED_ENERGY_INSTALLERS: Array<{ installerId: number; name: string; h
   { installerId: 4277, name: "Nightingale Electrical", host: "", tenantId: "UepOaVtvXYFSFj8M7o6kB", quoteId: "" },
   { installerId: 5652, name: "Solr", host: "", tenantId: "X9OeZf3r9a1Sx1MJTB7Ts", quoteId: "" },
   { installerId: 5712, name: "Spark Energy UK", host: "", tenantId: "VhmuJgD0avzqgfI32IAwH", quoteId: "" },
-  { installerId: 5943, name: "Switched On", host: "", tenantId: "-ng4Ba8FXMcUNjz04cHcv", quoteId: "" },
+  { installerId: 5944, name: "Switched On (Yorkshire) Ltd", host: "", tenantId: "-ng4Ba8FXMcUNjz04cHcv", quoteId: "" },
   // Confirmed v2-active — redirect at / or direct GET to /solar-planner-v2/
   { installerId: 2252, name: "EVi Renewables", host: "app.eviuk.co.uk", tenantId: "S5h3NUrlWqmlLk0Gzqw1s", quoteId: "" },
   { installerId: 1511, name: "Devon Renewables", host: "quote.devonrenewables.co.uk", tenantId: "eYuyS_kGQvg9x_bL1YgR9", quoteId: "" },
