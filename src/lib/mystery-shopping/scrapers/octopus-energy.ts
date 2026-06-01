@@ -304,86 +304,97 @@ export async function scrapeOctopusEnergy(
   }
 }
 
-/** Set panel count by clicking +/- buttons */
+/** Set panel count by clicking the − and + buttons near the panel counter */
 async function setPanelCount(page: any, target: number): Promise<void> {
-  // Read the current price before changing panels so we can detect when it updates
-  const priceBefore = await readPricing(page);
+  // Strategy: Use Playwright locators scoped to the panels section.
+  // The panel stepper has "−" [number] "+" with nearby text mentioning "panel".
+  // We find the minus and plus buttons that are siblings of the panel count display.
 
-  for (let attempt = 0; attempt < 20; attempt++) {
-    // Read current panel count from the page
-    const current = await page.evaluate(() => {
-      // Look for the panel counter value — it's a number between two buttons (− and +)
-      // Find all elements that contain just a number 2-30
-      const candidates: Array<{ num: number; el: Element }> = [];
+  for (let attempt = 0; attempt < 30; attempt++) {
+    // Read current panel count — find number near panel-related text
+    const info = await page.evaluate(() => {
+      // Find all visible number displays (2-30)
+      const results: Array<{ num: number; rect: DOMRect; parentText: string }> = [];
       document.querySelectorAll("*").forEach((el) => {
         if (el.children.length > 0) return;
         const t = el.textContent?.trim();
-        if (t && /^\d{1,2}$/.test(t)) {
-          const n = parseInt(t);
-          if (n >= 2 && n <= 30) {
-            // Check if adjacent sibling buttons exist (the +/- stepper)
-            const parent = el.parentElement;
-            if (parent) {
-              const buttons = parent.querySelectorAll("button");
-              if (buttons.length >= 2) {
-                candidates.push({ num: n, el });
-              }
-            }
-          }
+        if (!t || !/^\d{1,2}$/.test(t)) return;
+        const n = parseInt(t);
+        if (n < 2 || n > 30) return;
+        const rect = el.getBoundingClientRect();
+        if (rect.height === 0) return;
+        // Get parent context to disambiguate panel vs expansion counters
+        let ctx = el.parentElement;
+        let parentText = "";
+        for (let i = 0; i < 5 && ctx; i++) {
+          parentText = ctx.textContent || "";
+          if (parentText.length > 20) break;
+          ctx = ctx.parentElement;
         }
+        results.push({ num: n, rect, parentText: parentText.slice(0, 200) });
       });
-      // Return the first match (panel counter is typically the first stepper on the page)
-      return candidates.length > 0 ? candidates[0].num : null;
+      return results;
     });
 
-    console.log("[Octopus] Panel count: current=" + current + " target=" + target);
+    // Find the one near "panel" text (not "expansion" or "Powerwall")
+    const panelCounter = info.find((i: any) =>
+      i.parentText.toLowerCase().includes("panel") &&
+      !i.parentText.toLowerCase().includes("expansion")
+    ) || info[0];
+
+    const current = panelCounter?.num;
+    console.log("[Octopus] Panel count: current=" + current + " target=" + target +
+      " (found " + info.length + " counters)");
+
     if (current === target) break;
-    if (current === null) {
+    if (current == null) {
       console.log("[Octopus] Could not read panel count");
       break;
     }
 
-    const direction = current < target ? "+" : "−";
-
-    // Click the correct button — find the FIRST stepper's +/- button
-    await page.evaluate((dir: string) => {
-      // Find all button pairs (steppers have exactly 2 buttons: − and +)
-      const allButtons = Array.from(document.querySelectorAll("button"));
-      // Group buttons by parent
-      const parentMap = new Map<Element, Element[]>();
-      for (const btn of allButtons) {
-        const p = btn.parentElement;
-        if (!p) continue;
-        if (!parentMap.has(p)) parentMap.set(p, []);
-        parentMap.get(p)!.push(btn);
-      }
-      // Find steppers (parents with exactly 2-3 button children)
-      for (const [parent, buttons] of parentMap) {
-        if (buttons.length < 2 || buttons.length > 3) continue;
-        const texts = buttons.map((b) => b.textContent?.trim());
-        const hasMinus = texts.some((t) => t === "−" || t === "-" || t === "–");
-        const hasPlus = texts.some((t) => t === "+" || t === "＋");
-        if (hasMinus && hasPlus) {
-          // This is a stepper — click the right button
-          for (const btn of buttons) {
-            const t = btn.textContent?.trim();
-            if (dir === "+" && (t === "+" || t === "＋")) {
-              btn.click();
-              return;
-            }
-            if (dir === "−" && (t === "−" || t === "-" || t === "–")) {
-              btn.click();
-              return;
-            }
+    // Click +/- using Playwright locator with force:true
+    // The buttons are typically labeled with − and + characters
+    if (current < target) {
+      // Need to click + — find it near the panel counter position
+      await page.evaluate((counterY: number) => {
+        const buttons = document.querySelectorAll("button");
+        let best: HTMLElement | null = null;
+        let bestDist = Infinity;
+        for (const btn of buttons) {
+          const t = btn.textContent?.trim();
+          if (t !== "+" && t !== "＋") continue;
+          const r = btn.getBoundingClientRect();
+          const dist = Math.abs(r.y - counterY);
+          if (dist < bestDist) {
+            bestDist = dist;
+            best = btn as HTMLElement;
           }
         }
-      }
-    }, direction);
+        if (best && bestDist < 100) best.click();
+      }, panelCounter.rect.y);
+    } else {
+      await page.evaluate((counterY: number) => {
+        const buttons = document.querySelectorAll("button");
+        let best: HTMLElement | null = null;
+        let bestDist = Infinity;
+        for (const btn of buttons) {
+          const t = btn.textContent?.trim();
+          if (t !== "−" && t !== "-" && t !== "–") continue;
+          const r = btn.getBoundingClientRect();
+          const dist = Math.abs(r.y - counterY);
+          if (dist < bestDist) {
+            bestDist = dist;
+            best = btn as HTMLElement;
+          }
+        }
+        if (best && bestDist < 100) best.click();
+      }, panelCounter.rect.y);
+    }
 
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(800);
   }
 
-  // Wait for price to update after panel change
+  // Wait for price recalculation
   await page.waitForTimeout(2000);
 }
 
