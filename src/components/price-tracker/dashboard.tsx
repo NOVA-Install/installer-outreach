@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
+import { PriceComparison } from "./price-comparison";
 
 interface BatteryOption {
   tier?: string;
@@ -168,6 +169,8 @@ export function PriceTrackerDashboard() {
 
   return (
     <div className="space-y-4">
+      <PriceComparison configs={configs} />
+
       {configs.map((config) => {
         const latest = config.latestResult;
         const isExpanded = expandedId === config.installerId;
