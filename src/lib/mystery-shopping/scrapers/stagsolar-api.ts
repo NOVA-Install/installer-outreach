@@ -297,20 +297,27 @@ function parsePackage(raw: Record<string, unknown>, numPanels: number): ParsedPa
     p.type === "Combined Hybrid Inverter Battery" || p.type === "Combined AC Coupled Inverter Battery"
   );
 
-  // Parse battery capacity from product name
+  // Parse battery capacity from product name × quantity
+  // e.g. 2 × "X1 5kWh Battery Module" = 10kWh total
   let batteryCapacityKwh: number | null = null;
   if (battery) {
+    let perUnitKwh: number | null = null;
     const capMatch = battery.name.match(/([\d.]+)\s*kWh/i);
     if (capMatch) {
-      batteryCapacityKwh = parseFloat(capMatch[1]);
+      perUnitKwh = parseFloat(capMatch[1]);
     } else if (battery.name.includes("Powerwall 3")) {
-      batteryCapacityKwh = 13.5;
+      perUnitKwh = 13.5;
+    } else if (battery.name.includes("Powerwall II")) {
+      perUnitKwh = 13.5;
     } else {
       // Try parsing numbers that look like capacity (e.g. "Giv-Bat 5.2")
       const numMatch = battery.name.match(/(\d+\.?\d*)\s*(?:Gen|$)/i);
       if (numMatch && parseFloat(numMatch[1]) < 50) {
-        batteryCapacityKwh = parseFloat(numMatch[1]);
+        perUnitKwh = parseFloat(numMatch[1]);
       }
+    }
+    if (perUnitKwh) {
+      batteryCapacityKwh = Math.round(perUnitKwh * battery.qty * 100) / 100;
     }
   }
 
