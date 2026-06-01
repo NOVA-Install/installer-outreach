@@ -48,6 +48,7 @@ const SIMPLIFIED_ENERGY_INSTALLERS: Array<{ installerId: number; name: string; h
   { installerId: 1511, name: "Devon Renewables", host: "quote.devonrenewables.co.uk", tenantId: "eYuyS_kGQvg9x_bL1YgR9", quoteId: "6CPXKQNX91" },
   { installerId: 2252, name: "EVi Renewables", host: "app.eviuk.co.uk", tenantId: "S5h3NUrlWqmlLk0Gzqw1s", quoteId: "RYEF7S7AYN" },
   { installerId: 5128, name: "RR Electrical and Solar", host: "quote.rrelectricalandsolar.co.uk", tenantId: "xJhwhQAm7ZNfmiW7kESt1", quoteId: "NHDKHYRP2S" },
+  { installerId: 3695, name: "The Solar People", host: "quote.thesolarpeople.co.uk", tenantId: "8_h2RLenn8seSpvBdrbl0", quoteId: "FYEPMCQ6X5" },
 ];
 import { extractPostcodeArea, UK_ZONES } from "@/lib/constants";
 import type { Page } from "playwright";
