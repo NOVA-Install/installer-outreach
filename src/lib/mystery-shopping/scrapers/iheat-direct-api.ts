@@ -99,7 +99,7 @@ export async function scrapeIheatApi(
     // Step 1: Look up address via Ideal Postcodes
     const addrSearchRes = await fetch(
       `https://api.ideal-postcodes.co.uk/v1/autocomplete/addresses?api_key=${IDEAL_POSTCODES_KEY}&q=${encodeURIComponent(property.postcode)}`,
-      { headers: { "User-Agent": "Mozilla/5.0" } }
+      { headers: { "User-Agent": "Mozilla/5.0", "Referer": `${BASE_URL}/quote/solar` } }
     );
     const addrSearchData = await addrSearchRes.json();
     const suggestions = addrSearchData?.result?.hits || [];
@@ -117,7 +117,7 @@ export async function scrapeIheatApi(
     const addrId = selectedAddr.id || selectedAddr.udprn;
     const addrDetailRes = await fetch(
       `https://api.ideal-postcodes.co.uk/v1/autocomplete/addresses/${addrId}/gbr?api_key=${IDEAL_POSTCODES_KEY}`,
-      { headers: { "User-Agent": "Mozilla/5.0" } }
+      { headers: { "User-Agent": "Mozilla/5.0", "Referer": `${BASE_URL}/quote/solar` } }
     );
     const addrDetail = (await addrDetailRes.json())?.result || {};
 
