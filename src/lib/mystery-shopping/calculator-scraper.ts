@@ -12,8 +12,7 @@ import { scrapeSolarFastApi } from "./scrapers/solarfast-api";
 import { scrapeIheat } from "./scrapers/iheat-api";
 import { scrapeIheatApi } from "./scrapers/iheat-direct-api";
 import { scrapeHeatable } from "./scrapers/heatable";
-import { scrapeEcoProviders } from "./scrapers/ecoproviders";
-import { scrapeEcoProvidersSolar } from "./scrapers/ecoproviders-solar";
+import { scrapeEcoProvidersApi } from "./scrapers/ecoproviders-api";
 import { scrapeMakeMyHouseGreen } from "./scrapers/makemyhousegreen";
 import { scrapeGlowGreen } from "./scrapers/glowgreen";
 import { scrapeEseSolar } from "./scrapers/esesolar";
@@ -70,7 +69,8 @@ export const CALCULATOR_REGISTRY: ScraperConfig[] = [
     installerId: 1775,
     companyName: "Eco Providers Ltd",
     calculatorUrl: "https://www.ecoproviders.co.uk/solar-fixed-quote-form/",
-    scraperFn: scrapeEcoProvidersSolar,
+    useApi: true,
+    scraperFn: scrapeEcoProvidersApi,
   },
   {
     installerId: 5941,
