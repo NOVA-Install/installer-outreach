@@ -271,10 +271,31 @@ function parsePackage(raw: Record<string, unknown>, numPanels: number): ParsedPa
   });
 
   const panel = products.find((p) => p.type === "PV Panel");
-  const batteryTypes = ["Battery", "Combined Hybrid Inverter Battery", "Combined AC Coupled Inverter Battery"];
-  const battery = products.find((p) => batteryTypes.includes(p.type));
-  const inverterTypes = ["Hybrid Inverter", "String Inverter", "Combined Hybrid Inverter Battery", "Combined AC Coupled Inverter Battery"];
-  const inverter = products.find((p) => inverterTypes.includes(p.type));
+  // Detect battery by checking if ANY product has parseable kWh capacity.
+  // Don't rely on product type names — some "Solar and Battery" packages
+  // have no actual battery, and some combined inverter-batteries exist.
+  const allBatteryLike = products.filter((p) =>
+    p.type === "Battery" ||
+    p.type === "Combined Hybrid Inverter Battery" ||
+    p.type === "Combined AC Coupled Inverter Battery"
+  );
+  // Only count as a battery if we can parse actual capacity from the product name
+  const battery = allBatteryLike.find((p) => {
+    const capMatch = p.name.match(/([\d.]+)\s*kWh/i);
+    if (capMatch) return true;
+    // Known batteries with capacity not in the name
+    if (p.name.includes("Powerwall 3")) return true; // 13.5kWh
+    if (p.name.includes("Powerwall II")) return true; // 13.5kWh
+    if (p.name.includes("Giv-Bat")) return true;
+    if (p.name.includes("EP6")) return true;
+    if (p.name.includes("Sigenstor Battery")) return true;
+    if (p.name.includes("Energy Bank")) return true;
+    return false;
+  });
+  const inverter = products.find((p) =>
+    p.type === "Hybrid Inverter" || p.type === "String Inverter" ||
+    p.type === "Combined Hybrid Inverter Battery" || p.type === "Combined AC Coupled Inverter Battery"
+  );
 
   // Parse battery capacity from product name
   let batteryCapacityKwh: number | null = null;

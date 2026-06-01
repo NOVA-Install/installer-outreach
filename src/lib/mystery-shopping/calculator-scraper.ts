@@ -120,7 +120,9 @@ export const CALCULATOR_REGISTRY: ScraperConfig[] = [
     .map((se) => ({
       installerId: se.installerId,
       companyName: se.name,
-      calculatorUrl: `https://${se.host}/solar`,
+      calculatorUrl: se.host
+        ? `https://${se.host}/solar`
+        : `https://solar.simplified.energy/${se.tenantId}`,
       useApi: true,
       scraperFn: createSimplifiedEnergyScraper({
         host: se.host,
