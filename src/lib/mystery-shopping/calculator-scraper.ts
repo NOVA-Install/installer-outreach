@@ -17,6 +17,7 @@ import { scrapeMakeMyHouseGreen } from "./scrapers/makemyhousegreen";
 import { scrapeGlowGreen } from "./scrapers/glowgreen";
 import { scrapeEseSolar } from "./scrapers/esesolar";
 import { scrapeStagSolarApi, createSimplifiedEnergyScraper } from "./scrapers/stagsolar-api";
+import { scrapeOctopusEnergy } from "./scrapers/octopus-energy";
 import { scrapeGeneric } from "./scrapers/generic";
 
 // All Simplified Energy installers — same API, different tenant/quote IDs
@@ -49,6 +50,13 @@ const SIMPLIFIED_ENERGY_INSTALLERS: Array<{ installerId: number; name: string; h
   { installerId: 2252, name: "EVi Renewables", host: "app.eviuk.co.uk", tenantId: "S5h3NUrlWqmlLk0Gzqw1s", quoteId: "RYEF7S7AYN" },
   { installerId: 5128, name: "RR Electrical and Solar", host: "quote.rrelectricalandsolar.co.uk", tenantId: "xJhwhQAm7ZNfmiW7kESt1", quoteId: "NHDKHYRP2S" },
   { installerId: 3695, name: "The Solar People", host: "quote.thesolarpeople.co.uk", tenantId: "8_h2RLenn8seSpvBdrbl0", quoteId: "FYEPMCQ6X5" },
+  // Auto-generated quote IDs (no custom host — use solar.simplified.energy)
+  { installerId: 1941, name: "Electech Engineering Services", host: "", tenantId: "eTc1ChzfSdtwxf5KxPliM", quoteId: "" },
+  { installerId: 4277, name: "Nightingale Electrical", host: "", tenantId: "UepOaVtvXYFSFj8M7o6kB", quoteId: "" },
+  { installerId: 5560, name: "Solar Techs", host: "", tenantId: "Q13JsFUq2QwSeFSIEwdF6", quoteId: "" },
+  { installerId: 5652, name: "Solr", host: "", tenantId: "X9OeZf3r9a1Sx1MJTB7Ts", quoteId: "" },
+  { installerId: 5712, name: "Spark Energy UK", host: "", tenantId: "VhmuJgD0avzqgfI32IAwH", quoteId: "" },
+  { installerId: 5943, name: "Switched On", host: "", tenantId: "-ng4Ba8FXMcUNjz04cHcv", quoteId: "" },
 ];
 import { extractPostcodeArea, UK_ZONES } from "@/lib/constants";
 import type { Page } from "playwright";
@@ -100,9 +108,16 @@ export const CALCULATOR_REGISTRY: ScraperConfig[] = [
     useApi: true,
     scraperFn: scrapeEcoProvidersApi,
   },
+  {
+    installerId: 4368,
+    companyName: "Octopus Energy",
+    calculatorUrl: "https://octopus.energy/order/solar/",
+    scraperFn: scrapeOctopusEnergy,
+    // Not useApi — requires Browserbase (remote Chrome via CDP)
+    // Set BROWSERBASE_API_KEY and BROWSERBASE_PROJECT_ID to enable
+  },
   // All Simplified Energy installers (same API, different tenants)
   ...SIMPLIFIED_ENERGY_INSTALLERS
-    .filter((se) => se.quoteId) // Skip entries without a quoteId
     .map((se) => ({
       installerId: se.installerId,
       companyName: se.name,
