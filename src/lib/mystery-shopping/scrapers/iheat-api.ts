@@ -32,8 +32,15 @@ export async function scrapeIheat(
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
     await page.waitForTimeout(3000);
 
-    // Dismiss cookies
-    await page.locator('button:has-text("Deny")').first().click().catch(() => {});
+    // Dismiss cookies — iHeat uses Cookiebot with "Deny" or "Allow selection"
+    for (const text of ["Deny", "Allow selection", "Reject", "Accept"]) {
+      const btn = page.locator(`button:has-text("${text}")`).first();
+      if (await btn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await btn.click().catch(() => {});
+        console.log("[iHeat] Dismissed cookies with:", text);
+        break;
+      }
+    }
     await page.waitForTimeout(1000);
 
     // Step 1: Address autocomplete
@@ -41,17 +48,19 @@ export async function scrapeIheat(
     await page.locator('input[placeholder*="Start typing"]').first().fill(property.postcode);
     await page.waitForTimeout(2000);
 
-    // Select first non-flat address from dropdown
-    const addrItems = page.locator("li").filter({ hasNotText: /[Ff]lat/ });
-    const addrCount = await addrItems.count();
-    console.log("[iHeat] Address suggestions:", addrCount);
-    if (addrCount > 0) {
-      await addrItems.first().click();
+    // Select first non-flat address from the autocomplete dropdown
+    // The dropdown items contain the address text with a comma
+    const addrItem = page.locator(`text=/${property.postcode.replace(/\s+/g, "\\\\s*")}/i`).first();
+    if (await addrItem.isVisible({ timeout: 5000 }).catch(() => false)) {
+      console.log("[iHeat] Clicking address suggestion");
+      await addrItem.click();
     } else {
-      // Try any li element
-      const anyLi = page.locator("ul li").first();
-      if (await anyLi.isVisible({ timeout: 3000 }).catch(() => false)) {
-        await anyLi.click();
+      // Fallback: click any visible text that looks like an address (has a comma + postcode area)
+      const postcodeArea = property.postcode.split(" ")[0];
+      const fallback = page.locator(`text=/${postcodeArea}/`).first();
+      if (await fallback.isVisible({ timeout: 3000 }).catch(() => false)) {
+        console.log("[iHeat] Clicking fallback address");
+        await fallback.click();
       }
     }
     await page.waitForTimeout(3000);
