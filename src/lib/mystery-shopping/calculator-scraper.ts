@@ -63,13 +63,14 @@ export const CALCULATOR_REGISTRY: ScraperConfig[] = [
     useApi: true,
     scraperFn: scrapeSolarFastApi,
   },
-  {
-    installerId: 1775,
-    companyName: "Eco Providers Ltd",
-    calculatorUrl: "https://www.ecoproviders.co.uk/solar-battery-quote-form/",
-    useApi: true,
-    scraperFn: scrapeEcoProviders,
-  },
+  // Eco Providers (ID 1775) — battery-only, no solar panels. Not comparable.
+  // {
+  //   installerId: 1775,
+  //   companyName: "Eco Providers Ltd",
+  //   calculatorUrl: "https://www.ecoproviders.co.uk/solar-battery-quote-form/",
+  //   useApi: true,
+  //   scraperFn: scrapeEcoProviders,
+  // },
   {
     installerId: 5941,
     companyName: "MakeMyHouseGreen (Switchd Ltd)",
