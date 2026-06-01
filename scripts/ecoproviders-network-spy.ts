@@ -217,7 +217,7 @@ async function main() {
     console.log("   Attempting force-click on Next...");
     await nextBtn.evaluate((el) => {
       (el as HTMLButtonElement).disabled = false;
-      el.click();
+      (el as HTMLElement).click();
     });
     await page.waitForTimeout(2000);
   } else {
@@ -291,7 +291,7 @@ async function main() {
         // Force click
         await btn.evaluate((el) => {
           (el as HTMLButtonElement).disabled = false;
-          el.click();
+          (el as HTMLElement).click();
         });
         console.log("   Force-clicked nextBtn");
         await page.waitForTimeout(1500);
@@ -348,7 +348,7 @@ async function main() {
   const nextBtns2 = await page.locator("#nextBtn").all();
   for (const btn of nextBtns2) {
     if (await btn.isVisible({ timeout: 500 }).catch(() => false)) {
-      await btn.click().catch(() => btn.evaluate((el) => el.click()));
+      await btn.click().catch(() => btn.evaluate((el) => (el as HTMLElement).click()));
       console.log("   Clicked nextBtn after material");
       await page.waitForTimeout(1500);
       break;
@@ -436,7 +436,7 @@ async function main() {
     const nextBtns3 = await page.locator("#nextBtn").all();
     for (const btn of nextBtns3) {
       if (await btn.isVisible({ timeout: 500 }).catch(() => false)) {
-        await btn.click().catch(() => btn.evaluate((el) => el.click()));
+        await btn.click().catch(() => btn.evaluate((el) => (el as HTMLElement).click()));
         console.log("   Clicked nextBtn to get to usage page");
         await page.waitForTimeout(2000);
         break;
@@ -495,7 +495,7 @@ async function main() {
   const nextBtns4 = await page.locator("#nextBtn").all();
   for (const btn of nextBtns4) {
     if (await btn.isVisible({ timeout: 500 }).catch(() => false)) {
-      await btn.click().catch(() => btn.evaluate((el) => el.click()));
+      await btn.click().catch(() => btn.evaluate((el) => (el as HTMLElement).click()));
       console.log("   Clicked nextBtn after usage");
       await page.waitForTimeout(3000);
       break;
@@ -551,7 +551,7 @@ async function main() {
         if (await btn.isVisible({ timeout: 300 }).catch(() => false)) {
           const text = await btn.evaluate((el) => el.textContent?.trim() || el.id);
           console.log(`   Clicking visible button: ${text}`);
-          await btn.click().catch(() => btn.evaluate((el) => el.click()));
+          await btn.click().catch(() => btn.evaluate((el) => (el as HTMLElement).click()));
           await page.waitForTimeout(2000);
         }
       }
