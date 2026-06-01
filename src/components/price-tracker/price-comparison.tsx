@@ -303,8 +303,10 @@ export function PriceComparison({ configs }: { configs: ScraperConfig[] }) {
               <thead>
                 <tr className="border-b text-[11px] text-[#9a9a9a] uppercase tracking-wider">
                   <th className="text-left py-2 pr-3 font-medium">Installer</th>
-                  <th className="text-left py-2 pr-3 font-medium">Panels</th>
+                  <th className="text-left py-2 pr-3 font-medium">Panel Model</th>
+                  <th className="text-right py-2 pr-3 font-medium">Panels</th>
                   <th className="text-left py-2 pr-3 font-medium">Battery</th>
+                  <th className="text-right py-2 pr-3 font-medium">kWh</th>
                   <th className="text-right py-2 pr-3 font-medium">System Total</th>
                   <th className="text-right py-2 font-medium">Monthly</th>
                 </tr>
@@ -328,23 +330,24 @@ export function PriceComparison({ configs }: { configs: ScraperConfig[] }) {
                         </Badge>
                       )}
                     </td>
-                    <td className="py-2 pr-3 text-[#7a7a7a]">
-                      <div>{q.panelCount}x {q.panelModel ? q.panelModel.replace(/\(.*\)/, "").trim().slice(0, 25) : "panels"}</div>
-                      {q.panelPrice != null && (
-                        <div className="text-[11px]">panels: £{q.panelPrice.toLocaleString()}</div>
-                      )}
+                    <td className="py-2 pr-3 text-[12px] text-[#7a7a7a] max-w-[140px]">
+                      <div className="truncate">{q.panelModel ? q.panelModel.replace(/\(.*\)/, "").trim() : "—"}</div>
                     </td>
-                    <td className="py-2 pr-3 text-[#7a7a7a]">
-                      {q.batteryName || "—"}
-                      {q.batteryCapacityKwh ? ` (${q.batteryCapacityKwh}kWh)` : ""}
-                      {q.batteryPrice != null && q.batteryPrice > 0 && (
-                        <div className="text-[11px]">+£{q.batteryPrice.toLocaleString()}</div>
-                      )}
+                    <td className="py-2 pr-3 text-right tabular-nums">
+                      {q.panelCount}
                     </td>
-                    <td className="py-2 pr-3 text-right font-semibold text-[#1D1D1D]">
+                    <td className="py-2 pr-3 text-[12px] text-[#7a7a7a] max-w-[140px]">
+                      <div className="truncate">
+                        {q.batteryName && q.batteryCapacityKwh ? q.batteryName : q.batteryName || "—"}
+                      </div>
+                    </td>
+                    <td className="py-2 pr-3 text-right tabular-nums text-[#7a7a7a]">
+                      {q.batteryCapacityKwh ? q.batteryCapacityKwh : "—"}
+                    </td>
+                    <td className="py-2 pr-3 text-right font-semibold text-[#1D1D1D] tabular-nums">
                       {q.systemTotal != null ? `£${q.systemTotal.toLocaleString()}` : "—"}
                     </td>
-                    <td className="py-2 text-right text-[#7a7a7a]">
+                    <td className="py-2 text-right text-[#7a7a7a] tabular-nums">
                       {q.monthlyPayment ? `£${q.monthlyPayment}/mo` : "—"}
                     </td>
                   </tr>
