@@ -153,6 +153,21 @@ export async function scrapeOctopusEnergy(
     await page.locator('button:has-text("Medium")').click().catch(() => {});
     await page.waitForTimeout(1000);
 
+    // Tick the homeowner confirmation checkbox
+    console.log("[Octopus] Ticking homeowner confirmation...");
+    const confirmCheckbox = page.locator('text=I confirm that I am the homeowner').first();
+    if (await confirmCheckbox.isVisible({ timeout: 5000 }).catch(() => false)) {
+      await confirmCheckbox.click();
+      await page.waitForTimeout(500);
+    } else {
+      // Try clicking the checkbox input directly
+      const checkbox = page.locator('input[type="checkbox"]').first();
+      if (await checkbox.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await checkbox.click();
+        await page.waitForTimeout(500);
+      }
+    }
+
     // Click "Let's go!"
     console.log("[Octopus] Clicking Let's go...");
     await page.locator('button:has-text("Let\'s go")').click();
