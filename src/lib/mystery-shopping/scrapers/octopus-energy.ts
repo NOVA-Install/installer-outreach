@@ -306,63 +306,85 @@ export async function scrapeOctopusEnergy(
 
 /** Set panel count by clicking +/- buttons */
 async function setPanelCount(page: any, target: number): Promise<void> {
-  // Read current panel count — look for a number near "Panels" text
+  // Read the current price before changing panels so we can detect when it updates
+  const priceBefore = await readPricing(page);
+
   for (let attempt = 0; attempt < 20; attempt++) {
+    // Read current panel count from the page
     const current = await page.evaluate(() => {
-      // Find the panel count display
-      const elements = document.querySelectorAll("*");
-      for (const el of elements) {
-        if (el.children.length > 0) continue;
-        const text = el.textContent?.trim();
-        if (text && /^\d+$/.test(text)) {
-          const num = parseInt(text);
-          if (num >= 2 && num <= 30) {
-            // Check if this is near a "Panels" label
-            const parent = el.parentElement?.parentElement;
-            if (parent?.textContent?.includes("panel") || parent?.textContent?.includes("Panel")) {
-              return num;
+      // Look for the panel counter value — it's a number between two buttons (− and +)
+      // Find all elements that contain just a number 2-30
+      const candidates: Array<{ num: number; el: Element }> = [];
+      document.querySelectorAll("*").forEach((el) => {
+        if (el.children.length > 0) return;
+        const t = el.textContent?.trim();
+        if (t && /^\d{1,2}$/.test(t)) {
+          const n = parseInt(t);
+          if (n >= 2 && n <= 30) {
+            // Check if adjacent sibling buttons exist (the +/- stepper)
+            const parent = el.parentElement;
+            if (parent) {
+              const buttons = parent.querySelectorAll("button");
+              if (buttons.length >= 2) {
+                candidates.push({ num: n, el });
+              }
+            }
+          }
+        }
+      });
+      // Return the first match (panel counter is typically the first stepper on the page)
+      return candidates.length > 0 ? candidates[0].num : null;
+    });
+
+    console.log("[Octopus] Panel count: current=" + current + " target=" + target);
+    if (current === target) break;
+    if (current === null) {
+      console.log("[Octopus] Could not read panel count");
+      break;
+    }
+
+    const direction = current < target ? "+" : "−";
+
+    // Click the correct button — find the FIRST stepper's +/- button
+    await page.evaluate((dir: string) => {
+      // Find all button pairs (steppers have exactly 2 buttons: − and +)
+      const allButtons = Array.from(document.querySelectorAll("button"));
+      // Group buttons by parent
+      const parentMap = new Map<Element, Element[]>();
+      for (const btn of allButtons) {
+        const p = btn.parentElement;
+        if (!p) continue;
+        if (!parentMap.has(p)) parentMap.set(p, []);
+        parentMap.get(p)!.push(btn);
+      }
+      // Find steppers (parents with exactly 2-3 button children)
+      for (const [parent, buttons] of parentMap) {
+        if (buttons.length < 2 || buttons.length > 3) continue;
+        const texts = buttons.map((b) => b.textContent?.trim());
+        const hasMinus = texts.some((t) => t === "−" || t === "-" || t === "–");
+        const hasPlus = texts.some((t) => t === "+" || t === "＋");
+        if (hasMinus && hasPlus) {
+          // This is a stepper — click the right button
+          for (const btn of buttons) {
+            const t = btn.textContent?.trim();
+            if (dir === "+" && (t === "+" || t === "＋")) {
+              btn.click();
+              return;
+            }
+            if (dir === "−" && (t === "−" || t === "-" || t === "–")) {
+              btn.click();
+              return;
             }
           }
         }
       }
-      return null;
-    });
+    }, direction);
 
-    if (current === target) return;
-    if (current === null) break;
-
-    // Find the correct +/- buttons (scoped to panels section)
-    if (current < target) {
-      // Click + button
-      await page.evaluate(() => {
-        const buttons = document.querySelectorAll("button");
-        for (const btn of buttons) {
-          if (btn.textContent?.trim() === "+" || btn.textContent?.trim() === "＋") {
-            const parent = btn.parentElement?.parentElement?.parentElement;
-            if (parent?.textContent?.includes("panel") || parent?.textContent?.includes("Panel")) {
-              btn.click();
-              return;
-            }
-          }
-        }
-      });
-    } else {
-      // Click - button
-      await page.evaluate(() => {
-        const buttons = document.querySelectorAll("button");
-        for (const btn of buttons) {
-          if (btn.textContent?.trim() === "−" || btn.textContent?.trim() === "-" || btn.textContent?.trim() === "–") {
-            const parent = btn.parentElement?.parentElement?.parentElement;
-            if (parent?.textContent?.includes("panel") || parent?.textContent?.includes("Panel")) {
-              btn.click();
-              return;
-            }
-          }
-        }
-      });
-    }
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1000);
   }
+
+  // Wait for price to update after panel change
+  await page.waitForTimeout(2000);
 }
 
 /** Read pricing from the /estimate/ page */
