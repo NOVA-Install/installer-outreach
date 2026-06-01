@@ -38,6 +38,7 @@ export interface ScraperConfig {
   scraperFn: (page: any, url: string, property: PropertyInput) => Promise<ScraperResult>;
 }
 
+// ── API-based scrapers (instant, no browser needed) ──────────────────
 export const CALCULATOR_REGISTRY: ScraperConfig[] = [
   {
     installerId: 839,
@@ -54,12 +55,6 @@ export const CALCULATOR_REGISTRY: ScraperConfig[] = [
     scraperFn: scrapeIheatApi,
   },
   {
-    installerId: 2917,
-    companyName: "Heatable Ltd",
-    calculatorUrl: "https://heatable.co.uk/solar/quote",
-    scraperFn: scrapeHeatable,
-  },
-  {
     installerId: 2483,
     companyName: "Wickes Solar (Gas Fast Limited)",
     calculatorUrl: "https://www.wickes.co.uk/wickes-solar/solar-price-estimator",
@@ -74,10 +69,28 @@ export const CALCULATOR_REGISTRY: ScraperConfig[] = [
     scraperFn: scrapeEcoProvidersApi,
   },
   {
+    installerId: 5775,
+    companyName: "Stag Solar Solutions",
+    calculatorUrl: "https://quote.stagsolar.com/solar",
+    useApi: true,
+    scraperFn: scrapeStagSolarApi,
+  },
+];
+
+// ── Browser-based scrapers (need Playwright, not yet fully working) ──
+// These require a headed Chrome window and need further tuning.
+// Uncomment to enable — they will open a browser popup when scraping.
+export const BROWSER_SCRAPERS_DISABLED: ScraperConfig[] = [
+  {
+    installerId: 2917,
+    companyName: "Heatable Ltd",
+    calculatorUrl: "https://heatable.co.uk/solar/quote",
+    scraperFn: scrapeHeatable,
+  },
+  {
     installerId: 5941,
     companyName: "MakeMyHouseGreen (Switchd Ltd)",
     calculatorUrl: "https://makemyhousegreen.com/",
-    useApi: true,
     scraperFn: scrapeMakeMyHouseGreen,
   },
   {
@@ -91,13 +104,6 @@ export const CALCULATOR_REGISTRY: ScraperConfig[] = [
     companyName: "ESE Solar Limited",
     calculatorUrl: "https://esesolar.co.uk/solar-form/",
     scraperFn: scrapeEseSolar,
-  },
-  {
-    installerId: 5775,
-    companyName: "Stag Solar Solutions",
-    calculatorUrl: "https://quote.stagsolar.com/solar",
-    useApi: true,
-    scraperFn: scrapeStagSolarApi,
   },
 ];
 
