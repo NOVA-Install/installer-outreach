@@ -39,6 +39,7 @@ interface OctopusQuote {
   panelCount: number;
   batteryLabel: string;
   batteryCapacityKwh: number;
+  batteryProductName: string | null;
   estimatePrice: number | null;
   savingsPercentRange: string | null;
   savingsMonthlyRange: string | null;
@@ -231,6 +232,10 @@ export async function scrapeOctopusEnergy(
     const initialPricing = await readPricing(page);
     console.log("[Octopus] Initial pricing:", JSON.stringify(initialPricing));
 
+    // Extract panel and battery product details from page text
+    const productDetails = await readProductDetails(page);
+    console.log("[Octopus] Product details:", JSON.stringify(productDetails));
+
     // === Step 3: Scrape pricing for different configurations ===
     const allQuotes: OctopusQuote[] = [];
 
@@ -283,13 +288,19 @@ export async function scrapeOctopusEnergy(
         }
         await page.waitForTimeout(2000);
 
-        // Read the pricing from the page
+        // Read the pricing and active battery product name from the page
         const pricing = await readPricing(page);
+
+        // Try to read the battery product name from the selected option's detail text
+        const activeBatteryName = battery.capacityKwh > 0
+          ? await readActiveBatteryProduct(page)
+          : null;
 
         allQuotes.push({
           panelCount,
           batteryLabel: battery.label,
           batteryCapacityKwh: battery.capacityKwh,
+          batteryProductName: activeBatteryName,
           ...pricing,
         });
       }
@@ -305,11 +316,19 @@ export async function scrapeOctopusEnergy(
       .map((q) => ({ panelCount: q.panelCount, price: q.estimatePrice! }));
 
     // Unique battery options (from 10-panel config)
+    // Build a lookup of the best battery product name per label (first non-null across panel counts)
+    const batteryProductNames = new Map<string, string>();
+    for (const q of allQuotes) {
+      if (q.batteryProductName && !batteryProductNames.has(q.batteryLabel)) {
+        batteryProductNames.set(q.batteryLabel, q.batteryProductName);
+      }
+    }
+
     const batteryOptions = defaultQuotes
       .filter((q) => q.estimatePrice)
       .map((q) => ({
         name: q.batteryLabel,
-        model: q.batteryLabel,
+        model: batteryProductNames.get(q.batteryLabel) || q.batteryLabel,
         capacityKwh: q.batteryCapacityKwh,
         price: solarOnlyQuote?.estimatePrice ? q.estimatePrice! - solarOnlyQuote.estimatePrice : null,
         totalPrice: q.estimatePrice,
@@ -324,8 +343,8 @@ export async function scrapeOctopusEnergy(
       roofType: property.roofType || "pitched",
       installer: "Octopus Energy",
 
-      panelModel: "Octopus Solar Panels",
-      panelWattage: null,
+      panelModel: productDetails.panelModel || "Octopus Solar Panels",
+      panelWattage: productDetails.panelWattageW,
       panelWarrantyYears: null,
       recommendedPanelCount: 10,
       pricePerPanel: null,
@@ -347,7 +366,9 @@ export async function scrapeOctopusEnergy(
               isBattery: q.batteryCapacityKwh > 0,
               batteryCost: solarOnlyQuote?.estimatePrice ? q.estimatePrice! - solarOnlyQuote.estimatePrice : 0,
               batteryCapacityKwh: q.batteryCapacityKwh || null,
-              batteryModel: q.batteryCapacityKwh > 0 ? q.batteryLabel : null,
+              batteryModel: q.batteryCapacityKwh > 0
+                ? (batteryProductNames.get(q.batteryLabel) || q.batteryLabel)
+                : null,
             })),
         ])
       ),
@@ -495,5 +516,124 @@ async function readPricing(page: any): Promise<{
     const financeMonthly = financeMatch ? parseInt(financeMatch[1]) : null;
 
     return { estimatePrice, savingsPercentRange, savingsMonthlyRange, financeMonthly };
+  });
+}
+
+/**
+ * Extract panel product details from the estimate page.
+ * Searches for panel brand/model text outside of generic headings,
+ * and also looks for wattage specs (e.g. "435W" near "panel").
+ */
+async function readProductDetails(page: any): Promise<{
+  panelModel: string | null;
+  panelWattageW: number | null;
+}> {
+  return page.evaluate(() => {
+    let panelModel: string | null = null;
+    let panelWattageW: number | null = null;
+
+    // Collect text from all non-interactive, non-heading elements
+    // that sit near the "panel" section of the page
+    const knownBrands = [
+      "JA Solar", "Trina", "Canadian Solar", "LONGi", "Longi",
+      "Jinko", "SunPower", "Q.CELLS", "Q CELLS", "Hyundai",
+      "Risen", "Astronergy", "Daikin", "Sharp", "Panasonic",
+      "Maxeon", "REC Solar", "REC Alpha",
+    ];
+
+    // Search only <p>, <span>, <div> leaf text nodes — not <label> or <button>
+    const candidates = document.querySelectorAll("p, span, div, li, td");
+    for (const el of candidates) {
+      if (el.children.length > 3) continue; // skip containers
+      const text = (el as HTMLElement).innerText?.trim() || "";
+      if (text.length < 5 || text.length > 200) continue;
+
+      for (const brand of knownBrands) {
+        if (text.includes(brand)) {
+          // Extract the line containing the brand
+          const lines = text.split("\n");
+          const line = lines.find((l) => l.includes(brand))?.trim();
+          if (line) {
+            panelModel = line.replace(/[.,;:!]+$/, "").trim();
+            const wm = panelModel.match(/(\d{3,4})\s*[Ww]p?/);
+            if (wm) panelWattageW = parseInt(wm[1]);
+          }
+          break;
+        }
+      }
+      if (panelModel) break;
+    }
+
+    // Try wattage pattern near "panel" text if no brand found
+    if (!panelWattageW) {
+      for (const el of candidates) {
+        const text = (el as HTMLElement).innerText?.trim() || "";
+        if (!/panel/i.test(text)) continue;
+        const wm = text.match(/(\d{3,4})\s*[Ww]p?/);
+        if (wm && parseInt(wm[1]) >= 200 && parseInt(wm[1]) <= 600) {
+          panelWattageW = parseInt(wm[1]);
+          break;
+        }
+      }
+    }
+
+    return { panelModel, panelWattageW };
+  });
+}
+
+/**
+ * Read the currently selected battery's product details.
+ * Only looks at content directly associated with the checked radio option
+ * (sibling/child description elements), NOT the full page body — because
+ * all battery labels (including Tesla Powerwall 3) are always visible.
+ */
+async function readActiveBatteryProduct(page: any): Promise<string | null> {
+  return page.evaluate(() => {
+    const knownBrands = [
+      "GivEnergy", "Huawei", "Tesla", "Fox ESS", "FoxESS",
+      "SolarEdge", "Enphase", "BYD", "Pylontech", "Alpha ESS",
+      "SolaX", "Sunsynk", "Growatt", "Solis", "Duracell",
+    ];
+
+    // Find the currently checked battery radio
+    const radios = document.querySelectorAll('input[type="radio"]:checked');
+    for (const radio of radios) {
+      const label = radio.closest("label") || radio.parentElement?.closest("label");
+      if (!label) continue;
+      const labelText = (label.innerText || "").trim();
+      if (!/kWh|battery|powerwall/i.test(labelText)) continue;
+
+      // Walk up 1-3 levels from the label to find the option container
+      let container: HTMLElement | null = label.parentElement as HTMLElement;
+      for (let depth = 0; depth < 3 && container; depth++) {
+        // Look for description elements OUTSIDE the label
+        const children = container.querySelectorAll("p, span, div, small");
+        for (const child of children) {
+          if (label.contains(child)) continue; // skip the label itself
+          const text = (child as HTMLElement).innerText?.trim() || "";
+          if (text.length < 5 || text === labelText) continue;
+          // Check if this text contains a battery brand name
+          for (const brand of knownBrands) {
+            if (text.includes(brand)) {
+              return text.replace(/\n+/g, " ").trim();
+            }
+          }
+        }
+
+        // Check aria-describedby on the radio input
+        const describedBy = radio.getAttribute("aria-describedby");
+        if (describedBy) {
+          const desc = document.getElementById(describedBy);
+          if (desc) {
+            const descText = desc.innerText?.trim();
+            if (descText && descText.length > 3) return descText;
+          }
+        }
+
+        container = container.parentElement as HTMLElement;
+      }
+    }
+
+    return null;
   });
 }
