@@ -142,7 +142,7 @@ export function PriceTrackerDashboard() {
 
       <PriceComparison configs={configs} />
 
-      {configs.map((config) => (
+      {[...configs].sort((a, b) => a.companyName.localeCompare(b.companyName)).map((config) => (
         <InstallerCard
           key={config.installerId}
           installerId={config.installerId}
