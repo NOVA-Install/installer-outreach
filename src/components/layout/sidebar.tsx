@@ -12,6 +12,8 @@ import {
   Download,
   Wrench,
   Radio,
+  ShoppingCart,
+  TrendingUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CommandK } from "@/components/layout/command-k";
@@ -23,6 +25,8 @@ const navItems = [
   { href: "/signals", label: "Social Signals", icon: Radio },
   { href: "/cleanup", label: "Data Cleanup", icon: Wrench },
   { href: "/enrichment", label: "Enrichment", icon: Sparkles },
+  { href: "/price-tracker", label: "Price Tracker", icon: TrendingUp },
+  { href: "/mystery-shopping", label: "Mystery Shopping", icon: ShoppingCart },
   { href: "/import", label: "Import Data", icon: Upload },
 ];
 

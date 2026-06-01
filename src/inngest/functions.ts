@@ -598,6 +598,8 @@ export const linkedInPostsBulk = inngest.createFunction(
   }
 );
 
+import { mysteryShoppingFunctions } from "./mystery-shopping";
+
 // Export all functions for the serve handler
 export const allFunctions = [
   siteAnalysis,
@@ -616,4 +618,5 @@ export const allFunctions = [
   linkedInCompanyLookup,
   linkedInEmployeesBulk,
   linkedInPostsBulk,
+  ...mysteryShoppingFunctions,
 ];

@@ -20,8 +20,9 @@ import {
   websiteQuality,
   socialSignals,
   linkedinContacts,
+  priceScrapeResults,
 } from "@/lib/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, desc } from "drizzle-orm";
 import { Badge } from "@/components/ui/badge";
 import {
   Building2,
@@ -58,6 +59,8 @@ import { EnrichGoogleAdsButton } from "@/components/installers/enrich-google-ads
 import { LinkedInSearchButton } from "@/components/installers/linkedin-search-button";
 import { ExpandablePostText } from "@/components/installers/expandable-post-text";
 import { LinkedInActivityToggle } from "@/components/installers/linkedin-activity-section";
+import { CALCULATOR_REGISTRY } from "@/lib/mystery-shopping/calculator-scraper";
+import { InstallerPriceTracker } from "@/components/price-tracker/installer-price-tracker";
 
 const tierStyles: Record<string, string> = {
   high: "bg-emerald-50 text-emerald-600 border-emerald-200/60",
@@ -178,6 +181,12 @@ export default async function InstallerDetailPage({
       db.select().from(socialSignals).where(eq(socialSignals.installerId, installerId)).orderBy(sql`${socialSignals.postedAt} DESC`).limit(50),
       db.select().from(linkedinContacts).where(eq(linkedinContacts.installerId, installerId)).orderBy(sql`${linkedinContacts.lastSeenAt} DESC`),
     ]);
+
+  // Price tracker data
+  const scraperConfig = CALCULATOR_REGISTRY.find((c) => c.installerId === installerId) ?? null;
+  const priceScrapes = scraperConfig
+    ? await db.select().from(priceScrapeResults).where(eq(priceScrapeResults.installerId, installerId)).orderBy(desc(priceScrapeResults.scrapedAt)).limit(10)
+    : [];
 
   const score = scores[0] ?? null;
   const gReview = google[0] ?? null;
@@ -1222,6 +1231,17 @@ export default async function InstallerDetailPage({
             </Section>
             );
           })()}
+
+          {/* ── Price Tracker ── */}
+          {scraperConfig && (
+            <Section title="Price Tracker">
+              <InstallerPriceTracker
+                installerId={installerId}
+                calculatorUrl={scraperConfig.calculatorUrl}
+                initialResults={priceScrapes}
+              />
+            </Section>
+          )}
 
           {/* ── Activity ── */}
           <Section title="Activity">

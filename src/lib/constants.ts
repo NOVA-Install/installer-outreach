@@ -149,3 +149,34 @@ export function getPrefixesForZones(zoneIds: string[]): string[] {
   }
   return prefixes;
 }
+
+// --- Mystery Shopping ---
+
+export const MYSTERY_SHOP_CATEGORIES = [
+  { key: "calculator", label: "Calculator" },
+  { key: "web_form", label: "Web Form" },
+  { key: "email_outreach", label: "Email Outreach" },
+] as const;
+
+export type MysteryShopCategory = (typeof MYSTERY_SHOP_CATEGORIES)[number]["key"];
+
+export const MYSTERY_SHOP_STATUSES = [
+  { key: "pending", label: "Pending" },
+  { key: "submitting", label: "Submitting" },
+  { key: "submitted", label: "Submitted" },
+  { key: "response_received", label: "Response Received" },
+  { key: "parsed", label: "Parsed" },
+  { key: "failed", label: "Failed" },
+  { key: "no_response", label: "No Response" },
+] as const;
+
+export type MysteryShopStatus = (typeof MYSTERY_SHOP_STATUSES)[number]["key"];
+
+export const MYSTERY_SHOP_CAMPAIGN_STATUSES = [
+  { key: "draft", label: "Draft" },
+  { key: "running", label: "Running" },
+  { key: "completed", label: "Completed" },
+  { key: "cancelled", label: "Cancelled" },
+] as const;
+
+export type MysteryShopCampaignStatus = (typeof MYSTERY_SHOP_CAMPAIGN_STATUSES)[number]["key"];

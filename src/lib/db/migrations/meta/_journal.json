@@ -15,6 +15,20 @@
       "when": 1780055551312,
       "tag": "0001_bored_sway",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1780062970679,
+      "tag": "0002_unique_layla_miller",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1780073404357,
+      "tag": "0003_certain_famine",
+      "breakpoints": true
     }
   ]
 }

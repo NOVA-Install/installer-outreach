@@ -503,3 +503,113 @@ export const installerSources = pgTable(
   },
   (t) => [unique("uq_source_identifier").on(t.source, t.sourceIdentifier)]
 );
+
+// Mystery Shopping — campaign container
+export const mysteryShopCampaigns = pgTable("mystery_shop_campaigns", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  status: text("status").notNull().default("draft"), // draft | running | completed | cancelled
+  zones: text("zones"), // JSON array of zone IDs, null = all zones
+  systemSpec: text("system_spec"), // e.g. "10 panel system with battery"
+  propertyConfig: text("property_config"), // JSON — flexible property details for this campaign
+  totalTargets: integer("total_targets").default(0),
+  processedTargets: integer("processed_targets").default(0),
+  errorCount: integer("error_count").default(0),
+  startedAt: text("started_at"),
+  completedAt: text("completed_at"),
+  createdAt: text("created_at")
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
+});
+
+// Mystery Shopping — reference property per zone
+export const mysteryShopZoneProperties = pgTable("mystery_shop_zone_properties", {
+  id: serial("id").primaryKey(),
+  zoneId: text("zone_id").notNull().unique(), // matches UK_ZONES[n].id
+  address: text("address").notNull(),
+  postcode: text("postcode").notNull(),
+  details: text("details"), // JSON — flexible: propertyType, bedrooms, roofOrientation, roofType, annualUsage, electricityBill, etc.
+  updatedAt: text("updated_at")
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
+});
+
+// Mystery Shopping — individual installer target within a campaign
+export const mysteryShopTargets = pgTable("mystery_shop_targets", {
+  id: serial("id").primaryKey(),
+  campaignId: integer("campaign_id")
+    .notNull()
+    .references(() => mysteryShopCampaigns.id),
+  installerId: integer("installer_id")
+    .notNull()
+    .references(() => installers.id),
+  category: text("category").notNull(), // calculator | web_form | email_outreach
+  status: text("status").notNull().default("pending"), // pending | submitting | submitted | response_received | parsed | failed | no_response
+  burnerEmail: text("burner_email"), // plus-address alias used for this target
+  submittedAt: text("submitted_at"),
+  firstResponseAt: text("first_response_at"),
+  responseTimeHours: real("response_time_hours"),
+  responseFormat: text("response_format"), // pdf | email_text | phone_callback | web_calculator | online_portal
+  formData: text("form_data"), // JSON — questions asked & answers given (varies per installer)
+  rawResponseData: text("raw_response_data"), // JSON — raw email body, scraped output, screenshot URLs
+  aiParseStatus: text("ai_parse_status"), // pending | parsed | failed
+  errorLog: text("error_log"), // JSON array of error strings
+  createdAt: text("created_at")
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
+}, (t) => [unique("uq_campaign_installer").on(t.campaignId, t.installerId)]);
+
+// Mystery Shopping — parsed quote data (one target can have multiple options)
+export const mysteryShopQuotes = pgTable("mystery_shop_quotes", {
+  id: serial("id").primaryKey(),
+  targetId: integer("target_id")
+    .notNull()
+    .references(() => mysteryShopTargets.id),
+  optionLabel: text("option_label"), // e.g. "Standard", "Premium", "Option A"
+  totalPrice: real("total_price"), // GBP — the key queryable field
+  summary: text("summary"), // human-readable one-liner
+  details: text("details"), // JSON — flexible structured breakdown (panels, battery, inverter, installation, vat, extras, warranty, etc.)
+  rawAiOutput: text("raw_ai_output"), // JSON — full Gemini extraction for audit
+  confidence: real("confidence"), // 0-1
+  createdAt: text("created_at")
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
+});
+
+// Price Tracker — stores results from each automated price scrape
+export const priceScrapeResults = pgTable("price_scrape_results", {
+  id: serial("id").primaryKey(),
+  installerId: integer("installer_id")
+    .notNull()
+    .references(() => installers.id),
+  status: text("status").notNull().default("pending"), // pending | running | completed | failed
+  postcode: text("postcode").notNull(), // postcode used for this scrape
+  propertyConfig: text("property_config"), // JSON — property details used (roof type, usage, etc.)
+  // Key queryable fields
+  panelOnlyPrice: real("panel_only_price"), // panels without battery
+  recommendedPrice: real("recommended_price"), // default recommended config price
+  pricePerPanel: real("price_per_panel"),
+  recommendedPanelCount: integer("recommended_panel_count"),
+  panelModel: text("panel_model"),
+  // Full price matrix as JSON (panel price points, all battery options, extras)
+  priceMatrix: text("price_matrix"), // JSON — the complete BoxtPriceMatrix or equivalent
+  screenshotPath: text("screenshot_path"),
+  errorLog: text("error_log"),
+  scrapedAt: text("scraped_at")
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
+});
+
+// Mystery Shopping — email personas for outreach
+export const mysteryShopEmailAccounts = pgTable("mystery_shop_email_accounts", {
+  id: serial("id").primaryKey(),
+  emailAddress: text("email_address").notNull().unique(),
+  displayName: text("display_name").notNull(),
+  phoneNumber: text("phone_number"),
+  zoneId: text("zone_id"),
+  isActive: boolean("is_active").default(true),
+  lastUsedAt: text("last_used_at"),
+  createdAt: text("created_at")
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
+});
