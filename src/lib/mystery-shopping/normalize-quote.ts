@@ -48,6 +48,9 @@ export interface NormalizedQuote {
 
   // Panel price at different counts (where available)
   panelPricePoints: Array<{ panelCount: number; price: number }>;
+
+  // Full price table — packages at each panel count (where available)
+  priceTable: Record<number, NormalizedPackage[]>;
 }
 
 /**
@@ -61,7 +64,11 @@ export function normalizeQuote(
 ): NormalizedQuote {
   const postcode = (rawMatrix.postcode || "") as string;
   const batteryOptions = (rawMatrix.batteryOptions || []) as Array<Record<string, unknown>>;
+  const solarOnlyPackages = (rawMatrix.solarOnlyPackages || []) as Array<Record<string, unknown>>;
   const panelOnlyPrice = rawMatrix.panelOnlyPrice as number | null;
+
+  // Also check priceTable for per-panel-count data
+  const priceTable = rawMatrix.priceTable as Record<string, Array<Record<string, unknown>>> | undefined;
 
   // Extract default panel info from the top-level matrix
   const topPanelModel = rawMatrix.panelModel as string | null;
@@ -138,6 +145,43 @@ export function normalizeQuote(
     };
   });
 
+  // Add solar-only packages (Stag Solar stores these separately)
+  for (const so of solarOnlyPackages) {
+    const soPrice = (so.price as number) || 0;
+    packages.push({
+      name: (so.name || "Solar Only") as string,
+      systemPrice: Math.round(soPrice * 100) / 100,
+      batteryAddOnCost: null,
+      panelModel: topPanelModel,
+      panelWattageW: topPanelWattage,
+      panelCount: topPanelCount,
+      systemSizeKw: topPanelCount && topPanelWattage ? Math.round(topPanelCount * topPanelWattage) / 1000 : null,
+      batteryModel: null,
+      batteryCapacityKwh: 0,
+      hasBattery: false,
+      inverterModel: (so.inverterModel as string) || null,
+      monthlyPayment: null,
+    });
+  }
+
+  // If panelOnlyPrice exists and no solar-only package was added, add one
+  if (panelOnlyPrice && !packages.some((p) => !p.hasBattery)) {
+    packages.push({
+      name: "Solar Only (panels)",
+      systemPrice: panelOnlyPrice,
+      batteryAddOnCost: null,
+      panelModel: topPanelModel,
+      panelWattageW: topPanelWattage,
+      panelCount: topPanelCount,
+      systemSizeKw: topPanelCount && topPanelWattage ? Math.round(topPanelCount * topPanelWattage) / 1000 : null,
+      batteryModel: null,
+      batteryCapacityKwh: 0,
+      hasBattery: false,
+      inverterModel: null,
+      monthlyPayment: null,
+    });
+  }
+
   // Sort by price
   packages.sort((a, b) => a.systemPrice - b.systemPrice);
 
@@ -145,8 +189,33 @@ export function normalizeQuote(
   const rawPoints = (rawMatrix.panelPricePoints || []) as Array<Record<string, unknown>>;
   const panelPricePoints = rawPoints.map((p) => ({
     panelCount: (p.panelCount as number) || 0,
-    price: ((p.panelOnlyPrice ?? p.price) as number) || 0,
+    price: Math.round(((p.panelOnlyPrice ?? p.price) as number) * 100) / 100 || 0,
   }));
+
+  // Normalize the full price table (every package at every panel count)
+  const normalizedPriceTable: Record<number, NormalizedPackage[]> = {};
+  if (priceTable) {
+    for (const [qty, pkgs] of Object.entries(priceTable)) {
+      const count = Number(qty);
+      normalizedPriceTable[count] = (pkgs as Array<Record<string, unknown>>).map((p) => {
+        const isBat = (p.isBattery as boolean) ?? false;
+        return {
+          name: (p.name || "Unknown") as string,
+          systemPrice: Math.round(((p.price as number) || 0) * 100) / 100,
+          batteryAddOnCost: isBat ? Math.round(((p.batteryCost as number) || 0) * 100) / 100 : null,
+          panelModel: topPanelModel,
+          panelWattageW: topPanelWattage,
+          panelCount: count,
+          systemSizeKw: topPanelWattage ? Math.round(count * topPanelWattage) / 1000 : null,
+          batteryModel: isBat ? (p.batteryModel as string) || (p.name as string) : null,
+          batteryCapacityKwh: (p.batteryCapacityKwh as number) || (isBat ? null : 0),
+          hasBattery: isBat,
+          inverterModel: null,
+          monthlyPayment: null,
+        };
+      }).sort((a, b) => a.systemPrice - b.systemPrice);
+    }
+  }
 
   return {
     installerName,
@@ -159,6 +228,7 @@ export function normalizeQuote(
     panelOnlyPrice,
     packages,
     panelPricePoints,
+    priceTable: normalizedPriceTable,
   };
 }
 
