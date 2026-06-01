@@ -121,102 +121,138 @@ export async function scrapeIheatApi(
     );
     const addrDetail = (await addrDetailRes.json())?.result || {};
 
-    // Step 2: Submit the quote
-    const quoteBody = {
-      quoteType: "solar",
+    // Step 2: Submit quotes at different consumption levels to get different panel counts
+    // iHeat determines panel count from electricityEstimate — we can't request a specific count
+    const consumptionLevels = [
+      { elec: 1500, people: 2 },  // ~4-5 panels
+      { elec: 2500, people: 3 },  // ~6-7 panels
+      { elec: 3500, people: 4 },  // ~8-10 panels
+      { elec: 5000, people: 5 },  // ~12-14 panels
+    ];
+
+    const allQuoteResults: Array<{ panelCount: number; products: IheatProduct[] }> = [];
+    const customer = {
+      address_line_1: addrDetail.line_1 || property.address,
+      address_line_2: addrDetail.line_2 || "",
+      address_line_3: addrDetail.line_3 || "",
+      post_town: addrDetail.post_town || "",
+      county: addrDetail.county || "",
       postcode: property.postcode,
-      homeType: mapPropertyType(property.propertyType),
-      homeOwnership: "Homeowner",
-      timeFrame: "Within 3 months",
-      electricityKnown: "No",
-      electricityAnnual: 0,
-      peopleAtHome: property.bedrooms && property.bedrooms >= 4 ? 5 : property.bedrooms && property.bedrooms >= 2 ? 4 : 2,
-      electricVehicle: "No",
-      timeAtHome: "Half Day",
-      customer: {
-        address_line_1: addrDetail.line_1 || property.address,
-        address_line_2: addrDetail.line_2 || "",
-        address_line_3: addrDetail.line_3 || "",
-        post_town: addrDetail.post_town || "",
-        county: addrDetail.county || "",
-        postcode: property.postcode,
-        latitude: addrDetail.latitude || 0,
-        longitude: addrDetail.longitude || 0,
-      },
-      landlord: "No",
-      birdProofing: "No",
-      electricityEstimate: 3000,
-      mapImage: "",
+      latitude: addrDetail.latitude || 0,
+      longitude: addrDetail.longitude || 0,
     };
 
-    const quoteRes = await fetch(`${BASE_URL}/api/quote/solar`, {
-      method: "POST",
-      headers: getApiHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify(quoteBody),
-    });
-    collectCookies(quoteRes);
+    for (const level of consumptionLevels) {
+      // Need a fresh session for each quote (iHeat overwrites the previous one)
+      const sessRes2 = await fetch(`${BASE_URL}/quote/solar`, {
+        headers: getHeaders({ Accept: "text/html" }), redirect: "follow",
+      });
+      collectCookies(sessRes2);
+      const html2 = await sessRes2.text();
+      const csrf2 = html2.match(/name="csrf-token"\s+content="([^"]+)"/)?.[1];
+      const xsrf2 = cookieJar.find((c) => c.startsWith("XSRF-TOKEN="));
+      const xsrfVal2 = xsrf2 ? decodeURIComponent(xsrf2.split("=")[1]) : null;
 
-    if (!quoteRes.ok) {
-      const errText = await quoteRes.text().catch(() => "");
-      throw new Error(`Quote submission failed (${quoteRes.status}): ${errText.slice(0, 200)}`);
-    }
+      function getQuoteHeaders(extra?: Record<string, string>): Record<string, string> {
+        const h = getHeaders(extra);
+        if (csrf2) h["X-CSRF-TOKEN"] = csrf2;
+        if (xsrfVal2) h["X-XSRF-TOKEN"] = xsrfVal2;
+        h["X-Requested-With"] = "XMLHttpRequest";
+        h["Accept"] = "application/json";
+        return h;
+      }
 
-    const quoteData = await quoteRes.json();
-    const quoteRef = quoteData?.redirect?.replace("/quote/solar/results/", "") || null;
-
-    // Step 3: Get pricing results
-    const resultsRes = await fetch(`${BASE_URL}/api/quote/results/solar`, {
-      method: "POST",
-      headers: getApiHeaders({ "Content-Type": "application/json" }),
-    });
-    collectCookies(resultsRes);
-
-    if (!resultsRes.ok) {
-      throw new Error(`Results fetch failed (${resultsRes.status})`);
-    }
-
-    const resultsData = await resultsRes.json();
-    const rawProducts = resultsData?.products || resultsData || [];
-
-    // Map raw API fields (prefixed with product_) to our interface
-    const products: IheatProduct[] = rawProducts.map((p: Record<string, unknown>) => {
-      const propScore = p.property_score as { min?: number; max?: number } | null;
-      return {
-        id: p.id as number,
-        title: (p.product_title || p.title || "") as string,
-        brand: (p.product_brand || p.brand || "") as string,
-        price_before_discount: (p.price_before_discount ?? 0) as number,
-        price_after_discount: (p.price_after_discount ?? 0) as number,
-        battery_capacity: parseFloat(String(p.product_battery_capacity || 0)),
-        battery_brand: (p.product_battery_brand || "") as string,
-        battery_model: (p.product_battery_model || "") as string,
-        inverter_brand: (p.product_inverter_brand || "") as string,
-        inverter_model: (p.product_inverter_model || "") as string,
-        inverter_output: parseFloat(String(p.product_inverter_output || 0)),
-        panel_brand: (p.product_panel_brand || "") as string,
-        panel_model: (p.product_panel_model || "") as string,
-        panel_wattage: parseInt(String(p.product_panel_output || 0), 10),
-        panel_quantity: propScore?.max || propScore?.min || 0,
-        panel_warranty: parseInt(String(p.product_panel_warranty || 0), 10),
-        inverter_warranty: parseInt(String(p.product_inverter_warranty || 0), 10),
-        battery_warranty: parseInt(String(p.product_battery_warranty || 0), 10),
-        relations_enabled: (p.relations_enabled || []) as unknown[],
-        finance_options: (p.finance_options || []) as unknown[],
+      const quoteBody = {
+        quoteType: "solar",
+        postcode: property.postcode,
+        homeType: mapPropertyType(property.propertyType),
+        homeOwnership: "Homeowner",
+        timeFrame: "Within 3 months",
+        electricityKnown: "No",
+        electricityAnnual: 0,
+        peopleAtHome: level.people,
+        electricVehicle: "No",
+        timeAtHome: "Half Day",
+        customer,
+        landlord: "No",
+        birdProofing: "No",
+        electricityEstimate: level.elec,
+        mapImage: "",
+        saved: false,
       };
-    });
 
-    // Step 4: Get finance options
+      const quoteRes = await fetch(`${BASE_URL}/api/quote/solar`, {
+        method: "POST",
+        headers: getQuoteHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(quoteBody),
+      });
+      collectCookies(quoteRes);
+
+      if (!quoteRes.ok) {
+        if (allQuoteResults.length === 0) {
+          const errText = await quoteRes.text().catch(() => "");
+          throw new Error(`Quote submission failed (${quoteRes.status}): ${errText.slice(0, 200)}`);
+        }
+        continue;
+      }
+      await quoteRes.json();
+
+      // Get pricing results
+      const resultsRes = await fetch(`${BASE_URL}/api/quote/results/solar`, {
+        method: "POST",
+        headers: getQuoteHeaders({ "Content-Type": "application/json" }),
+      });
+      collectCookies(resultsRes);
+
+      if (!resultsRes.ok) continue;
+
+      const resultsData = await resultsRes.json();
+      const rawProducts = resultsData?.products || resultsData || [];
+
+      const products: IheatProduct[] = rawProducts.map((p: Record<string, unknown>) => {
+        const propScore = p.property_score as { min?: number; max?: number } | null;
+        return {
+          id: p.id as number,
+          title: (p.product_title || p.title || "") as string,
+          brand: (p.product_brand || p.brand || "") as string,
+          price_before_discount: (p.price_before_discount ?? 0) as number,
+          price_after_discount: (p.price_after_discount ?? 0) as number,
+          battery_capacity: parseFloat(String(p.product_battery_capacity || 0)),
+          battery_brand: (p.product_battery_brand || "") as string,
+          battery_model: (p.product_battery_model || "") as string,
+          inverter_brand: (p.product_inverter_brand || "") as string,
+          inverter_model: (p.product_inverter_model || "") as string,
+          inverter_output: parseFloat(String(p.product_inverter_output || 0)),
+          panel_brand: (p.product_panel_brand || "") as string,
+          panel_model: (p.product_panel_model || "") as string,
+          panel_wattage: parseInt(String(p.product_panel_output || 0), 10),
+          panel_quantity: propScore?.max || propScore?.min || 0,
+          panel_warranty: parseInt(String(p.product_panel_warranty || 0), 10),
+          inverter_warranty: parseInt(String(p.product_inverter_warranty || 0), 10),
+          battery_warranty: parseInt(String(p.product_battery_warranty || 0), 10),
+          relations_enabled: (p.relations_enabled || []) as unknown[],
+          finance_options: (p.finance_options || []) as unknown[],
+        };
+      });
+
+      if (products.length > 0) {
+        allQuoteResults.push({ panelCount: products[0].panel_quantity, products });
+      }
+
+      // Brief delay between quotes
+      await new Promise((r) => setTimeout(r, 500));
+    }
+
+    // Use the medium consumption result as the default
+    const defaultResult = allQuoteResults.find((r) => r.panelCount >= 8) || allQuoteResults[0];
+    if (!defaultResult) throw new Error("No quotes returned");
+    const products = defaultResult.products;
+
+    // Step 4: Get finance options (use last session headers)
     const financeRes = await fetch(`${BASE_URL}/api/finance/zopa`, {
-      headers: getApiHeaders(),
+      headers: getHeaders({ Accept: "application/json" }),
     });
     const financeData = financeRes.ok ? await financeRes.json() : [];
-
-    // Step 5: Get tariff rates for savings context
-    const tariffRes = await fetch(
-      `${BASE_URL}/api/energy/tariff-rates?postcode=${encodeURIComponent(property.postcode)}&order_type=solar_install`,
-      { headers: getApiHeaders() }
-    );
-    const tariffData = tariffRes.ok ? await tariffRes.json() : null;
 
     // Find the 120-month finance factor for monthly payment calculation
     const longTermPlan = (Array.isArray(financeData) ? financeData : []).find(
@@ -224,50 +260,70 @@ export async function scrapeIheatApi(
     );
     const financeFactor = longTermPlan?.factor || 0.012927;
 
+    // Helper to map products to our output format
+    function mapProducts(prods: IheatProduct[]) {
+      return prods
+        .sort((a, b) => a.price_after_discount - b.price_after_discount)
+        .map((p) => ({
+          name: p.title || `${p.battery_brand} ${p.battery_model}`,
+          model: `${p.battery_brand} ${p.battery_model}`.trim(),
+          capacityKwh: p.battery_capacity,
+          price: p.price_after_discount,
+          panelCount: p.panel_quantity,
+          panelModel: `${p.panel_brand} ${p.panel_wattage}W`,
+          inverterModel: `${p.inverter_brand} ${p.inverter_model}`.trim(),
+          inverterOutputKw: p.inverter_output,
+          batteryWarranty: p.battery_warranty,
+          monthlyPayment: Math.round(p.price_after_discount * financeFactor * 100) / 100,
+          systemSizeKw: p.panel_quantity && p.panel_wattage
+            ? Math.round(p.panel_quantity * p.panel_wattage) / 1000 : null,
+        }));
+    }
+
+    // Panel-only price = cheapest package with 0 battery capacity
+    const solarOnly = products.find((p) => p.battery_capacity === 0);
+    const panelOnlyPrice = solarOnly?.price_after_discount || null;
+
+    // Build panel price points from the solar-only package across consumption levels
+    const panelPricePoints: Array<{ panelCount: number; price: number }> = [];
+    for (const qr of allQuoteResults.sort((a, b) => a.panelCount - b.panelCount)) {
+      const so = qr.products.find((p) => p.battery_capacity === 0);
+      if (so) panelPricePoints.push({ panelCount: qr.panelCount, price: so.price_after_discount });
+    }
+
+    // Build full price table — every package at every panel count
+    const priceTable: Record<string, Array<Record<string, unknown>>> = {};
+    for (const qr of allQuoteResults) {
+      priceTable[String(qr.panelCount)] = qr.products.map((p) => ({
+        name: p.title || `${p.battery_brand} ${p.battery_model}`,
+        price: p.price_after_discount,
+        isBattery: p.battery_capacity > 0,
+        batteryCost: panelOnlyPrice && p.battery_capacity > 0 ? p.price_after_discount - panelOnlyPrice : 0,
+        batteryCapacityKwh: p.battery_capacity || null,
+        batteryModel: p.battery_capacity > 0 ? `${p.battery_brand} ${p.battery_model}`.trim() : null,
+      }));
+    }
+
     // Build price matrix
     const priceMatrix = {
-      address: quoteBody.customer.address_line_1,
+      address: customer.address_line_1,
       postcode: property.postcode,
       roofType: property.roofType || "pitched",
-      quoteRef,
 
-      // Panel info from the first product (all use the same panels)
       panelModel: products[0] ? `${products[0].panel_brand} ${products[0].panel_wattage}W` : null,
       panelWattage: products[0]?.panel_wattage || null,
       panelWarrantyYears: products[0]?.panel_warranty || null,
       recommendedPanelCount: products[0]?.panel_quantity || null,
       pricePerPanel: null,
-      panelOnlyPrice: null,
+      panelOnlyPrice,
 
-      // Cheapest system price
-      totalPrice: products.length > 0
+      totalPrice: panelOnlyPrice || (products.length > 0
         ? Math.min(...products.map((p) => p.price_after_discount))
-        : null,
+        : null),
 
-      // Tariff context
-      tariff: tariffData,
-
-      // All packages sorted by price
-      batteryOptions: products
-        .sort((a, b) => a.price_after_discount - b.price_after_discount)
-        .map((p) => ({
-          name: p.title || `${p.battery_brand} ${p.battery_model}`,
-          model: `${p.battery_brand} ${p.battery_model}`,
-          capacityKwh: p.battery_capacity,
-          price: p.price_after_discount,
-          priceBeforeDiscount: p.price_before_discount,
-          panelCount: p.panel_quantity,
-          panelModel: `${p.panel_brand} ${p.panel_wattage}W`,
-          inverterModel: `${p.inverter_brand} ${p.inverter_model}`,
-          inverterOutputKw: p.inverter_output,
-          batteryWarranty: p.battery_warranty,
-          inverterWarranty: p.inverter_warranty,
-          monthlyPayment: Math.round(p.price_after_discount * financeFactor * 100) / 100,
-          systemSizeKw: p.panel_quantity && p.panel_wattage
-            ? Math.round(p.panel_quantity * p.panel_wattage) / 1000
-            : null,
-        })),
-
+      batteryOptions: mapProducts(products),
+      panelPricePoints,
+      priceTable,
       financeOptions: financeData,
     };
 

@@ -77,32 +77,45 @@ export function PriceComparison({ configs }: { configs: ScraperConfig[] }) {
         // Looking for solar-only
         const solarOnly = packages.find((p) => !p.hasBattery);
         if (solarOnly) {
-          exact.push({ installerId, companyName, pkg: solarOnly, isExactMatch: true });
+          const panelMatch = solarOnly.panelCount === selectedPanels || !solarOnly.panelCount;
+          if (panelMatch) {
+            exact.push({ installerId, companyName, pkg: solarOnly, isExactMatch: true });
+          } else {
+            similar.push({ installerId, companyName, pkg: solarOnly, isExactMatch: false });
+          }
         }
       } else {
         // Find best battery match
         const withBattery = packages.filter((p) => p.hasBattery && p.batteryCapacityKwh);
 
-        // Exact: within 1kWh
+        // Exact match: battery within 1kWh AND panel count matches
         const exactCandidates = withBattery
-          .filter((p) => Math.abs((p.batteryCapacityKwh || 0) - selectedBattery) <= 1)
+          .filter((p) => {
+            const batteryMatch = Math.abs((p.batteryCapacityKwh || 0) - selectedBattery) <= 1;
+            const panelMatch = p.panelCount === selectedPanels || !p.panelCount;
+            return batteryMatch && panelMatch;
+          })
           .sort((a, b) => a.systemPrice - b.systemPrice);
 
-        // Similar: within 5kWh but NOT within 1kWh
+        // Similar: battery within 1kWh but wrong panel count, OR battery within 5kWh
         const similarCandidates = withBattery
           .filter((p) => {
-            const diff = Math.abs((p.batteryCapacityKwh || 0) - selectedBattery);
-            return diff > 1 && diff <= 5;
+            const batteryDiff = Math.abs((p.batteryCapacityKwh || 0) - selectedBattery);
+            const panelMatch = p.panelCount === selectedPanels || !p.panelCount;
+            // Battery matches but panels don't
+            if (batteryDiff <= 1 && !panelMatch) return true;
+            // Battery close but not exact
+            if (batteryDiff > 1 && batteryDiff <= 5) return true;
+            return false;
           })
           .sort((a, b) => a.systemPrice - b.systemPrice);
 
         if (exactCandidates.length > 0) {
           exact.push({ installerId, companyName, pkg: exactCandidates[0], isExactMatch: true });
         } else if (similarCandidates.length > 0) {
-          // Only show in similar if NOT already in exact
           similar.push({ installerId, companyName, pkg: similarCandidates[0], isExactMatch: false });
         } else {
-          // No match within 5kWh — try cheapest battery as last resort in similar
+          // No match — try cheapest battery as last resort
           const cheapestBat = withBattery.sort((a, b) => a.systemPrice - b.systemPrice)[0];
           if (cheapestBat) {
             similar.push({ installerId, companyName, pkg: cheapestBat, isExactMatch: false });
