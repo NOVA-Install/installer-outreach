@@ -233,14 +233,41 @@ export async function scrapeOctopusEnergy(
       await page.waitForTimeout(1500);
 
       for (const battery of BATTERY_OPTIONS) {
-        // Select battery
+        // Select battery — some options are disabled at certain panel counts
         const batteryLabel = page.locator(`label:has-text("${battery.selectorText}")`).first();
-        if (await batteryLabel.isVisible({ timeout: 2000 }).catch(() => false)) {
-          await batteryLabel.click();
-          await page.waitForTimeout(2000);
-        } else {
-          continue; // Battery option not available
+
+        // Check if visible
+        if (!(await batteryLabel.isVisible({ timeout: 1000 }).catch(() => false))) {
+          console.log(`[Octopus] ${panelCount} panels: ${battery.label} — not visible, skipping`);
+          continue;
         }
+
+        // Check if enabled (disabled options have aria-disabled or disabled attribute)
+        const isDisabled = await batteryLabel.evaluate((el: Element) => {
+          const input = el.querySelector("input");
+          return el.getAttribute("aria-disabled") === "true" ||
+            el.hasAttribute("disabled") ||
+            (input && input.disabled) ||
+            el.closest("[data-disabled]") !== null;
+        }).catch(() => false);
+
+        if (isDisabled) {
+          console.log(`[Octopus] ${panelCount} panels: ${battery.label} — disabled, skipping`);
+          continue;
+        }
+
+        // Try clicking — use force:true as fallback if normal click times out
+        try {
+          await batteryLabel.click({ timeout: 5000 });
+        } catch {
+          try {
+            await batteryLabel.click({ force: true, timeout: 3000 });
+          } catch {
+            console.log(`[Octopus] ${panelCount} panels: ${battery.label} — click failed, skipping`);
+            continue;
+          }
+        }
+        await page.waitForTimeout(2000);
 
         // Read the pricing from the page
         const pricing = await readPricing(page);
