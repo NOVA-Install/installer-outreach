@@ -20,44 +20,47 @@ import { scrapeStagSolarApi, createSimplifiedEnergyScraper } from "./scrapers/st
 import { scrapeOctopusEnergy } from "./scrapers/octopus-energy";
 import { scrapeGeneric } from "./scrapers/generic";
 
-// All Simplified Energy installers — same API, different tenant/quote IDs
+// Simplified Energy v2 installers — confirmed to redirect to /solar-planner-v2/
+// Verified 2026-06-01: each entry's /solar page redirects to v2 planner
 const SIMPLIFIED_ENERGY_INSTALLERS: Array<{ installerId: number; name: string; host: string; tenantId: string; quoteId: string }> = [
   { installerId: 5775, name: "Stag Solar Solutions", host: "quote.stagsolar.com", tenantId: "lRCr4ktLaMGx7wfIj7TFI", quoteId: "RNE47M6TFW" },
-  { installerId: 2242, name: "Evergreen Power UK Ltd", host: "solarquote.evergreenpoweruk.com", tenantId: "Q7T-pbkeY25KnjAGMqwMQ", quoteId: "QH9YN9TDCH" },
   { installerId: 6338, name: "Viable Power Solutions Ltd", host: "quote.viablepower.co.uk", tenantId: "fIyvrhxtErJ0XX0P18552", quoteId: "GRXRFR4TQ4" },
   { installerId: 1271, name: "Cotswold Energy", host: "solar.cotswold.energy", tenantId: "sx5kOjE5DMsuTp901z6DL", quoteId: "SQVRA59GAW" },
   { installerId: 383, name: "All Seasons Energy Ltd", host: "quote.allseasonsenergy.co.uk", tenantId: "Y0Sd7lGJu0CdPobeBzTms", quoteId: "81FJ2R268Y" },
   { installerId: 1675, name: "E-Verve Energy Ltd", host: "quote.e-verveenergy.co.uk", tenantId: "Cned89cc4my2FgKZUIHVd", quoteId: "XH8PE38N6M" },
   { installerId: 1902, name: "EE Renewables Ltd", host: "app.eerenewables.co.uk", tenantId: "HMGJf9p3bNvHxpgomgCP9", quoteId: "33A1H3B1JR" },
   { installerId: 2627, name: "Grant Store Ltd", host: "start.grant-store.com", tenantId: "21EQptwAQqMnYRnsSfBhn", quoteId: "PH7GPKXAJ1" },
-  { installerId: 5548, name: "Solar Star Power Ltd", host: "quote.solarstarpower.com", tenantId: "mfC6WzuqRVOtpy9T9eM-c", quoteId: "" },
-  { installerId: 3128, name: "Infinite Energy", host: "solar.infiniteenergy.io", tenantId: "dOHeeiE5VFu6VyBoqq6nx", quoteId: "235RMNRQ7F" },
   { installerId: 5753, name: "Square1 Installations Ltd", host: "app.sq1i.co.uk", tenantId: "BbEmPnRJK74K2qnc14R3tQ46EpFEys", quoteId: "N125JW7BJA" },
   { installerId: 2424, name: "FutureHeat", host: "quote.futureheatltd.co.uk", tenantId: "hI8TC1WWd9cHZhJMfHLw2", quoteId: "18Y5NKGBAJ" },
   { installerId: 4225, name: "New Dawn Energy", host: "quote.newdawnsolar.co.uk", tenantId: "yXYvJMWqW30juHDQuBzwA", quoteId: "9A92TT89Q3" },
-  { installerId: 794, name: "Bloom Renewables", host: "solar.simplified.energy", tenantId: "93C4wXMVbD2TKXweU4xih", quoteId: "1JREXRG128" },
   { installerId: 410, name: "AlphaOne Electrics", host: "quote.alphaoneelectrics.co.uk", tenantId: "O5LULLAE0U2AmPplY8Dh4", quoteId: "HQ3KCACVBE" },
   { installerId: 5209, name: "Samso", host: "app.samsoenergy.co.uk", tenantId: "6vmsA9WrccCr3tuxzp46l", quoteId: "4KBY4Y2YAF" },
-  { installerId: 6312, name: "Urbn Solar", host: "quote.urbnsolar.uk", tenantId: "xFVGLsKZl3HrE5AE3ray8", quoteId: "EVX2NQWJPE" },
   { installerId: 6069, name: "The Energy Experts", host: "quote.the-energy-experts.co.uk", tenantId: "ET1t3CE47H2cg3ELTY_ZM", quoteId: "2QYYJYANX3" },
-  { installerId: 1229, name: "Conscious Energy", host: "quote.consciousenergy.co.uk", tenantId: "yPflvX3t_4Wp8gPO1--eo", quoteId: "1SMC4DXFW2" },
   { installerId: 4009, name: "Menai Heating", host: "quote.menaiheating.co.uk", tenantId: "RGDoLJcZuHqE5zRapYZ-B", quoteId: "23FBCF7P73" },
   { installerId: 3927, name: "Marshall (Clean Heat and Power)", host: "app.marshallenergy.co.uk", tenantId: "NBdZ3NCDOm5MAh-e5G8ci", quoteId: "YF5NV5F9K5" },
   { installerId: 6098, name: "The Natural Energy Company", host: "app.thenaturalenergycompany.co.uk", tenantId: "OQ-57CkV4By9JdzRqLTiR", quoteId: "DMH9GCXV4F" },
   { installerId: 3646, name: "LCS Energy", host: "quote.lcsenergy.co.uk", tenantId: "YgdcNo7yA-TS0wVfLlgcK", quoteId: "8QKRNQ3E5W" },
-  { installerId: 6211, name: "Total Renewable Solutions", host: "quote.totalrenewablesolutions.com", tenantId: "0DL7MAIf0fz3CJ8PCIGcB", quoteId: "BWK66MJ3SJ" },
-  { installerId: 1511, name: "Devon Renewables", host: "quote.devonrenewables.co.uk", tenantId: "eYuyS_kGQvg9x_bL1YgR9", quoteId: "6CPXKQNX91" },
-  { installerId: 2252, name: "EVi Renewables", host: "app.eviuk.co.uk", tenantId: "S5h3NUrlWqmlLk0Gzqw1s", quoteId: "RYEF7S7AYN" },
   { installerId: 5128, name: "RR Electrical and Solar", host: "quote.rrelectricalandsolar.co.uk", tenantId: "xJhwhQAm7ZNfmiW7kESt1", quoteId: "NHDKHYRP2S" },
   { installerId: 3695, name: "The Solar People", host: "quote.thesolarpeople.co.uk", tenantId: "8_h2RLenn8seSpvBdrbl0", quoteId: "FYEPMCQ6X5" },
-  // Auto-generated quote IDs (no custom host — use solar.simplified.energy)
+  // Auto-generated quote IDs (confirmed v2 via solar.simplified.energy redirect)
   { installerId: 1941, name: "Electech Engineering Services", host: "", tenantId: "eTc1ChzfSdtwxf5KxPliM", quoteId: "" },
   { installerId: 4277, name: "Nightingale Electrical", host: "", tenantId: "UepOaVtvXYFSFj8M7o6kB", quoteId: "" },
-  { installerId: 5560, name: "Solar Techs", host: "", tenantId: "Q13JsFUq2QwSeFSIEwdF6", quoteId: "" },
   { installerId: 5652, name: "Solr", host: "", tenantId: "X9OeZf3r9a1Sx1MJTB7Ts", quoteId: "" },
   { installerId: 5712, name: "Spark Energy UK", host: "", tenantId: "VhmuJgD0avzqgfI32IAwH", quoteId: "" },
   { installerId: 5943, name: "Switched On", host: "", tenantId: "-ng4Ba8FXMcUNjz04cHcv", quoteId: "" },
 ];
+
+// Removed — NOT on v2 planner (use v1 or don't redirect, data may be incomplete):
+// Solar Star Power (5548) — v1 planner, missing solar-only packages
+// Evergreen Power UK (2242) — no redirect to v2
+// Infinite Energy (3128) — no redirect to v2
+// Bloom Renewables (794) — redirects to generic simplified.energy
+// Urbn Solar (6312) — no redirect to v2
+// Conscious Energy (1229) — no redirect to v2
+// Total Renewable Solutions (6211) — no redirect to v2
+// Devon Renewables (1511) — no redirect to v2
+// EVi Renewables (2252) — no redirect to v2
+// Solar Techs (5560) — no redirect to planner
 import { extractPostcodeArea, UK_ZONES } from "@/lib/constants";
 import type { Page } from "playwright";
 
