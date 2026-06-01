@@ -153,9 +153,13 @@ export async function scrapeSolarFastApi(
       const inverter = inverters?.[0];
 
       const panelWatts = panel?.product?.pmax ? Math.round(panel.product.pmax * 1000) : null;
-      const systemSizeW = raw.systemSize as number | undefined;
+      const panelCount = panel?.quantity || null;
       const annualGenKwh = raw.averageGenerationAnnualKwh as number | undefined;
-      const emi = raw.emi as string | undefined;
+
+      // Calculate system size from panels (the API's systemSize field is wrong for some packages)
+      const calculatedSystemKw = panelCount && panelWatts
+        ? Math.round(panelCount * panelWatts) / 1000
+        : null;
 
       packageDetails.push({
         id: pkg.id,
@@ -163,18 +167,18 @@ export async function scrapeSolarFastApi(
         panelModel: panel?.product?.name || null,
         panelWattage: panelWatts,
         panelWarranty: panel?.product?.warranty || null,
-        panelCount: panel?.quantity || null,
+        panelCount,
         batteryModel: battery?.product?.name || null,
         batteryCapacityKwh: battery?.product?.usableCapacity || battery?.product?.nominalCapacity || null,
         batteryWarranty: battery?.product?.warranty || null,
         inverterModel: inverter?.product?.name || null,
         inverterCapacityKwh: inverter?.product?.usableCapacity || null,
-        systemSizeKw: systemSizeW ? systemSizeW / 1000 : null,
+        systemSizeKw: calculatedSystemKw,
         annualGenerationKwh: annualGenKwh || null,
-        monthlyPayment: emi ? parseFloat(emi) : null,
+        monthlyPayment: null as number | null, // EMI from listing is stale; pricing endpoint doesn't return it
         minPanels: pkg.minPanels,
         maxPanels: pkg.maxPanels,
-        recommendedPanels: pkg.recommendedPanels || panel?.quantity || null,
+        recommendedPanels: panelCount,
         totalPrice: actualPrice,
         pricePerPanel,
         projections,
