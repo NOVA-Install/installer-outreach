@@ -10,6 +10,7 @@ import { scrapeBoxt } from "./scrapers/boxt";
 import { scrapeBoxtApi } from "./scrapers/boxt-api";
 import { scrapeSolarFastApi } from "./scrapers/solarfast-api";
 import { scrapeIheat } from "./scrapers/iheat-api";
+import { scrapeIheatApi } from "./scrapers/iheat-direct-api";
 import { scrapeHeatable } from "./scrapers/heatable";
 import { scrapeEcoProviders } from "./scrapers/ecoproviders";
 import { scrapeEcoProvidersSolar } from "./scrapers/ecoproviders-solar";
@@ -49,7 +50,8 @@ export const CALCULATOR_REGISTRY: ScraperConfig[] = [
     installerId: 3103,
     companyName: "iHeat",
     calculatorUrl: "https://iheat.co.uk/quote/solar",
-    scraperFn: scrapeIheat,
+    useApi: true,
+    scraperFn: scrapeIheatApi,
   },
   {
     installerId: 2917,
