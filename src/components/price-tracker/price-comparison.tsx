@@ -113,10 +113,83 @@ export function PriceComparison({ configs }: { configs: ScraperConfig[] }) {
         const bundleDiscount = (originalTotal && recTotal) ? originalTotal - recTotal : 0;
 
         // Calculate panel price for selected count
+        // First check for non-linear panelPricePoints (Eco Providers)
+        const panelPricePoints = matrix.panelPricePoints as Array<{ panelCount: number; panelOnlyPrice: number }> | undefined;
+        // Also check priceTable for exact panel+battery combos
+        const priceTable = matrix.priceTable as Record<string, Array<{ name: string; price: number; isBattery: boolean; batteryCost: number }>> | undefined;
+
         let adjustedPanelPrice = panelOnlyPrice;
-        if (panelOnlyPrice && pricePerPanel && recommendedPanels) {
+        if (panelPricePoints && panelPricePoints.length > 0) {
+          // Non-linear pricing — find exact match or nearest
+          const exact = panelPricePoints.find((p) => p.panelCount === selectedPanels);
+          if (exact) {
+            adjustedPanelPrice = exact.panelOnlyPrice;
+          } else {
+            // Interpolate between nearest points
+            const sorted = [...panelPricePoints].sort((a, b) => a.panelCount - b.panelCount);
+            const lower = sorted.filter((p) => p.panelCount <= selectedPanels).pop();
+            const upper = sorted.find((p) => p.panelCount >= selectedPanels);
+            if (lower && upper && lower !== upper) {
+              const ratio = (selectedPanels - lower.panelCount) / (upper.panelCount - lower.panelCount);
+              adjustedPanelPrice = Math.round(lower.panelOnlyPrice + ratio * (upper.panelOnlyPrice - lower.panelOnlyPrice));
+            } else if (lower) {
+              adjustedPanelPrice = lower.panelOnlyPrice;
+            } else if (upper) {
+              adjustedPanelPrice = upper.panelOnlyPrice;
+            }
+          }
+        } else if (panelOnlyPrice && pricePerPanel && recommendedPanels) {
+          // Linear pricing (Boxt)
           const panelDiff = selectedPanels - recommendedPanels;
           adjustedPanelPrice = panelOnlyPrice + panelDiff * pricePerPanel;
+        }
+
+        // If we have a full price table with exact panel+battery combos, use it
+        if (priceTable && priceTable[String(selectedPanels)]) {
+          const row = priceTable[String(selectedPanels)];
+          if (selectedBattery === 0) {
+            const panelRow = row.find((r) => !r.isBattery);
+            if (panelRow) {
+              results.push({
+                installerId: config.installerId,
+                companyName: config.companyName,
+                panelPrice: panelRow.price,
+                batteryName: "No battery",
+                batteryCapacityKwh: 0,
+                batteryPrice: 0,
+                systemTotal: panelRow.price,
+                monthlyPayment: null,
+                panelModel: matrix.panelModel as string | null,
+                panelCount: selectedPanels,
+                isFullSystem: false,
+              });
+              continue;
+            }
+          } else {
+            // Find cheapest battery match in the price table
+            const batteryRows = row.filter((r) => r.isBattery);
+            // Match by capacity from batteryOptions
+            const matchedBattery = findCheapestBatteryMatch(batteryOptions, selectedBattery);
+            if (matchedBattery) {
+              const tableRow = batteryRows.find((r) => r.name.includes(matchedBattery.name.split(" ")[0]));
+              if (tableRow) {
+                results.push({
+                  installerId: config.installerId,
+                  companyName: config.companyName,
+                  panelPrice: adjustedPanelPrice,
+                  batteryName: matchedBattery.name,
+                  batteryCapacityKwh: matchedBattery.capacityKwh,
+                  batteryPrice: tableRow.batteryCost,
+                  systemTotal: tableRow.price,
+                  monthlyPayment: null,
+                  panelModel: matrix.panelModel as string | null,
+                  panelCount: selectedPanels,
+                  isFullSystem: false,
+                });
+                continue;
+              }
+            }
+          }
         }
 
         if (selectedBattery === 0) {

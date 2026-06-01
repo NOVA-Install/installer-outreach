@@ -62,32 +62,26 @@ export async function scrapeEcoProvidersApi(
       throw new Error("No products returned from pricing endpoint");
     }
 
-    // Calculate per-panel price from different quantities
-    let pricePerPanel: number | null = null;
-    const qtys = Object.keys(allResults).map(Number).sort((a, b) => a - b);
-    if (qtys.length >= 2) {
-      // Find the "Panel Only" product across quantities and calculate delta
-      const deltas: number[] = [];
-      for (let i = 1; i < qtys.length; i++) {
-        const prevPanelOnly = allResults[qtys[i - 1]]?.find((p) => !p.name.toLowerCase().includes("battery") && !p.name.toLowerCase().includes("powerwall") && !p.name.toLowerCase().includes("fox"));
-        const currPanelOnly = allResults[qtys[i]]?.find((p) => !p.name.toLowerCase().includes("battery") && !p.name.toLowerCase().includes("powerwall") && !p.name.toLowerCase().includes("fox"));
-        if (prevPanelOnly && currPanelOnly) {
-          const priceDelta = currPanelOnly.price - prevPanelOnly.price;
-          const panelDelta = qtys[i] - qtys[i - 1];
-          if (panelDelta > 0) deltas.push(Math.round(priceDelta / panelDelta));
-        }
-      }
-      if (deltas.length > 0) {
-        pricePerPanel = Math.round(deltas.reduce((a, b) => a + b, 0) / deltas.length);
-      }
-    }
-
-    // Find panel-only price (product without battery/powerwall/fox in the name)
-    const panelOnly = products.find((p) =>
+    const isPanelOnly = (p: EcoProduct) =>
       !p.name.toLowerCase().includes("battery") &&
       !p.name.toLowerCase().includes("powerwall") &&
-      !p.name.toLowerCase().includes("fox")
-    );
+      !p.name.toLowerCase().includes("fox");
+
+    // Build panel price points — price at each panel count (NOT linear)
+    const panelPricePoints: Array<{ panelCount: number; panelOnlyPrice: number }> = [];
+    const qtys = Object.keys(allResults).map(Number).sort((a, b) => a - b);
+    for (const qty of qtys) {
+      const po = allResults[qty]?.find(isPanelOnly);
+      if (po) panelPricePoints.push({ panelCount: qty, panelOnlyPrice: po.price });
+    }
+
+    // Panel-only price for the default panel count
+    const panelOnly = products.find(isPanelOnly);
+    const panelOnlyPrice = panelOnly?.price || null;
+
+    // Battery add-on costs = total package price - panel-only price at same count
+    // Package prices from the API are TOTAL system prices (panels + battery + install)
+    const batteryProducts = products.filter((p) => !isPanelOnly(p));
 
     const priceMatrix = {
       address: property.address,
@@ -98,28 +92,41 @@ export async function scrapeEcoProvidersApi(
       panelModel: "Aiko Neostar",
       panelWarrantyYears: 25,
       recommendedPanelCount: defaultQty,
-      pricePerPanel,
-      panelOnlyPrice: panelOnly?.price || null,
-      totalPrice: products[0]?.price || null,
+      pricePerPanel: null, // Not linear — use panelPricePoints instead
+      panelOnlyPrice,
+      totalPrice: panelOnlyPrice, // Base price without battery
 
       annualSavings: panelOnly?.billSaving || null,
       monthlySavings: panelOnly?.monthlyPrice || null,
 
-      batteryOptions: products.map((p) => ({
-        name: p.name,
-        model: p.name,
-        capacityKwh: extractCapacity(p.name),
-        price: p.price,
-        monthlyPayment: p.monthlyPrice,
-        billReductionPct: p.billReduction,
-        annualSaving: p.billSaving,
-      })),
+      // Battery options with add-on cost calculated
+      batteryOptions: batteryProducts.map((p) => {
+        const batteryCost = panelOnlyPrice ? p.price - panelOnlyPrice : null;
+        return {
+          name: p.name,
+          model: p.name.replace(/^Aiko Neostar\s*\+?\s*/i, "").trim(),
+          capacityKwh: extractCapacity(p.name),
+          price: batteryCost, // Battery add-on cost (not total system price)
+          totalPrice: p.price, // Full system price (panels + battery)
+          monthlyPayment: p.monthlyPrice,
+          billReductionPct: p.billReduction,
+          annualSaving: p.billSaving,
+        };
+      }),
 
-      // All panel count results for price tracking
-      _pricesByPanelCount: Object.fromEntries(
-        Object.entries(allResults).map(([qty, prods]) => [
+      // Panel price at each count (non-linear)
+      panelPricePoints,
+
+      // Full price table: every package at every panel count
+      priceTable: Object.fromEntries(
+        qtys.map((qty) => [
           qty,
-          prods.map((p) => ({ name: p.name, price: p.price })),
+          (allResults[qty] || []).map((p) => ({
+            name: p.name,
+            price: p.price,
+            isBattery: !isPanelOnly(p),
+            batteryCost: isPanelOnly(p) ? 0 : p.price - (allResults[qty]?.find(isPanelOnly)?.price || 0),
+          })),
         ])
       ),
     };
