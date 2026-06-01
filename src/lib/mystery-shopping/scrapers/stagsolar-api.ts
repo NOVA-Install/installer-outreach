@@ -3,46 +3,30 @@ import type { ScraperResult, PropertyInput } from "./base";
 /**
  * Stag Solar / Simplified Energy — API-based scraper.
  *
- * Unauthenticated POST to:
- *   POST https://quote.stagsolar.com/api/solar-quote-v2/{tenantId}/{quoteId}/user-inputs
+ * Unauthenticated POST, no cookies/keys needed.
+ * Scrapes at multiple panel counts to build a full price table.
  *
- * No cookies, no API key, no session required.
- * Returns full pricing with packages[], products[], and pricingBreakdown.
- *
- * The "Unlock pricing" contact form is a soft UI gate — prices are returned
- * before submitting contact details. We use saved: false to skip it.
+ * Key insight: some packages labelled "Solar and Battery" are actually
+ * solar-only (no battery product in the BOM). Detect by checking if
+ * the products[] array contains a Battery or Combined Hybrid Inverter Battery.
  */
 
 const BASE_URL = "https://quote.stagsolar.com";
 const TENANT_ID = "lRCr4ktLaMGx7wfIj7TFI";
-const QUOTE_ID = "1HYY7FC6SR"; // Reusable draft ID
+const QUOTE_ID = "1HYY7FC6SR";
 
-interface StagProduct {
-  product: {
-    type: string;
-    manufacturer: string;
-    manufacturerProductName: string;
-    peakPowerW?: number;
-    costExcTax?: number;
-  };
-  quantity: number;
-}
-
-interface StagPackage {
-  id: string;
+interface ParsedPackage {
   name: string;
-  packageType: string;
   price: number;
-  priceVatApplied: boolean;
-  vatRate: number;
-  products: StagProduct[];
-  pricingResult?: {
-    results: Array<{
-      blockName: string;
-      result: number;
-    }>;
-  };
-  solarDesignInsight?: Record<string, unknown>;
+  hasBattery: boolean;
+  panelModel: string | null;
+  panelWattage: number | null;
+  panelCount: number;
+  batteryModel: string | null;
+  batteryCapacityKwh: number | null;
+  inverterModel: string | null;
+  products: Array<{ type: string; name: string; qty: number }>;
+  pricingBreakdown: Array<{ item: string; cost: number }>;
 }
 
 export async function scrapeStagSolarApi(
@@ -51,190 +35,141 @@ export async function scrapeStagSolarApi(
   property: PropertyInput
 ): Promise<ScraperResult> {
   try {
-    // Step 1: Look up address to get coordinates
+    // Step 1: Look up address for coordinates
     const addrRes = await fetch(
-      `${BASE_URL}/api/addresses/autocomplete?query=${encodeURIComponent(property.postcode)}`,
-      { headers: { "Content-Type": "application/json" } }
-    );
-    let coords = { lng: -0.6, lat: 51.24 }; // Default fallback
-    let addressOneLiner = property.address;
-    let udprn = 0;
-    let uprn = "";
+      `${BASE_URL}/api/addresses/autocomplete?query=${encodeURIComponent(property.postcode)}`
+    ).catch(() => null);
 
-    if (addrRes.ok) {
+    let coords = { lng: -0.6, lat: 51.24 };
+    let addressOneLiner = property.address;
+
+    if (addrRes?.ok) {
       const addrData = await addrRes.json();
       const addresses = Array.isArray(addrData) ? addrData : addrData?.results || [];
-      // Pick first non-flat address
       const selected = addresses.find(
-        (a: Record<string, unknown>) => !String(a.addressOneLiner || a.address || "").toLowerCase().includes("flat")
+        (a: Record<string, unknown>) => !String(a.addressOneLiner || "").toLowerCase().includes("flat")
       ) || addresses[0];
-
       if (selected) {
-        addressOneLiner = selected.addressOneLiner || selected.address || property.address;
-        udprn = selected.udprn || 0;
-        uprn = selected.uprn || "";
+        addressOneLiner = selected.addressOneLiner || property.address;
         if (selected.geoPoint?.coordinates) {
           coords = { lng: selected.geoPoint.coordinates[0], lat: selected.geoPoint.coordinates[1] };
-        } else if (selected.longitude && selected.latitude) {
-          coords = { lng: selected.longitude, lat: selected.latitude };
         }
       }
     }
 
-    // Step 2: Build the quote request body
-    const panelCounts = [6, 8, 10, 12, 14];
-    const allResults: Record<number, StagPackage[]> = {};
+    // Step 2: Scrape at multiple panel counts
+    const panelCounts = [4, 6, 8, 10, 12, 14, 16];
+    const allResults: Record<number, ParsedPackage[]> = {};
 
     for (const numPanels of panelCounts) {
-      const body = {
-        elecUsageProfile: "More in morning and evening",
-        elecType: "Domestic Single Phase",
-        batteryPreference: "No preference",
-        batteryCapacityAuto: true,
-        packagesSort: "Price (Low to High)",
-        elecCostType: "annual-cost",
-        dailyStandingChargePence: 54,
-        annElecConsumption: property.annualElectricityUsage || 3500,
-        annElecCost: property.currentElectricityBill || 1200,
-        unitElecCostPence: 24.86,
-        showOrthoImage: false,
-        panelPolygonsOrCount: "polygons",
-        drawingOrManual: "manual",
-        quoteAddress: {
-          addressOneLiner,
-          streetName: property.address,
-          city: "",
-          stateRegion: "",
-          country: "England",
-          udprn,
-          uprn,
-          postcode: property.postcode,
-          geoPoint: { type: "Point", coordinates: [coords.lng, coords.lat] },
-        },
-        exactPin: { type: "Point", coordinates: [coords.lng, coords.lat] },
-        roofs: [
-          {
-            id: "scraper-roof-1",
-            pitch: "Normal pitch",
-            direction: mapRoofDirection(property.roofOrientation),
-            material: "Concrete Tile",
-            shading: false,
-            numFloors: 2,
-            numPanels: numPanels,
-            longestSideM: 5,
-          },
-        ],
-        saved: false, // Don't trigger email
-      };
+      const body = buildRequestBody(property, addressOneLiner, coords, numPanels);
 
       const res = await fetch(
         `${BASE_URL}/api/solar-quote-v2/${TENANT_ID}/${QUOTE_ID}/user-inputs`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        }
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
       );
 
       if (!res.ok) {
-        if (numPanels === panelCounts[0]) {
-          const errText = await res.text().catch(() => "");
-          throw new Error(`Quote API failed (${res.status}): ${errText.slice(0, 200)}`);
+        if (Object.keys(allResults).length === 0) {
+          throw new Error(`Quote API failed (${res.status}): ${(await res.text().catch(() => "")).slice(0, 200)}`);
         }
         continue;
       }
 
       const data = await res.json();
-      const packages: StagPackage[] = data?.quote?.packages || [];
-      allResults[numPanels] = packages;
+      const rawPackages = data?.quote?.packages || [];
+      allResults[numPanels] = rawPackages.map((pkg: Record<string, unknown>) => parsePackage(pkg, numPanels));
 
-      // Small delay to avoid rate limiting
       await new Promise((r) => setTimeout(r, 500));
     }
 
     // Use 10-panel results as default
-    const defaultQty = allResults[10]?.length ? 10 : Object.keys(allResults).map(Number).find((k) => allResults[k]?.length) || 0;
+    const defaultQty = allResults[10]?.length ? 10 :
+      Object.keys(allResults).map(Number).find((k) => allResults[k]?.length) || 0;
     const packages = allResults[defaultQty] || [];
 
-    if (packages.length === 0) {
-      throw new Error("No packages returned");
-    }
+    if (packages.length === 0) throw new Error("No packages returned");
 
-    // Extract panel info from first package
-    const firstPkg = packages[0];
-    const panelProduct = firstPkg.products.find((p) => p.product.type === "PV Panel");
-    const panelModel = panelProduct
-      ? `${panelProduct.product.manufacturer} ${panelProduct.product.manufacturerProductName}`
-      : null;
-    const panelWattage = panelProduct?.product.peakPowerW || null;
+    // Separate solar-only from battery packages
+    const solarOnlyPackages = packages.filter((p) => !p.hasBattery);
+    const batteryPackages = packages.filter((p) => p.hasBattery);
 
-    // Find solar-only package for panel-only price
-    const solarOnly = packages.find((p) => p.name.toLowerCase().includes("solar only"));
-    const panelOnlyPrice = solarOnly?.price || null;
+    // Use cheapest solar-only as baseline panel price
+    const cheapestSolarOnly = solarOnlyPackages.sort((a, b) => a.price - b.price)[0];
+    const panelOnlyPrice = cheapestSolarOnly?.price || null;
 
-    // Build panel price points from solar-only package across panel counts
-    const panelPricePoints: Array<{ panelCount: number; panelOnlyPrice: number }> = [];
+    // Panel price points across all counts (from cheapest solar-only package)
+    const panelPricePoints: Array<{ panelCount: number; panelOnlyPrice: number; packageName: string }> = [];
     for (const qty of Object.keys(allResults).map(Number).sort((a, b) => a - b)) {
-      const so = allResults[qty]?.find((p) => p.name.toLowerCase().includes("solar only"));
-      if (so) panelPricePoints.push({ panelCount: qty, panelOnlyPrice: so.price });
+      const solarOnly = allResults[qty]
+        ?.filter((p) => !p.hasBattery)
+        .sort((a, b) => a.price - b.price)[0];
+      if (solarOnly) {
+        panelPricePoints.push({
+          panelCount: qty,
+          panelOnlyPrice: Math.round(solarOnly.price * 100) / 100,
+          packageName: solarOnly.name,
+        });
+      }
     }
 
-    // Build battery options from packages (excluding solar-only)
-    const batteryPackages = packages.filter((p) => !p.name.toLowerCase().includes("solar only"));
+    // Panel info
+    const firstPkg = packages[0];
 
     const priceMatrix = {
       address: addressOneLiner,
       postcode: property.postcode,
       roofType: property.roofType || "pitched",
 
-      panelModel,
-      panelWattage,
+      panelModel: firstPkg.panelModel,
+      panelWattage: firstPkg.panelWattage,
       panelWarrantyYears: null,
       recommendedPanelCount: defaultQty,
-      pricePerPanel: null, // Non-linear, use panelPricePoints
-      panelOnlyPrice,
-      totalPrice: panelOnlyPrice, // Base without battery
+      pricePerPanel: null, // Non-linear
+      panelOnlyPrice: panelOnlyPrice ? Math.round(panelOnlyPrice * 100) / 100 : null,
+      totalPrice: panelOnlyPrice ? Math.round(panelOnlyPrice * 100) / 100 : null,
 
-      batteryOptions: batteryPackages.map((pkg) => {
-        const battery = pkg.products.find((p) =>
-          ["Battery", "Combined Hybrid Inverter Battery"].includes(p.product.type)
-        );
-        const inverter = pkg.products.find((p) =>
-          ["Hybrid Inverter", "String Inverter", "Combined Hybrid Inverter Battery"].includes(p.product.type)
-        );
-        const batteryCost = panelOnlyPrice ? pkg.price - panelOnlyPrice : null;
+      // Solar-only packages (may be multiple with different inverters)
+      solarOnlyPackages: solarOnlyPackages.map((p) => ({
+        name: p.name,
+        price: Math.round(p.price * 100) / 100,
+        inverterModel: p.inverterModel,
+        pricingBreakdown: p.pricingBreakdown,
+      })),
 
+      // Battery packages with add-on cost calculated
+      batteryOptions: batteryPackages.map((p) => {
+        const batteryCost = panelOnlyPrice != null ? Math.round((p.price - panelOnlyPrice) * 100) / 100 : null;
         return {
-          name: pkg.name,
-          model: battery
-            ? `${battery.product.manufacturer} ${battery.product.manufacturerProductName}`
-            : pkg.name,
-          capacityKwh: null as number | null, // Not directly in the API — parse from name
+          name: p.name,
+          model: p.batteryModel || p.name,
+          capacityKwh: p.batteryCapacityKwh,
           price: batteryCost, // Battery add-on cost
-          totalPrice: pkg.price, // Full system price
-          inverterModel: inverter
-            ? `${inverter.product.manufacturer} ${inverter.product.manufacturerProductName}`
-            : null,
-          pricingBreakdown: pkg.pricingResult?.results?.map((r) => ({
-            item: r.blockName,
-            cost: r.result,
-          })) || [],
+          totalPrice: Math.round(p.price * 100) / 100, // Full system price
+          inverterModel: p.inverterModel,
+          pricingBreakdown: p.pricingBreakdown,
         };
       }),
 
       panelPricePoints,
 
-      // Full price table
+      // Full price table: every package at every panel count
       priceTable: Object.fromEntries(
         Object.keys(allResults).map((qty) => [
           qty,
           (allResults[Number(qty)] || []).map((pkg) => {
-            const so = allResults[Number(qty)]?.find((p) => p.name.toLowerCase().includes("solar only"));
+            const solarBase = allResults[Number(qty)]
+              ?.filter((p) => !p.hasBattery)
+              .sort((a, b) => a.price - b.price)[0];
             return {
               name: pkg.name,
-              price: pkg.price,
-              isBattery: !pkg.name.toLowerCase().includes("solar only"),
-              batteryCost: so ? pkg.price - so.price : 0,
+              price: Math.round(pkg.price * 100) / 100,
+              isBattery: pkg.hasBattery,
+              batteryCost: solarBase && pkg.hasBattery
+                ? Math.round((pkg.price - solarBase.price) * 100) / 100
+                : 0,
+              batteryCapacityKwh: pkg.batteryCapacityKwh,
+              batteryModel: pkg.batteryModel,
             };
           }),
         ])
@@ -257,6 +192,104 @@ export async function scrapeStagSolarApi(
       error: err instanceof Error ? err.message : String(err),
     };
   }
+}
+
+function parsePackage(raw: Record<string, unknown>, numPanels: number): ParsedPackage {
+  const products = ((raw.products as Array<Record<string, unknown>>) || []).map((p) => {
+    const prod = p.product as Record<string, unknown>;
+    return {
+      type: (prod.type || "") as string,
+      name: `${prod.manufacturer || ""} ${prod.manufacturerProductName || ""}`.trim(),
+      qty: (p.quantity || 1) as number,
+      peakPowerW: prod.peakPowerW as number | undefined,
+    };
+  });
+
+  const panel = products.find((p) => p.type === "PV Panel");
+  const battery = products.find((p) => p.type === "Battery" || p.type === "Combined Hybrid Inverter Battery");
+  const inverter = products.find((p) =>
+    p.type === "Hybrid Inverter" || p.type === "String Inverter" || p.type === "Combined Hybrid Inverter Battery"
+  );
+
+  // Parse battery capacity from product name
+  let batteryCapacityKwh: number | null = null;
+  if (battery) {
+    const capMatch = battery.name.match(/([\d.]+)\s*kWh/i);
+    if (capMatch) {
+      batteryCapacityKwh = parseFloat(capMatch[1]);
+    } else if (battery.name.includes("Powerwall 3")) {
+      batteryCapacityKwh = 13.5;
+    } else {
+      // Try parsing numbers that look like capacity (e.g. "Giv-Bat 5.2")
+      const numMatch = battery.name.match(/(\d+\.?\d*)\s*(?:Gen|$)/i);
+      if (numMatch && parseFloat(numMatch[1]) < 50) {
+        batteryCapacityKwh = parseFloat(numMatch[1]);
+      }
+    }
+  }
+
+  const pricingResults = (raw.pricingResult as Record<string, unknown>)?.results as Array<Record<string, unknown>> || [];
+
+  return {
+    name: (raw.name || "") as string,
+    price: (raw.price || 0) as number,
+    hasBattery: !!battery,
+    panelModel: panel ? `${panel.name}` : null,
+    panelWattage: panel?.peakPowerW || null,
+    panelCount: panel?.qty || numPanels,
+    batteryModel: battery?.name || null,
+    batteryCapacityKwh,
+    inverterModel: inverter?.name || null,
+    products: products.map((p) => ({ type: p.type, name: p.name, qty: p.qty })),
+    pricingBreakdown: pricingResults.map((r) => ({
+      item: (r.blockName || "") as string,
+      cost: (r.result || 0) as number,
+    })),
+  };
+}
+
+function buildRequestBody(
+  property: PropertyInput,
+  addressOneLiner: string,
+  coords: { lng: number; lat: number },
+  numPanels: number
+) {
+  return {
+    elecUsageProfile: "More in morning and evening",
+    elecType: "Domestic Single Phase",
+    batteryPreference: "No preference",
+    batteryCapacityAuto: true,
+    packagesSort: "Price (Low to High)",
+    elecCostType: "annual-cost",
+    dailyStandingChargePence: 54,
+    annElecConsumption: property.annualElectricityUsage || 3500,
+    annElecCost: property.currentElectricityBill || 1200,
+    unitElecCostPence: 24.86,
+    showOrthoImage: false,
+    panelPolygonsOrCount: "polygons",
+    drawingOrManual: "manual",
+    quoteAddress: {
+      addressOneLiner,
+      streetName: property.address,
+      city: "",
+      stateRegion: "",
+      country: "England",
+      postcode: property.postcode,
+      geoPoint: { type: "Point", coordinates: [coords.lng, coords.lat] },
+    },
+    exactPin: { type: "Point", coordinates: [coords.lng, coords.lat] },
+    roofs: [{
+      id: "scraper-roof-1",
+      pitch: "Normal pitch",
+      direction: mapRoofDirection(property.roofOrientation),
+      material: "Concrete Tile",
+      shading: false,
+      numFloors: 2,
+      numPanels,
+      longestSideM: 5,
+    }],
+    saved: false,
+  };
 }
 
 function mapRoofDirection(orientation?: string): string {
