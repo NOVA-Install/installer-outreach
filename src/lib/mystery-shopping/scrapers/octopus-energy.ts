@@ -126,26 +126,40 @@ export async function scrapeOctopusEnergy(
     console.log("[Octopus] Property page URL:", page.url());
 
     // === Step 2: Property page — select address and usage ===
-    // Open the address combobox
+    // Open the address combobox and select a non-flat address
     console.log("[Octopus] Opening address combobox...");
     const combobox = page.locator('[role="combobox"]').first();
     await combobox.click();
     await page.waitForTimeout(2000);
 
-    // Select first non-flat address option
+    // Wait for options to load
+    await page.waitForSelector('[role="option"]', { timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(1000);
+
+    // Get all address options and find a non-flat one
     const options = page.locator('[role="option"]');
     const optCount = await options.count();
+    console.log("[Octopus] Address options:", optCount);
+
     let selectedOption = false;
     for (let i = 0; i < optCount; i++) {
       const text = await options.nth(i).textContent();
-      if (text && !text.toLowerCase().includes("flat")) {
-        await options.nth(i).click();
-        selectedOption = true;
-        break;
+      const lower = (text || "").toLowerCase();
+      // Skip flats, apartments, and units
+      if (lower.includes("flat") || lower.includes("apartment") || lower.includes("unit ")) {
+        console.log("[Octopus] Skipping flat:", text?.trim().slice(0, 60));
+        continue;
       }
+      console.log("[Octopus] Selecting address:", text?.trim().slice(0, 60));
+      await options.nth(i).click();
+      selectedOption = true;
+      break;
     }
-    if (!selectedOption && optCount > 0) {
-      await options.first().click();
+
+    if (!selectedOption) {
+      // All addresses are flats — try scrolling down for more options or pick first anyway
+      console.log("[Octopus] WARNING: All addresses appear to be flats, selecting first");
+      if (optCount > 0) await options.first().click();
     }
     await page.waitForTimeout(1000);
 
