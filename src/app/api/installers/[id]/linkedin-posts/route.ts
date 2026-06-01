@@ -33,7 +33,10 @@ export async function POST(
     .limit(1);
 
   const postedLimit = body.postedLimit || (tracking?.lastScrapedPostsAt ? undefined : "month");
-  const postedLimitDate = tracking?.lastScrapedPostsAt || undefined;
+  // Normalize to YYYY-MM-DD for Apify
+  const postedLimitDate = tracking?.lastScrapedPostsAt
+    ? tracking.lastScrapedPostsAt.slice(0, 10)
+    : undefined;
 
   // Load user keywords for matching
   let userKeywords: string[] = [];
@@ -156,8 +159,8 @@ export async function POST(
         })
         .onConflictDoNothing({ target: socialSignals.postId });
       newSignals++;
-    } catch {
-      // Constraint error — skip
+    } catch (err) {
+      console.warn(`[linkedin-posts] Failed to insert post for installer ${installerId}:`, err instanceof Error ? err.message : err);
     }
   }
 
@@ -169,13 +172,8 @@ export async function POST(
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-      // Get the installer name and user keywords for context
+      // Get the installer name for context
       const [installer] = await db.select({ companyName: installers.companyName }).from(installers).where(eq(installers.id, installerId)).limit(1);
-      let userKeywords: string[] = [];
-      const [kwSetting] = await db.select().from(appSettings).where(eq(appSettings.key, "linkedin_signal_keywords")).limit(1);
-      if (kwSetting) {
-        try { userKeywords = JSON.parse(kwSetting.value); } catch {}
-      }
 
       // Get unscored signals for this installer
       const unscored = await db
@@ -222,7 +220,13 @@ ${postsForAi}`);
         const text = result.response.text();
         const match = text.match(/\[[\s\S]*\]/);
         if (match) {
-          const scores = JSON.parse(match[0]) as { index: number; score: number; reason: string }[];
+          let scores: { index: number; score: number; reason: string }[];
+          try {
+            scores = JSON.parse(match[0]);
+          } catch (parseErr) {
+            console.warn("[linkedin-posts] Gemini returned invalid JSON:", parseErr instanceof Error ? parseErr.message : parseErr);
+            scores = [];
+          }
           for (const s of scores) {
             const signal = unscoredFiltered[s.index];
             if (signal) {

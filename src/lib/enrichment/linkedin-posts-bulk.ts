@@ -66,7 +66,9 @@ export async function scrapeLinkedInPostsBatch(
         sql`EXISTS (
           SELECT 1 FROM linkedin_contacts lc
           WHERE lc.installer_id = ${installers.id}
-        )`
+        )`,
+        // Never scraped or last scraped more than 7 days ago
+        sql`(${linkedinCompanyTracking.lastScrapedPostsAt} IS NULL OR ${linkedinCompanyTracking.lastScrapedPostsAt} < NOW() - INTERVAL '7 days')`
       )
     )
     // Process never-scraped first, then oldest-scraped
@@ -77,7 +79,7 @@ export async function scrapeLinkedInPostsBatch(
     return { processed: 0, totalPosts: 0, newSignals: 0, scored: 0, errors: 0, remaining: 0 };
   }
 
-  // Count remaining
+  // Count remaining (same staleness filter as candidates)
   const [{ count: remainingCount }] = await db
     .select({ count: sql<number>`count(*)` })
     .from(installers)
@@ -92,7 +94,8 @@ export async function scrapeLinkedInPostsBatch(
         sql`EXISTS (
           SELECT 1 FROM linkedin_contacts lc
           WHERE lc.installer_id = ${installers.id}
-        )`
+        )`,
+        sql`(${linkedinCompanyTracking.lastScrapedPostsAt} IS NULL OR ${linkedinCompanyTracking.lastScrapedPostsAt} < NOW() - INTERVAL '7 days')`
       )
     );
 
@@ -128,9 +131,11 @@ export async function scrapeLinkedInPostsBatch(
         continue;
       }
 
-      // Determine date range
+      // Determine date range (normalize to YYYY-MM-DD for Apify)
       const postedLimit = candidate.lastScrapedPostsAt ? undefined : "month";
-      const postedLimitDate = candidate.lastScrapedPostsAt || undefined;
+      const postedLimitDate = candidate.lastScrapedPostsAt
+        ? candidate.lastScrapedPostsAt.slice(0, 10)
+        : undefined;
 
       const run = await client.actor(LINKEDIN_PROFILE_POSTS_ACTOR).start({
         targetUrls: profileUrls,
@@ -260,8 +265,8 @@ export async function scrapeLinkedInPostsBatch(
             })
             .onConflictDoNothing({ target: socialSignals.postId });
           newSignals++;
-        } catch {
-          // Constraint error — skip
+        } catch (err) {
+          console.warn(`[linkedin-posts-bulk] Failed to insert post for ${candidate.companyName}:`, err instanceof Error ? err.message : err);
         }
       }
 
@@ -382,11 +387,13 @@ ${postsForAi}`
   if (!match) return 0;
 
   let scored = 0;
-  const scores = JSON.parse(match[0]) as {
-    index: number;
-    score: number;
-    reason: string;
-  }[];
+  let scores: { index: number; score: number; reason: string }[];
+  try {
+    scores = JSON.parse(match[0]);
+  } catch (err) {
+    console.warn(`[linkedin-posts-bulk] Gemini returned invalid JSON for ${companyName}:`, err instanceof Error ? err.message : err);
+    return 0;
+  }
 
   for (const s of scores) {
     const signal = filtered[s.index];
@@ -414,6 +421,7 @@ export async function previewLinkedInPostsBulk() {
           AND EXISTS (
             SELECT 1 FROM linkedin_contacts lc WHERE lc.installer_id = i.id
           )
+          AND (lct.last_scraped_posts_at IS NULL OR lct.last_scraped_posts_at < NOW() - INTERVAL '7 days')
       ) as eligible,
       COUNT(*) FILTER (
         WHERE i.is_shortlisted = true
