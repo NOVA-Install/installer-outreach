@@ -59,25 +59,42 @@ export async function scrapeEcoProviders(
     // Extract monthly payment patterns
     const monthlyPatterns = [...html.matchAll(/£([\d.]+)\s*(?:\/month|per month|monthly)/gi)];
 
+    // Separate actual batteries from EV chargers / accessories
+    const batteryNames = ["Tesla Powerwall", "FoxESS", "Fox ESS", "Duracell", "GivEnergy", "Sunsynk"];
+    const isBattery = (name: string) => batteryNames.some((b) => name.toLowerCase().includes(b.toLowerCase()));
+
     const priceMatrix = {
       address: property.address,
       postcode: property.postcode,
       productType: "battery-only",
       note: "Eco Providers sells battery storage packages, not full solar panel systems",
+      panelModel: null,
+      panelOnlyPrice: null,
+      totalPrice: null as number | null,
+      pricePerPanel: null,
+      recommendedPanelCount: null,
 
-      batteryOptions: Object.entries(prices).map(([name, price]) => ({
-        name,
-        price,
-        capacityKwh: name.includes("Powerwall") ? 13.5 : name.includes("EP6") ? 6 : null,
-      })),
+      batteryOptions: Object.entries(prices)
+        .filter(([name]) => isBattery(name))
+        .map(([name, price]) => ({
+          name,
+          model: name,
+          price,
+          capacityKwh: name.includes("Powerwall") ? 13.5 : name.includes("EP6") ? 6 : null,
+        })),
 
       addOns: Object.entries(prices)
-        .filter(([name]) => name.includes("zappi") || name.includes("Eddi"))
+        .filter(([name]) => !isBattery(name))
         .map(([name, price]) => ({ name, price })),
 
       allDetectedPrices: [...new Set(allPrices)].sort((a, b) => a - b),
       monthlyPayments: monthlyPatterns.map((m) => `£${m[1]}/month`),
     };
+
+    // Set total price from cheapest battery
+    if (priceMatrix.batteryOptions.length > 0) {
+      priceMatrix.totalPrice = Math.min(...priceMatrix.batteryOptions.map((b) => b.price));
+    }
 
     return {
       success: true,
