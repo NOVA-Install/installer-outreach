@@ -44,6 +44,8 @@ interface Signal {
   status: string | null;
   signalType: string;
   fetchedAt: string;
+  generatedLinkedinMsg: string | null;
+  generatedEmailMsg: string | null;
   companyName: string;
   companyWebsite: string | null;
   pipelineStage: string | null;
@@ -178,6 +180,8 @@ export function SignalsFeed() {
   const [generatedMsgType, setGeneratedMsgType] = useState<"linkedin" | "email" | null>(null);
   const [msgContext, setMsgContext] = useState("");
   const [copied, setCopied] = useState(false);
+  const [savedToOutreach, setSavedToOutreach] = useState(false);
+  const [savingToOutreach, setSavingToOutreach] = useState(false);
 
   const updateSignalStatus = async (signalId: number, status: string) => {
     await fetch(`/api/signals/${signalId}`, {
@@ -185,8 +189,35 @@ export function SignalsFeed() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
     });
-    setSignals((prev) => prev.map((s) => s.id === signalId ? { ...s, status } : s));
-    if (selected?.id === signalId) setSelected({ ...selected, status });
+    if (statusFilter && status !== statusFilter) {
+      // Remove from list if it no longer matches the active filter
+      setSignals((prev) => prev.filter((s) => s.id !== signalId));
+      if (selected?.id === signalId) setSelected(null);
+    } else {
+      setSignals((prev) => prev.map((s) => s.id === signalId ? { ...s, status } : s));
+      if (selected?.id === signalId) setSelected({ ...selected, status });
+    }
+  };
+
+  const selectSignal = (signal: Signal | null) => {
+    setSelected(signal);
+    setCopied(false);
+    if (signal) {
+      // Load persisted message if available (prefer linkedin, fall back to email)
+      if (signal.generatedLinkedinMsg) {
+        setGeneratedMsg(signal.generatedLinkedinMsg);
+        setGeneratedMsgType("linkedin");
+      } else if (signal.generatedEmailMsg) {
+        setGeneratedMsg(signal.generatedEmailMsg);
+        setGeneratedMsgType("email");
+      } else {
+        setGeneratedMsg(null);
+        setGeneratedMsgType(null);
+      }
+    } else {
+      setGeneratedMsg(null);
+      setGeneratedMsgType(null);
+    }
   };
 
   const generateMessage = async (messageType: "linkedin" | "email") => {
@@ -194,6 +225,7 @@ export function SignalsFeed() {
     setGeneratingMsg(messageType);
     setGeneratedMsg(null);
     setCopied(false);
+    setSavedToOutreach(false);
     try {
       const res = await fetch("/api/signals/generate-message", {
         method: "POST",
@@ -209,6 +241,12 @@ export function SignalsFeed() {
       if (res.ok) {
         setGeneratedMsg(data.message);
         setGeneratedMsgType(messageType);
+        // Update the signal in the list so it persists across re-selections
+        const updatedField = messageType === "linkedin"
+          ? { generatedLinkedinMsg: data.message }
+          : { generatedEmailMsg: data.message };
+        setSignals((prev) => prev.map((s) => s.id === selected.id ? { ...s, ...updatedField } : s));
+        setSelected({ ...selected, ...updatedField });
       } else {
         setGeneratedMsg(`Error: ${data.error}`);
         setGeneratedMsgType(messageType);
@@ -225,6 +263,28 @@ export function SignalsFeed() {
     await navigator.clipboard.writeText(generatedMsg);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const saveToOutreach = async () => {
+    if (!selected || !generatedMsg || !generatedMsgType) return;
+    setSavingToOutreach(true);
+    try {
+      await fetch("/api/outreach", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          installerId: selected.installerId,
+          signalId: selected.id,
+          contactName: selected.authorName || selected.companyName,
+          contactLinkedinUrl: selected.authorProfileUrl || null,
+          platform: generatedMsgType,
+          message: generatedMsg,
+        }),
+      });
+      setSavedToOutreach(true);
+      setTimeout(() => setSavedToOutreach(false), 3000);
+    } catch {}
+    setSavingToOutreach(false);
   };
 
   const scoreUnscored = async () => {
@@ -399,7 +459,7 @@ export function SignalsFeed() {
                     return (
                       <button
                         key={signal.id}
-                        onClick={() => { setSelected(isSelected ? null : signal); setGeneratedMsg(null); setGeneratedMsgType(null); }}
+                        onClick={() => selectSignal(isSelected ? null : signal)}
                         className={`w-full text-left px-5 py-3 border-b border-[#f0f0f0] transition-colors cursor-pointer ${
                           isSelected
                             ? "bg-[#0a66c2]/5 border-l-2 border-l-[#0a66c2]"
@@ -550,7 +610,7 @@ export function SignalsFeed() {
                 </div>
               </div>
               <button
-                onClick={() => setSelected(null)}
+                onClick={() => selectSignal(null)}
                 className="h-7 w-7 rounded-md hover:bg-[#f5f5f5] flex items-center justify-center text-[#9a9a9a] transition-colors"
               >
                 <X className="h-4 w-4" />
@@ -704,9 +764,14 @@ export function SignalsFeed() {
               {generatedMsg && (
                 <div className="mt-3">
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[11px] font-medium text-[#8a8a8a] uppercase tracking-wider">
-                      {generatedMsgType === "linkedin" ? "LinkedIn Message" : "Email Draft"}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-medium text-[#8a8a8a] uppercase tracking-wider">
+                        {generatedMsgType === "linkedin" ? "LinkedIn Message" : "Email Draft"}
+                      </span>
+                      <span className={`text-[11px] tabular-nums ${generatedMsg.length > 400 && generatedMsgType === "linkedin" ? "text-red-500 font-medium" : "text-[#b0b0b0]"}`}>
+                        {generatedMsg.length} chars
+                      </span>
+                    </div>
                     <button
                       onClick={copyMessage}
                       className="inline-flex items-center gap-1 text-[11px] text-[#0a66c2] hover:text-[#094fa0] transition-colors"
@@ -714,16 +779,26 @@ export function SignalsFeed() {
                       {copied ? <><Check className="h-3 w-3" /> Copied</> : <><Copy className="h-3 w-3" /> Copy</>}
                     </button>
                   </div>
-                  <div className="rounded-xl bg-[#fafaf9] border border-[#ebebeb] p-4">
-                    <p className="text-[13px] text-[#2a2a2a] leading-relaxed whitespace-pre-line">{generatedMsg}</p>
-                  </div>
-                  <div className="flex gap-2 mt-2">
+                  <textarea
+                    value={generatedMsg}
+                    onChange={(e) => setGeneratedMsg(e.target.value)}
+                    className="w-full rounded-xl bg-[#fafaf9] border border-[#ebebeb] p-4 text-[13px] text-[#2a2a2a] leading-relaxed resize-y focus:outline-none focus:ring-1 focus:ring-[#0a66c2]/40 focus:border-[#0a66c2]/40"
+                    rows={Math.max(3, generatedMsg.split("\n").length + 1)}
+                  />
+                  <div className="flex items-center gap-3 mt-2">
                     <button
                       onClick={() => generateMessage(generatedMsgType!)}
                       disabled={generatingMsg !== null}
                       className="inline-flex items-center gap-1 text-[11px] text-[#6a6a6a] hover:text-[#3a3a3a] transition-colors"
                     >
                       <Send className="h-3 w-3" /> Regenerate
+                    </button>
+                    <button
+                      onClick={saveToOutreach}
+                      disabled={savingToOutreach || savedToOutreach}
+                      className="inline-flex items-center gap-1 text-[11px] text-[#0a66c2] hover:text-[#094fa0] transition-colors disabled:opacity-50"
+                    >
+                      {savedToOutreach ? <><Check className="h-3 w-3" /> Saved to Outreach</> : savingToOutreach ? <><Loader2 className="h-3 w-3 animate-spin" /> Saving...</> : <><MessageSquare className="h-3 w-3" /> Save to Outreach</>}
                     </button>
                   </div>
                 </div>

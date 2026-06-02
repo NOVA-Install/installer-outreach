@@ -440,6 +440,28 @@ export const socialSignals = pgTable("social_signals", {
   status: text("status").default("new"), // "new" | "dismissed" | "actioned"
   signalType: text("signal_type").notNull(), // "post" | "repost"
   fetchedAt: text("fetched_at").notNull(),
+  generatedLinkedinMsg: text("generated_linkedin_msg"),
+  generatedEmailMsg: text("generated_email_msg"),
+});
+
+// Outreach messages — tracks drafted/sent messages to installer contacts
+export const outreachMessages = pgTable("outreach_messages", {
+  id: serial("id").primaryKey(),
+  installerId: integer("installer_id")
+    .notNull()
+    .references(() => installers.id),
+  signalId: integer("signal_id")
+    .references(() => socialSignals.id),
+  contactName: text("contact_name").notNull(),
+  contactLinkedinUrl: text("contact_linkedin_url"),
+  contactEmail: text("contact_email"),
+  contactPhone: text("contact_phone"),
+  platform: text("platform").notNull(), // "linkedin" | "email" | "call"
+  message: text("message").notNull(),
+  status: text("status").notNull().default("draft"), // "draft" | "approved" | "sent"
+  notes: text("notes"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
 });
 
 // App-wide settings (shared across all sessions)

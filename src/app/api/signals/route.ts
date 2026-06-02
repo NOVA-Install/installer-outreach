@@ -64,6 +64,8 @@ export async function GET(request: NextRequest) {
       status: socialSignals.status,
       signalType: socialSignals.signalType,
       fetchedAt: socialSignals.fetchedAt,
+      generatedLinkedinMsg: socialSignals.generatedLinkedinMsg,
+      generatedEmailMsg: socialSignals.generatedEmailMsg,
       companyName: installers.companyName,
       companyWebsite: installers.website,
       pipelineStage: installers.pipelineStage,
