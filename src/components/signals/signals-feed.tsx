@@ -17,6 +17,10 @@ import {
   XCircle,
   Loader2,
   Sparkles,
+  Mail,
+  Copy,
+  Check,
+  Send,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -169,6 +173,11 @@ export function SignalsFeed() {
   const [statusFilter, setStatusFilter] = useState<string>("new");
   const [selected, setSelected] = useState<Signal | null>(null);
   const [scoring, setScoring] = useState(false);
+  const [generatingMsg, setGeneratingMsg] = useState<"linkedin" | "email" | null>(null);
+  const [generatedMsg, setGeneratedMsg] = useState<string | null>(null);
+  const [generatedMsgType, setGeneratedMsgType] = useState<"linkedin" | "email" | null>(null);
+  const [msgContext, setMsgContext] = useState("");
+  const [copied, setCopied] = useState(false);
 
   const updateSignalStatus = async (signalId: number, status: string) => {
     await fetch(`/api/signals/${signalId}`, {
@@ -178,6 +187,44 @@ export function SignalsFeed() {
     });
     setSignals((prev) => prev.map((s) => s.id === signalId ? { ...s, status } : s));
     if (selected?.id === signalId) setSelected({ ...selected, status });
+  };
+
+  const generateMessage = async (messageType: "linkedin" | "email") => {
+    if (!selected) return;
+    setGeneratingMsg(messageType);
+    setGeneratedMsg(null);
+    setCopied(false);
+    try {
+      const res = await fetch("/api/signals/generate-message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          installerId: selected.installerId,
+          signalId: selected.id,
+          messageType,
+          additionalContext: msgContext || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setGeneratedMsg(data.message);
+        setGeneratedMsgType(messageType);
+      } else {
+        setGeneratedMsg(`Error: ${data.error}`);
+        setGeneratedMsgType(messageType);
+      }
+    } catch {
+      setGeneratedMsg("Error: Failed to generate message");
+      setGeneratedMsgType(messageType);
+    }
+    setGeneratingMsg(null);
+  };
+
+  const copyMessage = async () => {
+    if (!generatedMsg) return;
+    await navigator.clipboard.writeText(generatedMsg);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const scoreUnscored = async () => {
@@ -352,7 +399,7 @@ export function SignalsFeed() {
                     return (
                       <button
                         key={signal.id}
-                        onClick={() => setSelected(isSelected ? null : signal)}
+                        onClick={() => { setSelected(isSelected ? null : signal); setGeneratedMsg(null); setGeneratedMsgType(null); }}
                         className={`w-full text-left px-5 py-3 border-b border-[#f0f0f0] transition-colors cursor-pointer ${
                           isSelected
                             ? "bg-[#0a66c2]/5 border-l-2 border-l-[#0a66c2]"
@@ -623,6 +670,64 @@ export function SignalsFeed() {
                   </button>
                 )}
               </div>
+            </div>
+
+            {/* Message Generation */}
+            <div className="mt-5 pt-5 border-t border-[#f0f0f0]">
+              <p className="text-[13px] font-semibold text-[#1D1D1D] mb-3">Generate Outreach Message</p>
+              <textarea
+                value={msgContext}
+                onChange={(e) => setMsgContext(e.target.value)}
+                placeholder="Add context... e.g. 'we worked with them before in eco', 'they're in our target area', 'mention their recent growth'"
+                className="w-full h-16 rounded-lg border border-[#e5e5e5] bg-[#fafafa] px-3 py-2 text-[12px] placeholder:text-[#b0b0b0] focus:outline-none focus:ring-1 focus:ring-[#0a66c2]/40 focus:border-[#0a66c2]/40 resize-none"
+              />
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={() => generateMessage("linkedin")}
+                  disabled={generatingMsg !== null}
+                  className="inline-flex items-center gap-1.5 h-8 px-3.5 rounded-lg bg-[#0a66c2] text-white text-[12px] font-medium hover:bg-[#094fa0] transition-colors disabled:opacity-50"
+                >
+                  {generatingMsg === "linkedin" ? <Loader2 className="h-3 w-3 animate-spin" /> : <FaLinkedinIn className="h-3 w-3" />}
+                  LinkedIn DM
+                </button>
+                <button
+                  onClick={() => generateMessage("email")}
+                  disabled={generatingMsg !== null}
+                  className="inline-flex items-center gap-1.5 h-8 px-3.5 rounded-lg border border-[#e5e5e5] text-[12px] font-medium text-[#3a3a3a] hover:bg-[#fafafa] transition-colors disabled:opacity-50"
+                >
+                  {generatingMsg === "email" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
+                  Email
+                </button>
+              </div>
+
+              {/* Generated message output */}
+              {generatedMsg && (
+                <div className="mt-3">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[11px] font-medium text-[#8a8a8a] uppercase tracking-wider">
+                      {generatedMsgType === "linkedin" ? "LinkedIn Message" : "Email Draft"}
+                    </span>
+                    <button
+                      onClick={copyMessage}
+                      className="inline-flex items-center gap-1 text-[11px] text-[#0a66c2] hover:text-[#094fa0] transition-colors"
+                    >
+                      {copied ? <><Check className="h-3 w-3" /> Copied</> : <><Copy className="h-3 w-3" /> Copy</>}
+                    </button>
+                  </div>
+                  <div className="rounded-xl bg-[#fafaf9] border border-[#ebebeb] p-4">
+                    <p className="text-[13px] text-[#2a2a2a] leading-relaxed whitespace-pre-line">{generatedMsg}</p>
+                  </div>
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      onClick={() => generateMessage(generatedMsgType!)}
+                      disabled={generatingMsg !== null}
+                      className="inline-flex items-center gap-1 text-[11px] text-[#6a6a6a] hover:text-[#3a3a3a] transition-colors"
+                    >
+                      <Send className="h-3 w-3" /> Regenerate
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         ) : (
