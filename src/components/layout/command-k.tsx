@@ -99,13 +99,6 @@ function useQuickActions(): QuickAction[] {
           window.location.href = "/api/installers/export";
         },
       },
-      {
-        id: "data-cleanup",
-        label: "Data cleanup",
-        keywords: ["cleanup", "clean", "data", "duplicates", "fix"],
-        icon: Briefcase,
-        href: "/cleanup",
-      },
     ],
     [router]
   );
