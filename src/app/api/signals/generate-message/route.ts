@@ -150,16 +150,26 @@ ${formatInstructions}`;
     const result = await model.generateContent(prompt);
     let message = result.response.text().trim();
 
-    // Persist the generated message on the signal
+    // For email, also generate a short LinkedIn DM companion
+    let linkedinCompanion: string | null = null;
+    if (messageType === "email") {
+      // Extract the [FILL] topic from the generated email to reuse in the DM
+      const topicMatch = message.match(/saw your (?:post|email|message) (?:about|on) (.+?)[\.\,\n]/i);
+      const topic = topicMatch ? topicMatch[1].trim() : "your recent post";
+      const firstName = (signal.authorName || "").split(" ")[0] || "there";
+      linkedinCompanion = `Hi ${firstName}, saw your post about ${topic}. I think it's worth a chat. Just sent you an email with some more details. Chris`;
+    }
+
+    // Persist the generated message(s) on the signal
     await db
       .update(socialSignals)
       .set(messageType === "linkedin"
         ? { generatedLinkedinMsg: message }
-        : { generatedEmailMsg: message }
+        : { generatedEmailMsg: message, generatedLinkedinMsg: linkedinCompanion }
       )
       .where(eq(socialSignals.id, signalId));
 
-    return NextResponse.json({ message, messageType });
+    return NextResponse.json({ message, messageType, linkedinCompanion });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Message generation failed" },
