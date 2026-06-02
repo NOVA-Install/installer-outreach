@@ -67,8 +67,8 @@ export async function scrapeLinkedInPostsBatch(
           SELECT 1 FROM linkedin_contacts lc
           WHERE lc.installer_id = ${installers.id}
         )`,
-        // Never scraped or last scraped more than 7 days ago
-        sql`(${linkedinCompanyTracking.lastScrapedPostsAt} IS NULL OR ${linkedinCompanyTracking.lastScrapedPostsAt} < NOW() - INTERVAL '7 days')`
+        // Never scraped or last scraped before today
+        sql`(${linkedinCompanyTracking.lastScrapedPostsAt} IS NULL OR ${linkedinCompanyTracking.lastScrapedPostsAt}::timestamptz::date < CURRENT_DATE)`
       )
     )
     // Process never-scraped first, then oldest-scraped
@@ -95,7 +95,7 @@ export async function scrapeLinkedInPostsBatch(
           SELECT 1 FROM linkedin_contacts lc
           WHERE lc.installer_id = ${installers.id}
         )`,
-        sql`(${linkedinCompanyTracking.lastScrapedPostsAt} IS NULL OR ${linkedinCompanyTracking.lastScrapedPostsAt} < NOW() - INTERVAL '7 days')`
+        sql`(${linkedinCompanyTracking.lastScrapedPostsAt} IS NULL OR ${linkedinCompanyTracking.lastScrapedPostsAt}::timestamptz::date < CURRENT_DATE)`
       )
     );
 
@@ -421,7 +421,7 @@ export async function previewLinkedInPostsBulk() {
           AND EXISTS (
             SELECT 1 FROM linkedin_contacts lc WHERE lc.installer_id = i.id
           )
-          AND (lct.last_scraped_posts_at IS NULL OR lct.last_scraped_posts_at < NOW() - INTERVAL '7 days')
+          AND (lct.last_scraped_posts_at IS NULL OR lct.last_scraped_posts_at::timestamptz::date < CURRENT_DATE)
       ) as eligible,
       COUNT(*) FILTER (
         WHERE i.is_shortlisted = true
