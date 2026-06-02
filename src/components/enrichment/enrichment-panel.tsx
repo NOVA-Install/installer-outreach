@@ -677,12 +677,13 @@ function LinkedInEmployeesBulkConfig({ onRun, disabled }: { onRun: () => void; d
 
 function LinkedInPostsBulkConfig({ onRun, disabled }: { onRun: () => void; disabled: boolean }) {
   const [preview, setPreview] = useState<{ eligible: number; totalWithContacts: number; estimatedCost: string } | null>(null);
+  const [previewFailed, setPreviewFailed] = useState(false);
 
   useEffect(() => {
     fetch("/api/enrichment/linkedin-posts-bulk/preview")
-      .then((r) => r.json())
+      .then((r) => { if (!r.ok) throw new Error(); return r.json(); })
       .then((data) => setPreview(data))
-      .catch(() => {});
+      .catch(() => setPreviewFailed(true));
   }, []);
 
   return (
@@ -697,7 +698,7 @@ function LinkedInPostsBulkConfig({ onRun, disabled }: { onRun: () => void; disab
               {" · "}
               Est. cost: <span className="font-medium text-[#1D1D1D]">{preview.estimatedCost}</span>
             </span>
-          ) : "Loading preview..."}
+          ) : previewFailed ? "Failed to load preview" : "Loading preview..."}
         </span>
         <Button
           size="sm"
