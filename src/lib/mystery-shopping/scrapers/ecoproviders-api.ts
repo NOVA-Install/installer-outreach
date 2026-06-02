@@ -126,6 +126,8 @@ export async function scrapeEcoProvidersApi(
             price: p.price,
             isBattery: !isPanelOnly(p),
             batteryCost: isPanelOnly(p) ? 0 : p.price - (allResults[qty]?.find(isPanelOnly)?.price || 0),
+            batteryCapacityKwh: !isPanelOnly(p) ? extractCapacity(p.name) : null,
+            batteryModel: !isPanelOnly(p) ? p.name.replace(/^Aiko Neostar\s*\+?\s*/i, "").trim() : null,
           })),
         ])
       ),
@@ -181,10 +183,12 @@ function parseProductHtml(html: string): EcoProduct[] {
     }
   }
 
-  // Extract bill reduction and savings from the HTML
-  const reductionRegex = /(\d+)%\s*(?:bill\s*reduction|reduction)/gi;
-  const savingsRegex = /£([\d,]+(?:\.\d{2})?)\s*(?:bill\s*saving|saving)/gi;
-  const monthlyRegex = /£([\d,.]+)\s*(?:\/mo|per\s*month|monthly)/gi;
+  // Extract bill reduction, savings, and monthly price from the HTML.
+  // Values and labels are in separate elements (spans/imgs between them),
+  // so we match across HTML tags with [\s\S]*?.
+  const reductionRegex = /(\d+)%<\/span>[\s\S]*?bill\s*reduction/gi;
+  const savingsRegex = /£([\d,]+(?:\.\d{2})?)<\/span>[\s\S]*?bill\s*saving/gi;
+  const monthlyRegex = /id="monthly_total"[^>]*>£([\d,.]+)/gi;
 
   const reductions = [...html.matchAll(reductionRegex)].map((m) => parseInt(m[1]));
   const savings = [...html.matchAll(savingsRegex)].map((m) => parseFloat(m[1].replace(/,/g, "")));
