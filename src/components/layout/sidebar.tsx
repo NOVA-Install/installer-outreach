@@ -10,10 +10,11 @@ import {
   Sparkles,
   Upload,
   Download,
-  Wrench,
   Radio,
   ShoppingCart,
   TrendingUp,
+  Settings,
+  Send,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CommandK } from "@/components/layout/command-k";
@@ -23,7 +24,7 @@ const navItems = [
   { href: "/installers", label: "Installers", icon: Building2 },
   { href: "/map", label: "Map View", icon: Map },
   { href: "/signals", label: "Social Signals", icon: Radio },
-  { href: "/cleanup", label: "Data Cleanup", icon: Wrench },
+  { href: "/outreach", label: "Outreach", icon: Send },
   { href: "/enrichment", label: "Enrichment", icon: Sparkles },
   { href: "/price-tracker", label: "Price Tracker", icon: TrendingUp },
   { href: "/mystery-shopping", label: "Mystery Shopping", icon: ShoppingCart },
@@ -81,6 +82,18 @@ export function Sidebar() {
       {/* Bottom section */}
       <div className="px-2 pb-3">
         <div className="mb-1.5 mx-2.5 border-t border-white/[0.08]" />
+        <Link
+          href="/settings"
+          className={cn(
+            "flex items-center gap-2.5 rounded-lg px-2.5 py-[6px] text-[13px] font-medium transition-colors",
+            pathname.startsWith("/settings")
+              ? "bg-white/[0.08] text-white"
+              : "text-[#9a9a9a] hover:bg-white/[0.05] hover:text-white"
+          )}
+        >
+          <Settings className="h-[16px] w-[16px] shrink-0" />
+          Settings
+        </Link>
         <a
           href="/api/installers/export"
           className="flex items-center gap-2.5 rounded-lg px-2.5 py-[6px] text-[13px] font-medium text-[#9a9a9a] transition-colors hover:bg-white/[0.05] hover:text-white"

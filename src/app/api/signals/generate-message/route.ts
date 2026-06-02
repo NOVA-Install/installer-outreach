@@ -8,10 +8,31 @@ import {
   installerScores,
   socialSignals,
   marketingSignals,
+  appSettings,
 } from "@/lib/db/schema";
 import { eq, sql } from "drizzle-orm";
 
 export const maxDuration = 60;
+
+const DEFAULT_OUTREACH_PROMPT = `You are filling in a message template. The message is FIXED — you are only customising the parts marked with [FILL].
+
+TEMPLATE:
+---
+Hi {{contactName}}, saw your post about [FILL: write a natural, short summary of what their LinkedIn post is about — keep it under 15 words, lowercase, no quotes].{{additionalContext}} Thought it would be worth reaching out.
+
+We run a nationwide solar campaign and we're bringing on a small number of high performing installers in each area before we close it off. We've analysed every installer in your area across reviews, online presence, pricing and marketing.
+
+Happy to share where {{companyName}} ranks and how our campaign works if you're interested.
+---
+
+YOUR ONLY JOB:
+1. Replace [FILL] with a short, natural description of their LinkedIn post topic
+2. If there is additional context, weave it into the first paragraph naturally (e.g. "We worked together on ECO4, so thought it would be worth reaching out")
+3. If there is no additional context, just use "Thought it would be worth reaching out"
+4. Output the final message with NO other changes to the template text
+5. Do NOT add paragraphs, sentences, or information that isn't in the template
+6. Do NOT change the wording of paragraphs 2 or 3
+7. Do NOT add a sign-off, greeting, or subject line (unless email format is requested)`;
 
 export async function POST(request: NextRequest) {
   const apiKey = process.env.GOOGLE_AI_API_KEY;
@@ -31,7 +52,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
-  // Fetch installer + enrichment data in parallel
+  // Fetch installer + enrichment data + custom prompt in parallel
   const [
     [installer],
     [gReview],
@@ -40,6 +61,7 @@ export async function POST(request: NextRequest) {
     [signal],
     [marketing],
     [{ totalSignals }],
+    [promptSetting],
   ] = await Promise.all([
     db.select().from(installers).where(eq(installers.id, installerId)).limit(1),
     db.select().from(googleReviews).where(eq(googleReviews.installerId, installerId)).limit(1),
@@ -48,10 +70,21 @@ export async function POST(request: NextRequest) {
     db.select().from(socialSignals).where(eq(socialSignals.id, signalId)).limit(1),
     db.select().from(marketingSignals).where(eq(marketingSignals.installerId, installerId)).limit(1),
     db.select({ totalSignals: sql<number>`count(*)` }).from(socialSignals).where(eq(socialSignals.installerId, installerId)),
+    db.select().from(appSettings).where(eq(appSettings.key, "outreach_prompt")).limit(1),
   ]);
 
   if (!installer || !signal) {
     return NextResponse.json({ error: "Installer or signal not found" }, { status: 404 });
+  }
+
+  // Load custom prompt or use default
+  let customPrompt = DEFAULT_OUTREACH_PROMPT;
+  if (promptSetting) {
+    try {
+      customPrompt = JSON.parse(promptSetting.value);
+    } catch {
+      customPrompt = promptSetting.value;
+    }
   }
 
   // Build data points summary
@@ -81,46 +114,50 @@ export async function POST(request: NextRequest) {
     ? `Data points we have on ${installer.companyName}:\n${dataPoints.map(d => `- ${d}`).join("\n")}`
     : `We have limited data on ${installer.companyName} so far.`;
 
+  // Substitute template variables into the custom prompt
+  const renderedPrompt = customPrompt
+    .replace(/\{\{companyName\}\}/g, installer.companyName)
+    .replace(/\{\{contactName\}\}/g, signal.authorName || "Unknown")
+    .replace(/\{\{contactRole\}\}/g, signal.authorHeadline || "Unknown")
+    .replace(/\{\{location\}\}/g, installer.address || installer.postcode || "UK")
+    .replace(/\{\{linkedinPost\}\}/g, (signal.postText || "").slice(0, 800))
+    .replace(/\{\{dataPoints\}\}/g, messageType === "email" ? dataPointsSummary : "")
+    .replace(/\{\{additionalContext\}\}/g, additionalContext || "");
+
   const formatInstructions = messageType === "linkedin"
-    ? `Write a SHORT LinkedIn direct message (max 280 characters ideally, never more than 500). It should feel like a natural, casual DM — not a sales email. No subject line. Use first name if available. Keep it conversational, warm, and brief. Don't use bullet points. Don't be overly formal. No "Dear" or "Kind regards". End with a soft call to action like asking if they'd be open to a quick chat.`
-    : `Write a concise cold email with a subject line. Keep the body to 3-5 short paragraphs. Be professional but personable. Use first name if available. Include a clear but low-pressure call to action. End with a simple sign-off. Format as:\nSubject: ...\n\n[body]`;
+    ? `Output the completed template exactly as shown. No subject line. No sign-off.`
+    : `Add "Subject: ..." at the very top (a short, casual subject line). Then output the completed template. Add "Chris" as a sign-off at the end. Do NOT add any extra content.`;
 
-  const prompt = `You are writing an outreach message from NOVA to a solar installer company.
+  const prompt = `${renderedPrompt}
 
-ABOUT NOVA:
-- NOVA helps solar installers increase their installs
-- No retainer fees or long-term commitments — performance-based
-- The team previously built Fuse Energy (a retail energy company) and now helps local solar installers compete with the largest national installers
-- NOVA is partnering with a select number of installers in each area — this is exclusive, not mass outreach
-- NOVA analyses hundreds of data points per installer including reviews, online presence, marketing activity, and social signals
-
-TARGET INSTALLER:
+THE PERSON YOU'RE MESSAGING:
 - Company: ${installer.companyName}
+- Name: ${signal.authorName || "Unknown"}
+- Role: ${signal.authorHeadline || "Unknown"}
 - Location: ${installer.address || installer.postcode || "UK"}
-- Contact person: ${signal.authorName || "Unknown"}
-- Their role: ${signal.authorHeadline || "Unknown"}
-${dataPointsSummary}
+${messageType === "email" ? dataPointsSummary : ""}
 
-THEIR RECENT LINKEDIN POST (use this to personalise the opening — reference it naturally):
+THEIR RECENT LINKEDIN POST (reference something specific from this):
 "${(signal.postText || "").slice(0, 800)}"
 
-${additionalContext ? `ADDITIONAL CONTEXT FROM THE USER:\n${additionalContext}\n` : ""}
-${formatInstructions}
-
-Important:
-- Reference their LinkedIn post naturally in the opening to show you've actually read it — don't be generic
-- Weave in 1-2 specific data points about their business if available (e.g. reviews, rating) to show you've done your homework
-- Keep the tone friendly and confident, not desperate or salesy
-- Make it clear this is selective — NOVA doesn't work with everyone
-- Do NOT use placeholder brackets like [Name] — use the actual data provided
-- Do NOT make up data points — only reference what's provided above`;
+${additionalContext ? `EXTRA CONTEXT:\n${additionalContext}\n` : ""}
+${formatInstructions}`;
 
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
   try {
     const result = await model.generateContent(prompt);
-    const message = result.response.text().trim();
+    let message = result.response.text().trim();
+
+    // Persist the generated message on the signal
+    await db
+      .update(socialSignals)
+      .set(messageType === "linkedin"
+        ? { generatedLinkedinMsg: message }
+        : { generatedEmailMsg: message }
+      )
+      .where(eq(socialSignals.id, signalId));
 
     return NextResponse.json({ message, messageType });
   } catch (err) {
