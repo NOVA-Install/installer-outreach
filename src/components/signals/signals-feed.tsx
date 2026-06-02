@@ -180,6 +180,8 @@ export function SignalsFeed() {
   const [generatedMsgType, setGeneratedMsgType] = useState<"linkedin" | "email" | null>(null);
   const [msgContext, setMsgContext] = useState("");
   const [copied, setCopied] = useState(false);
+  const [copiedCompanion, setCopiedCompanion] = useState(false);
+  const [linkedinCompanion, setLinkedinCompanion] = useState<string | null>(null);
   const [savedToOutreach, setSavedToOutreach] = useState(false);
   const [savingToOutreach, setSavingToOutreach] = useState(false);
 
@@ -224,7 +226,9 @@ export function SignalsFeed() {
     if (!selected) return;
     setGeneratingMsg(messageType);
     setGeneratedMsg(null);
+    setLinkedinCompanion(null);
     setCopied(false);
+    setCopiedCompanion(false);
     setSavedToOutreach(false);
     try {
       const res = await fetch("/api/signals/generate-message", {
@@ -241,10 +245,11 @@ export function SignalsFeed() {
       if (res.ok) {
         setGeneratedMsg(data.message);
         setGeneratedMsgType(messageType);
+        if (data.linkedinCompanion) setLinkedinCompanion(data.linkedinCompanion);
         // Update the signal in the list so it persists across re-selections
         const updatedField = messageType === "linkedin"
           ? { generatedLinkedinMsg: data.message }
-          : { generatedEmailMsg: data.message };
+          : { generatedEmailMsg: data.message, generatedLinkedinMsg: data.linkedinCompanion };
         setSignals((prev) => prev.map((s) => s.id === selected.id ? { ...s, ...updatedField } : s));
         setSelected({ ...selected, ...updatedField });
       } else {
@@ -801,6 +806,33 @@ export function SignalsFeed() {
                       {savedToOutreach ? <><Check className="h-3 w-3" /> Saved to Outreach</> : savingToOutreach ? <><Loader2 className="h-3 w-3 animate-spin" /> Saving...</> : <><MessageSquare className="h-3 w-3" /> Save to Outreach</>}
                     </button>
                   </div>
+                </div>
+              )}
+
+              {/* LinkedIn companion DM (shown when generating email) */}
+              {linkedinCompanion && generatedMsgType === "email" && (
+                <div className="mt-4">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-2">
+                      <FaLinkedinIn className="h-3 w-3 text-[#0a66c2]" />
+                      <span className="text-[11px] font-medium text-[#8a8a8a] uppercase tracking-wider">LinkedIn DM companion</span>
+                      <span className={`text-[11px] tabular-nums ${linkedinCompanion.length > 400 ? "text-red-500 font-medium" : "text-[#b0b0b0]"}`}>
+                        {linkedinCompanion.length} chars
+                      </span>
+                    </div>
+                    <button
+                      onClick={async () => { await navigator.clipboard.writeText(linkedinCompanion); setCopiedCompanion(true); setTimeout(() => setCopiedCompanion(false), 2000); }}
+                      className="inline-flex items-center gap-1 text-[11px] text-[#0a66c2] hover:text-[#094fa0] transition-colors"
+                    >
+                      {copiedCompanion ? <><Check className="h-3 w-3" /> Copied</> : <><Copy className="h-3 w-3" /> Copy</>}
+                    </button>
+                  </div>
+                  <textarea
+                    value={linkedinCompanion}
+                    onChange={(e) => setLinkedinCompanion(e.target.value)}
+                    className="w-full rounded-xl bg-[#f0f7ff] border border-[#0a66c2]/15 p-4 text-[13px] text-[#2a2a2a] leading-relaxed resize-y focus:outline-none focus:ring-1 focus:ring-[#0a66c2]/40 focus:border-[#0a66c2]/40"
+                    rows={3}
+                  />
                 </div>
               )}
             </div>
