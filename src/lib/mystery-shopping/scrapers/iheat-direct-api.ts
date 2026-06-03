@@ -124,10 +124,16 @@ export async function scrapeIheatApi(
     // Step 2: Submit quotes at different consumption levels to get different panel counts
     // iHeat determines panel count from electricityEstimate — we can't request a specific count
     const consumptionLevels = [
-      { elec: 1500, people: 2 },  // ~4-5 panels
-      { elec: 2500, people: 3 },  // ~6-7 panels
-      { elec: 3500, people: 4 },  // ~8-10 panels
-      { elec: 5000, people: 5 },  // ~12-14 panels
+      { elec: 1000, people: 1 },
+      { elec: 1500, people: 2 },
+      { elec: 2000, people: 2 },
+      { elec: 2500, people: 3 },
+      { elec: 3000, people: 3 },
+      { elec: 3500, people: 4 },
+      { elec: 4000, people: 4 },
+      { elec: 5000, people: 5 },
+      { elec: 6500, people: 5 },
+      { elec: 8000, people: 5 },
     ];
 
     const allQuoteResults: Array<{ panelCount: number; products: IheatProduct[] }> = [];
@@ -236,7 +242,11 @@ export async function scrapeIheatApi(
       });
 
       if (products.length > 0) {
-        allQuoteResults.push({ panelCount: products[0].panel_quantity, products });
+        const pc = products[0].panel_quantity;
+        // Skip if we already have a result for this panel count
+        if (!allQuoteResults.some((r) => r.panelCount === pc)) {
+          allQuoteResults.push({ panelCount: pc, products });
+        }
       }
 
       // Brief delay between quotes
