@@ -59,7 +59,7 @@ import { EnrichGoogleAdsButton } from "@/components/installers/enrich-google-ads
 import { LinkedInSearchButton } from "@/components/installers/linkedin-search-button";
 import { ExpandablePostText } from "@/components/installers/expandable-post-text";
 import { LinkedInActivityToggle } from "@/components/installers/linkedin-activity-section";
-import { CALCULATOR_REGISTRY } from "@/lib/mystery-shopping/calculator-scraper";
+import { SCRAPER_REGISTRY } from "@/lib/mystery-shopping/scraper-registry";
 import { InstallerPriceTracker } from "@/components/price-tracker/installer-price-tracker";
 
 const tierStyles: Record<string, string> = {
@@ -183,7 +183,7 @@ export default async function InstallerDetailPage({
     ]);
 
   // Price tracker data
-  const scraperConfig = CALCULATOR_REGISTRY.find((c) => c.installerId === installerId) ?? null;
+  const scraperConfig = SCRAPER_REGISTRY.find((c) => c.installerId === installerId) ?? null;
   const priceScrapes = scraperConfig
     ? await db.select().from(priceScrapeResults).where(eq(priceScrapeResults.installerId, installerId)).orderBy(desc(priceScrapeResults.scrapedAt)).limit(10)
     : [];
