@@ -2,12 +2,12 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { priceScrapeResults, installers } from "@/lib/db/schema";
 import { eq, desc, sql } from "drizzle-orm";
-import { CALCULATOR_REGISTRY } from "@/lib/mystery-shopping/calculator-scraper";
+import { SCRAPER_REGISTRY } from "@/lib/mystery-shopping/scraper-registry";
 
 export async function GET() {
   // Return all configured scrapers with their latest result
   const configs = await Promise.all(
-    CALCULATOR_REGISTRY.map(async (config) => {
+    SCRAPER_REGISTRY.map(async (config) => {
       // Get installer info
       const [installer] = await db
         .select({
