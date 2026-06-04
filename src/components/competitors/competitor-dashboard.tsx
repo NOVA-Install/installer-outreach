@@ -15,6 +15,8 @@ import {
   Building2,
   X,
   ChevronRight,
+  Loader2,
+  Download,
 } from "lucide-react";
 import { FaLinkedinIn } from "react-icons/fa6";
 import Link from "next/link";
@@ -74,6 +76,9 @@ export function CompetitorDashboard() {
   // Edit linkedin
   const [editingLinkedin, setEditingLinkedin] = useState<number | null>(null);
   const [linkedinInput, setLinkedinInput] = useState("");
+
+  // Scrape employees
+  const [scraping, setScraping] = useState(false);
 
   const fetchCompetitors = useCallback(async () => {
     const res = await fetch("/api/competitors");
@@ -144,6 +149,26 @@ export function CompetitorDashboard() {
     const data = await res.json();
     setSearchResults(data.installers || []);
     setSearching(false);
+  };
+
+  const scrapeEmployees = async (competitorId: number) => {
+    setScraping(true);
+    try {
+      const res = await fetch(`/api/competitors/${competitorId}/scrape-employees`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Scrape failed");
+        return;
+      }
+      toast.success(`Found ${data.total} employees (${data.new} new)`);
+      fetchCompetitors();
+    } catch {
+      toast.error("Failed to scrape employees");
+    } finally {
+      setScraping(false);
+    }
   };
 
   const addClient = async (installerId: number) => {
@@ -348,8 +373,8 @@ export function CompetitorDashboard() {
                 </Button>
               </div>
 
-              {/* Stats */}
-              <div className="flex gap-4 mt-3">
+              {/* Stats + Actions */}
+              <div className="flex items-center gap-4 mt-3">
                 <div className="flex items-center gap-2 px-3 py-1.5 bg-[#fafafa] rounded-lg border border-[#ebebeb]">
                   <Building2 className="h-3.5 w-3.5 text-[#9a9a9a]" />
                   <span className="text-[13px] font-medium">{selected.clientCount}</span>
@@ -364,6 +389,26 @@ export function CompetitorDashboard() {
                   <FileText className="h-3.5 w-3.5 text-[#9a9a9a]" />
                   <span className="text-[13px] font-medium">{selected.postCount}</span>
                   <span className="text-[11px] text-[#9a9a9a]">posts</span>
+                </div>
+                <div className="ml-auto">
+                  {selected.linkedinUrl ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 text-[12px] gap-1.5"
+                      disabled={scraping}
+                      onClick={() => scrapeEmployees(selected.id)}
+                    >
+                      {scraping ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Download className="h-3.5 w-3.5" />
+                      )}
+                      {scraping ? "Scraping..." : "Scrape Employees"}
+                    </Button>
+                  ) : (
+                    <span className="text-[11px] text-[#9a9a9a]">Add LinkedIn URL to scrape employees</span>
+                  )}
                 </div>
               </div>
             </div>
