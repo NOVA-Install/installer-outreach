@@ -77,8 +77,9 @@ export function CompetitorDashboard() {
   const [editingLinkedin, setEditingLinkedin] = useState<number | null>(null);
   const [linkedinInput, setLinkedinInput] = useState("");
 
-  // Scrape employees
+  // Scrape
   const [scraping, setScraping] = useState(false);
+  const [scrapingPosts, setScrapingPosts] = useState(false);
 
   const fetchCompetitors = useCallback(async () => {
     const res = await fetch("/api/competitors");
@@ -168,6 +169,29 @@ export function CompetitorDashboard() {
       toast.error("Failed to scrape employees");
     } finally {
       setScraping(false);
+    }
+  };
+
+  const scrapePosts = async (competitorId: number) => {
+    setScrapingPosts(true);
+    try {
+      const res = await fetch(`/api/competitors/${competitorId}/scrape-posts`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Scrape failed");
+        return;
+      }
+      toast.success(
+        `Found ${data.posts} posts, ${data.engagements} engagements` +
+          (data.matchedInstallers > 0 ? ` (${data.matchedInstallers} matched to installers!)` : "")
+      );
+      fetchCompetitors();
+    } catch {
+      toast.error("Failed to scrape posts");
+    } finally {
+      setScrapingPosts(false);
     }
   };
 
@@ -390,24 +414,41 @@ export function CompetitorDashboard() {
                   <span className="text-[13px] font-medium">{selected.postCount}</span>
                   <span className="text-[11px] text-[#9a9a9a]">posts</span>
                 </div>
-                <div className="ml-auto">
+                <div className="ml-auto flex items-center gap-2">
                   {selected.linkedinUrl ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 text-[12px] gap-1.5"
-                      disabled={scraping}
-                      onClick={() => scrapeEmployees(selected.id)}
-                    >
-                      {scraping ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Download className="h-3.5 w-3.5" />
-                      )}
-                      {scraping ? "Scraping..." : "Scrape Employees"}
-                    </Button>
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 text-[12px] gap-1.5"
+                        disabled={scraping}
+                        onClick={() => scrapeEmployees(selected.id)}
+                      >
+                        {scraping ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Users className="h-3.5 w-3.5" />
+                        )}
+                        {scraping ? "Scraping..." : "Scrape Employees"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 text-[12px] gap-1.5"
+                        disabled={scrapingPosts || selected.employeeCount === 0}
+                        onClick={() => scrapePosts(selected.id)}
+                        title={selected.employeeCount === 0 ? "Scrape employees first" : undefined}
+                      >
+                        {scrapingPosts ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <FileText className="h-3.5 w-3.5" />
+                        )}
+                        {scrapingPosts ? "Scraping..." : "Scrape Posts & Reactions"}
+                      </Button>
+                    </>
                   ) : (
-                    <span className="text-[11px] text-[#9a9a9a]">Add LinkedIn URL to scrape employees</span>
+                    <span className="text-[11px] text-[#9a9a9a]">Add LinkedIn URL to scrape</span>
                   )}
                 </div>
               </div>
