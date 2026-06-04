@@ -49,6 +49,17 @@ interface Client {
   pipelineStage: string | null;
 }
 
+interface Employee {
+  id: number;
+  competitorId: number;
+  fullName: string;
+  headline: string | null;
+  profileUrl: string | null;
+  avatarUrl: string | null;
+  role: string | null;
+  lastSeenAt: string | null;
+}
+
 interface InstallerSearchResult {
   id: number;
   companyName: string;
@@ -60,6 +71,7 @@ export function CompetitorDashboard() {
   const [competitors, setCompetitors] = useState<Competitor[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [clientsLoading, setClientsLoading] = useState(false);
 
@@ -100,9 +112,18 @@ export function CompetitorDashboard() {
     fetchCompetitors();
   }, [fetchCompetitors]);
 
+  const fetchEmployees = useCallback(async (competitorId: number) => {
+    const res = await fetch(`/api/competitors/${competitorId}/employees`);
+    const data = await res.json();
+    setEmployees(data);
+  }, []);
+
   useEffect(() => {
-    if (selectedId) fetchClients(selectedId);
-  }, [selectedId, fetchClients]);
+    if (selectedId) {
+      fetchClients(selectedId);
+      fetchEmployees(selectedId);
+    }
+  }, [selectedId, fetchClients, fetchEmployees]);
 
   const addCompetitor = async () => {
     if (!newName.trim()) return;
@@ -165,6 +186,7 @@ export function CompetitorDashboard() {
       }
       toast.success(`Found ${data.total} employees (${data.new} new)`);
       fetchCompetitors();
+      fetchEmployees(competitorId);
     } catch {
       toast.error("Failed to scrape employees");
     } finally {
@@ -598,6 +620,68 @@ export function CompetitorDashboard() {
                 </div>
               )}
             </div>
+
+            {/* Employees */}
+            {employees.length > 0 && (
+              <div className="px-6 py-4 border-t border-[#ebebeb]">
+                <h3 className="text-[12px] font-semibold text-[#8a8a8a] uppercase tracking-[0.08em] mb-3">
+                  Employees ({employees.length})
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {employees.map((emp) => (
+                    <div
+                      key={emp.id}
+                      className="flex items-center gap-3 p-2.5 rounded-lg border border-[#f0f0f0] hover:border-[#e0e0e0] hover:bg-[#fafafa] transition-colors"
+                    >
+                      {emp.avatarUrl ? (
+                        <img
+                          src={emp.avatarUrl}
+                          alt=""
+                          className="h-9 w-9 rounded-full object-cover shrink-0"
+                        />
+                      ) : (
+                        <div className="h-9 w-9 rounded-full bg-[#f0f0f0] flex items-center justify-center shrink-0">
+                          <span className="text-[12px] font-semibold text-[#9a9a9a]">
+                            {emp.fullName[0]?.toUpperCase()}
+                          </span>
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        {emp.profileUrl ? (
+                          <a
+                            href={emp.profileUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[13px] font-medium text-[#1D1D1D] hover:text-[#0a66c2] transition-colors truncate block"
+                          >
+                            {emp.fullName}
+                          </a>
+                        ) : (
+                          <span className="text-[13px] font-medium text-[#1D1D1D] truncate block">
+                            {emp.fullName}
+                          </span>
+                        )}
+                        {(emp.role || emp.headline) && (
+                          <p className="text-[11px] text-[#9a9a9a] truncate">
+                            {emp.role || emp.headline}
+                          </p>
+                        )}
+                      </div>
+                      {emp.profileUrl && (
+                        <a
+                          href={emp.profileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="shrink-0"
+                        >
+                          <FaLinkedinIn className="h-3.5 w-3.5 text-[#0a66c2]/40 hover:text-[#0a66c2] transition-colors" />
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="flex items-center justify-center h-full text-[#9a9a9a]">
