@@ -622,6 +622,97 @@ export const priceScrapeResults = pgTable("price_scrape_results", {
     .$defaultFn(() => new Date().toISOString()),
 });
 
+// Competitors — marketing agencies and their installer clients
+export const competitors = pgTable("competitors", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  website: text("website"),
+  linkedinUrl: text("linkedin_url"),
+  linkedinSlug: text("linkedin_slug"), // e.g. "we-build-trades" from the URL
+  notes: text("notes"),
+  createdAt: text("created_at")
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
+});
+
+export const competitorClients = pgTable("competitor_clients", {
+  id: serial("id").primaryKey(),
+  competitorId: integer("competitor_id")
+    .notNull()
+    .references(() => competitors.id),
+  installerId: integer("installer_id")
+    .notNull()
+    .references(() => installers.id),
+  source: text("source").default("manual"), // manual | linkedin_engagement
+  confidence: real("confidence"), // 0-1 for auto-detected clients
+  notes: text("notes"),
+  addedAt: text("added_at")
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
+});
+
+// Competitor employees scraped from LinkedIn
+export const competitorEmployees = pgTable("competitor_employees", {
+  id: serial("id").primaryKey(),
+  competitorId: integer("competitor_id")
+    .notNull()
+    .references(() => competitors.id),
+  fullName: text("full_name").notNull(),
+  headline: text("headline"),
+  profileUrl: text("profile_url"),
+  avatarUrl: text("avatar_url"),
+  role: text("role"), // parsed from headline
+  lastSeenAt: text("last_seen_at"),
+  createdAt: text("created_at")
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
+});
+
+// Posts by competitor company or employees
+export const competitorPosts = pgTable("competitor_posts", {
+  id: serial("id").primaryKey(),
+  competitorId: integer("competitor_id")
+    .notNull()
+    .references(() => competitors.id),
+  employeeId: integer("employee_id")
+    .references(() => competitorEmployees.id),
+  postUrl: text("post_url"),
+  postId: text("post_id").unique(),
+  authorName: text("author_name"),
+  postText: text("post_text"),
+  postedAt: text("posted_at"),
+  likes: integer("likes"),
+  comments: integer("comments"),
+  shares: integer("shares"),
+  scrapedAt: text("scraped_at")
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
+});
+
+// Engagement on competitor posts — installers who react/comment
+export const competitorPostEngagement = pgTable("competitor_post_engagement", {
+  id: serial("id").primaryKey(),
+  postId: integer("post_id")
+    .notNull()
+    .references(() => competitorPosts.id),
+  competitorId: integer("competitor_id")
+    .notNull()
+    .references(() => competitors.id),
+  // The person who engaged
+  engagerName: text("engager_name").notNull(),
+  engagerHeadline: text("engager_headline"),
+  engagerProfileUrl: text("engager_profile_url"),
+  engagerCompany: text("engager_company"),
+  // Matched installer (if we can match to our DB)
+  installerId: integer("installer_id")
+    .references(() => installers.id),
+  engagementType: text("engagement_type").notNull(), // like | comment | repost
+  commentText: text("comment_text"),
+  scrapedAt: text("scraped_at")
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
+});
+
 // Mystery Shopping — email personas for outreach
 export const mysteryShopEmailAccounts = pgTable("mystery_shop_email_accounts", {
   id: serial("id").primaryKey(),
