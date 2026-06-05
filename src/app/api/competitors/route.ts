@@ -13,10 +13,10 @@ export async function GET() {
       linkedinSlug: competitors.linkedinSlug,
       notes: competitors.notes,
       createdAt: competitors.createdAt,
-      clientCount: sql<number>`(SELECT COUNT(*)::int FROM competitor_clients WHERE competitor_id = ${competitors.id})`,
-      employeeCount: sql<number>`(SELECT COUNT(*)::int FROM competitor_employees WHERE competitor_id = ${competitors.id})`,
-      postCount: sql<number>`(SELECT COUNT(*)::int FROM competitor_posts WHERE competitor_id = ${competitors.id})`,
-      engagementCount: sql<number>`(SELECT COUNT(DISTINCT engager_profile_url)::int FROM competitor_post_engagement WHERE competitor_id = ${competitors.id})`,
+      clientCount: sql<number>`(SELECT COUNT(*)::int FROM competitor_clients WHERE competitor_id = competitors.id)`.mapWith(Number),
+      employeeCount: sql<number>`(SELECT COUNT(*)::int FROM competitor_employees WHERE competitor_id = competitors.id)`.mapWith(Number),
+      postCount: sql<number>`(SELECT COUNT(*)::int FROM competitor_posts WHERE competitor_id = competitors.id)`.mapWith(Number),
+      engagementCount: sql<number>`(SELECT COUNT(DISTINCT engager_profile_url)::int FROM competitor_post_engagement WHERE competitor_id = competitors.id)`.mapWith(Number),
     })
     .from(competitors)
     .orderBy(competitors.name);
