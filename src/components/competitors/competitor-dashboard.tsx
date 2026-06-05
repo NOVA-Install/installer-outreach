@@ -205,13 +205,9 @@ export function CompetitorDashboard() {
         toast.error(data.error || "Scrape failed");
         return;
       }
-      toast.success(
-        `Found ${data.posts} posts, ${data.engagements} engagements` +
-          (data.matchedInstallers > 0 ? ` (${data.matchedInstallers} matched to installers!)` : "")
-      );
-      fetchCompetitors();
+      toast.success("Scraping posts & reactions in the background. This may take a few minutes.");
     } catch {
-      toast.error("Failed to scrape posts");
+      toast.error("Failed to start scrape");
     } finally {
       setScrapingPosts(false);
     }
