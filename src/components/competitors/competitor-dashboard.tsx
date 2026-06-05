@@ -15,8 +15,13 @@ import {
   Building2,
   X,
   ChevronRight,
+  ChevronDown,
   Loader2,
   Download,
+  Heart,
+  MessageSquare,
+  Link2,
+  RefreshCw,
 } from "lucide-react";
 import { FaLinkedinIn } from "react-icons/fa6";
 import Link from "next/link";
@@ -67,6 +72,35 @@ interface InstallerSearchResult {
   postcode: string | null;
 }
 
+interface Post {
+  id: number;
+  postUrl: string | null;
+  authorName: string | null;
+  postText: string | null;
+  postedAt: string | null;
+  likes: number | null;
+  comments: number | null;
+  shares: number | null;
+  employeeId: number | null;
+  scrapedAt: string;
+  engagementCount: number;
+  matchedCount: number;
+}
+
+interface Engagement {
+  id: number;
+  engagerName: string;
+  engagerProfileId: string | null;
+  engagerHeadline: string | null;
+  engagerProfileUrl: string | null;
+  engagerCompany: string | null;
+  engagementType: string;
+  commentText: string | null;
+  installerId: number | null;
+  installerName: string | null;
+  installerPostcode: string | null;
+}
+
 export function CompetitorDashboard() {
   const [competitors, setCompetitors] = useState<Competitor[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -92,6 +126,14 @@ export function CompetitorDashboard() {
   // Scrape
   const [scraping, setScraping] = useState(false);
   const [scrapingPosts, setScrapingPosts] = useState(false);
+  const [scrapingEngagement, setScrapingEngagement] = useState(false);
+
+  // Posts + engagement
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [postsLoading, setPostsLoading] = useState(false);
+  const [expandedPostId, setExpandedPostId] = useState<number | null>(null);
+  const [engagementByPost, setEngagementByPost] = useState<Record<number, Engagement[]>>({});
+  const [engagementLoading, setEngagementLoading] = useState<number | null>(null);
 
   const fetchCompetitors = useCallback(async () => {
     const res = await fetch("/api/competitors");
@@ -118,12 +160,58 @@ export function CompetitorDashboard() {
     setEmployees(data);
   }, []);
 
+  const fetchPosts = useCallback(async (competitorId: number) => {
+    setPostsLoading(true);
+    const res = await fetch(`/api/competitors/${competitorId}/posts`);
+    const data = await res.json();
+    setPosts(data);
+    setPostsLoading(false);
+  }, []);
+
+  const fetchEngagement = useCallback(async (competitorId: number, postId: number) => {
+    setEngagementLoading(postId);
+    const res = await fetch(`/api/competitors/${competitorId}/engagement?postId=${postId}`);
+    const data = await res.json();
+    setEngagementByPost((prev) => ({ ...prev, [postId]: data }));
+    setEngagementLoading(null);
+  }, []);
+
   useEffect(() => {
     if (selectedId) {
       fetchClients(selectedId);
       fetchEmployees(selectedId);
+      fetchPosts(selectedId);
+      setExpandedPostId(null);
+      setEngagementByPost({});
     }
-  }, [selectedId, fetchClients, fetchEmployees]);
+  }, [selectedId, fetchClients, fetchEmployees, fetchPosts]);
+
+  const togglePost = (postId: number) => {
+    if (expandedPostId === postId) {
+      setExpandedPostId(null);
+      return;
+    }
+    setExpandedPostId(postId);
+    if (selectedId && !engagementByPost[postId]) {
+      fetchEngagement(selectedId, postId);
+    }
+  };
+
+  const linkEngagement = async (
+    postId: number,
+    engagementId: number,
+    installerId: number | null
+  ) => {
+    if (!selectedId) return;
+    await fetch(`/api/competitors/${selectedId}/engagement`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ engagementId, installerId }),
+    });
+    await fetchEngagement(selectedId, postId);
+    fetchPosts(selectedId);
+    toast.success(installerId ? "Linked to installer" : "Link removed");
+  };
 
   const addCompetitor = async () => {
     if (!newName.trim()) return;
@@ -211,6 +299,34 @@ export function CompetitorDashboard() {
     } finally {
       setScrapingPosts(false);
     }
+  };
+
+  const scrapeEngagement = async (competitorId: number) => {
+    setScrapingEngagement(true);
+    try {
+      const res = await fetch(`/api/competitors/${competitorId}/scrape-engagement`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Scrape failed");
+        return;
+      }
+      toast.success(
+        "Scraping reactions & comments in the background. Hit refresh on the Posts list in a minute or two."
+      );
+    } catch {
+      toast.error("Failed to start scrape");
+    } finally {
+      setScrapingEngagement(false);
+    }
+  };
+
+  const refreshPosts = async () => {
+    if (!selectedId) return;
+    setEngagementByPost({});
+    await fetchPosts(selectedId);
+    if (expandedPostId) fetchEngagement(selectedId, expandedPostId);
   };
 
   const addClient = async (installerId: number) => {
@@ -464,6 +580,25 @@ export function CompetitorDashboard() {
                         )}
                         {scrapingPosts ? "Scraping..." : "Scrape Posts & Reactions"}
                       </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 text-[12px] gap-1.5"
+                        disabled={scrapingEngagement || selected.postCount === 0}
+                        onClick={() => scrapeEngagement(selected.id)}
+                        title={
+                          selected.postCount === 0
+                            ? "Scrape posts first"
+                            : "Re-fetch reactions & comments for stored posts"
+                        }
+                      >
+                        {scrapingEngagement ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Heart className="h-3.5 w-3.5" />
+                        )}
+                        {scrapingEngagement ? "Scraping..." : "Get Reactions & Comments"}
+                      </Button>
                     </>
                   ) : (
                     <span className="text-[11px] text-[#9a9a9a]">Add LinkedIn URL to scrape</span>
@@ -678,6 +813,177 @@ export function CompetitorDashboard() {
                 </div>
               </div>
             )}
+
+            {/* Posts */}
+            <div className="px-6 py-4 border-t border-[#ebebeb]">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-[12px] font-semibold text-[#8a8a8a] uppercase tracking-[0.08em]">
+                  Posts {posts.length > 0 && `(${posts.length})`}
+                </h3>
+                {posts.length > 0 && (
+                  <button
+                    onClick={refreshPosts}
+                    disabled={postsLoading}
+                    className="inline-flex items-center gap-1 text-[11px] text-[#9a9a9a] hover:text-[#4ABDE8] transition-colors"
+                    title="Refresh posts & engagement"
+                  >
+                    <RefreshCw
+                      className={`h-3 w-3 ${postsLoading ? "animate-spin" : ""}`}
+                    />
+                    Refresh
+                  </button>
+                )}
+              </div>
+
+              {postsLoading ? (
+                <p className="text-[13px] text-[#9a9a9a]">Loading posts...</p>
+              ) : posts.length === 0 ? (
+                <div className="text-center py-8 text-[#9a9a9a]">
+                  <FileText className="h-8 w-8 mx-auto mb-2 text-[#d0d0d0]" />
+                  <p className="text-[13px]">No posts scraped yet</p>
+                  <p className="text-[11px] mt-1">
+                    Use &ldquo;Scrape Posts &amp; Reactions&rdquo; above to pull recent posts
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {posts.map((post) => {
+                    const expanded = expandedPostId === post.id;
+                    const engagement = engagementByPost[post.id] || [];
+                    return (
+                      <div
+                        key={post.id}
+                        className="border border-[#ebebeb] rounded-lg overflow-hidden"
+                      >
+                        {/* Post header — click to expand */}
+                        <button
+                          onClick={() => togglePost(post.id)}
+                          className="w-full text-left px-4 py-3 hover:bg-[#fafafa] transition-colors"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[13px] font-medium text-[#1D1D1D] truncate">
+                                  {post.authorName || "Unknown author"}
+                                </span>
+                                {post.postedAt && (
+                                  <span className="text-[11px] text-[#9a9a9a] shrink-0">
+                                    {post.postedAt}
+                                  </span>
+                                )}
+                              </div>
+                              {post.postText && (
+                                <p className="text-[12px] text-[#6a6a6a] mt-1 line-clamp-2">
+                                  {post.postText}
+                                </p>
+                              )}
+                              <div className="flex items-center gap-3 mt-2 text-[11px] text-[#9a9a9a]">
+                                <span className="flex items-center gap-1">
+                                  <Heart className="h-3 w-3" /> {post.likes ?? 0}
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <MessageSquare className="h-3 w-3" /> {post.comments ?? 0}
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <Users className="h-3 w-3" /> {post.engagementCount} captured
+                                </span>
+                                {post.matchedCount > 0 && (
+                                  <span className="flex items-center gap-1 text-[#4ABDE8] font-medium">
+                                    <Link2 className="h-3 w-3" /> {post.matchedCount} matched
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {post.postUrl && (
+                                <a
+                                  href={post.postUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="text-[#0a66c2]/40 hover:text-[#0a66c2]"
+                                >
+                                  <FaLinkedinIn className="h-3.5 w-3.5" />
+                                </a>
+                              )}
+                              {expanded ? (
+                                <ChevronDown className="h-4 w-4 text-[#9a9a9a]" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4 text-[#d0d0d0]" />
+                              )}
+                            </div>
+                          </div>
+                        </button>
+
+                        {/* Engagement list */}
+                        {expanded && (
+                          <div className="border-t border-[#f0f0f0] bg-[#fcfcfc] px-4 py-3">
+                            {engagementLoading === post.id ? (
+                              <p className="text-[12px] text-[#9a9a9a]">Loading engagement...</p>
+                            ) : engagement.length === 0 ? (
+                              <p className="text-[12px] text-[#9a9a9a]">
+                                No reactions or comments captured for this post.
+                              </p>
+                            ) : (
+                              <div className="space-y-1.5">
+                                {engagement.map((eng) => (
+                                  <div
+                                    key={eng.id}
+                                    className="flex items-start gap-2 py-1.5 border-b border-[#f0f0f0] last:border-0"
+                                  >
+                                    {eng.engagementType === "comment" ? (
+                                      <MessageSquare className="h-3.5 w-3.5 text-[#9a9a9a] mt-0.5 shrink-0" />
+                                    ) : (
+                                      <Heart className="h-3.5 w-3.5 text-[#e0738a] mt-0.5 shrink-0" />
+                                    )}
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        {eng.engagerProfileUrl ? (
+                                          <a
+                                            href={eng.engagerProfileUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-[13px] font-medium text-[#1D1D1D] hover:text-[#0a66c2]"
+                                          >
+                                            {eng.engagerName}
+                                          </a>
+                                        ) : (
+                                          <span className="text-[13px] font-medium text-[#1D1D1D]">
+                                            {eng.engagerName}
+                                          </span>
+                                        )}
+                                      </div>
+                                      {eng.engagerHeadline && (
+                                        <p className="text-[11px] text-[#9a9a9a] truncate">
+                                          {eng.engagerHeadline}
+                                        </p>
+                                      )}
+                                      {eng.commentText && (
+                                        <p className="text-[12px] text-[#6a6a6a] mt-1 italic">
+                                          &ldquo;{eng.commentText}&rdquo;
+                                        </p>
+                                      )}
+                                    </div>
+                                    <div className="shrink-0">
+                                      <InstallerLinker
+                                        engagement={eng}
+                                        onLink={(installerId) =>
+                                          linkEngagement(post.id, eng.id, installerId)
+                                        }
+                                      />
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         ) : (
           <div className="flex items-center justify-center h-full text-[#9a9a9a]">
@@ -691,6 +997,100 @@ export function CompetitorDashboard() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// Inline installer search/link control for a single engager.
+function InstallerLinker({
+  engagement,
+  onLink,
+}: {
+  engagement: Engagement;
+  onLink: (installerId: number | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const [results, setResults] = useState<InstallerSearchResult[]>([]);
+
+  const search = async (val: string) => {
+    setQ(val);
+    if (val.length < 2) {
+      setResults([]);
+      return;
+    }
+    const res = await fetch(`/api/installers?search=${encodeURIComponent(val)}&pageSize=6`);
+    const data = await res.json();
+    setResults(data.installers || []);
+  };
+
+  // Already matched — show the installer with an unlink action
+  if (engagement.installerId) {
+    return (
+      <span className="inline-flex items-center gap-1">
+        <Link
+          href={`/installers/${engagement.installerId}`}
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#eef9fd] text-[#2596be] text-[11px] font-medium hover:bg-[#dcf2fa] transition-colors max-w-[160px]"
+        >
+          <Building2 className="h-3 w-3 shrink-0" />
+          <span className="truncate">{engagement.installerName || "Installer"}</span>
+        </Link>
+        <button
+          onClick={() => onLink(null)}
+          title="Unlink installer"
+          className="p-0.5 rounded hover:bg-red-50 text-[#d0d0d0] hover:text-red-500 transition-colors"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      </span>
+    );
+  }
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-dashed border-[#d0d0d0] text-[11px] text-[#9a9a9a] hover:border-[#4ABDE8] hover:text-[#4ABDE8] transition-colors"
+      >
+        <Link2 className="h-3 w-3" /> Link installer
+      </button>
+    );
+  }
+
+  return (
+    <div className="relative w-[200px]">
+      <Input
+        autoFocus
+        placeholder="Search installers..."
+        value={q}
+        onChange={(e) => search(e.target.value)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        className="h-7 text-[12px]"
+      />
+      {results.length > 0 && (
+        <div className="absolute z-20 top-full right-0 mt-1 w-full bg-white border border-[#ebebeb] rounded-lg shadow-lg max-h-[200px] overflow-y-auto">
+          {results.map((inst) => (
+            <button
+              key={inst.id}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                onLink(inst.id);
+                setOpen(false);
+                setQ("");
+                setResults([]);
+              }}
+              className="w-full text-left px-3 py-2 hover:bg-[#f5f5f5] border-b border-[#f5f5f5] last:border-0"
+            >
+              <span className="text-[12px] font-medium text-[#1D1D1D]">
+                {inst.companyName}
+              </span>
+              {inst.postcode && (
+                <span className="text-[10px] text-[#9a9a9a] ml-2">{inst.postcode}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

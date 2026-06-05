@@ -7,7 +7,7 @@ import {
   competitorPostEngagement,
   installers,
 } from "@/lib/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 
 const COMPANY_POSTS_ACTOR = "harvestapi/linkedin-company-posts";
 const PROFILE_POSTS_ACTOR = "harvestapi/linkedin-profile-posts";
@@ -147,40 +147,42 @@ export async function scrapePostReactions(
 
   try {
     const run = await client.actor(POST_REACTIONS_ACTOR).start({
-      postUrls,
-      maxReactions: 100,
+      posts: postUrls,
+      maxItems: 100,
     });
     await client.run(run.id).waitForFinish({ waitSecs: 120 });
     const { items } = await client.dataset(run.defaultDatasetId).listItems();
 
     for (const item of items as Record<string, unknown>[]) {
-      const name = (item.name as string) || (item.fullName as string) || "";
+      const actor = item.actor as Record<string, unknown> | undefined;
+      const name = (actor?.name as string) || "";
       if (!name) continue;
 
-      const headline = (item.headline as string) || null;
-      const profileUrl = (item.linkedinUrl as string) || (item.profileUrl as string) || null;
+      const profileId = (actor?.id as string) || null;
+      const headline = (actor?.position as string) || null;
+      const profileUrl = (actor?.linkedinUrl as string) || null;
       const company = extractCompany(headline);
-      const postUrl = (item.postUrl as string) || (item.sourceUrl as string) || "";
+      const query = item.query as Record<string, unknown> | undefined;
+      const postUrl = (query?.post as string) || "";
 
       const matchedPost = matchPostToStored(postUrl, posts);
       if (!matchedPost) continue;
 
-      const installerId = company ? await findInstallerByCompany(company) : null;
-      if (installerId) matched++;
-
       try {
-        await db.insert(competitorPostEngagement).values({
-          postId: matchedPost.dbId,
+        const res = await upsertEngagement({
+          postDbId: matchedPost.dbId,
           competitorId,
-          engagerName: name,
-          engagerHeadline: headline,
-          engagerProfileUrl: profileUrl,
-          engagerCompany: company,
-          installerId,
+          profileId,
+          name,
+          headline,
+          profileUrl,
+          company,
           engagementType: "like",
-          scrapedAt: now,
+          commentText: null,
+          now,
         });
-        engagements++;
+        if (res.inserted) engagements++;
+        if (res.matched) matched++;
       } catch {
         errors++;
       }
@@ -214,45 +216,50 @@ export async function scrapePostComments(
 
   try {
     const run = await client.actor(POST_COMMENTS_ACTOR).start({
-      postUrls,
-      maxComments: 100,
+      posts: postUrls,
+      maxItems: 100,
+      scrapeReplies: true,
     });
     await client.run(run.id).waitForFinish({ waitSecs: 120 });
     const { items } = await client.dataset(run.defaultDatasetId).listItems();
 
     for (const item of items as Record<string, unknown>[]) {
-      const author = item.author as Record<string, unknown> | undefined;
-      const name = (author?.name as string) || (item.name as string) || "";
-      if (!name) continue;
-
-      const headline = (author?.headline as string) || (item.headline as string) || null;
-      const profileUrl = (author?.linkedinUrl as string) || (item.profileUrl as string) || null;
-      const company = extractCompany(headline);
-      const commentText = (item.text as string) || (item.comment as string) || null;
-      const postUrl = (item.postUrl as string) || (item.sourceUrl as string) || "";
-
+      const query = item.query as Record<string, unknown> | undefined;
+      const postUrl = (query?.post as string) || "";
       const matchedPost = matchPostToStored(postUrl, posts);
       if (!matchedPost) continue;
 
-      const installerId = company ? await findInstallerByCompany(company) : null;
-      if (installerId) matched++;
+      // Capture the top-level comment plus any replies — each is a person who engaged
+      const replies = (item.replies as Record<string, unknown>[]) || [];
+      for (const c of [item, ...replies]) {
+        const actor = c.actor as Record<string, unknown> | undefined;
+        const name = (actor?.name as string) || "";
+        if (!name) continue;
 
-      try {
-        await db.insert(competitorPostEngagement).values({
-          postId: matchedPost.dbId,
-          competitorId,
-          engagerName: name,
-          engagerHeadline: headline,
-          engagerProfileUrl: profileUrl,
-          engagerCompany: company,
-          installerId,
-          engagementType: "comment",
-          commentText,
-          scrapedAt: now,
-        });
-        engagements++;
-      } catch {
-        errors++;
+        const profileId = (actor?.id as string) || null;
+        const headline = (actor?.position as string) || null;
+        const profileUrl = (actor?.linkedinUrl as string) || null;
+        const company = extractCompany(headline);
+        const commentText = (c.commentary as string) || null;
+
+        try {
+          const res = await upsertEngagement({
+            postDbId: matchedPost.dbId,
+            competitorId,
+            profileId,
+            name,
+            headline,
+            profileUrl,
+            company,
+            engagementType: "comment",
+            commentText,
+            now,
+          });
+          if (res.inserted) engagements++;
+          if (res.matched) matched++;
+        } catch {
+          errors++;
+        }
       }
     }
   } catch (err) {
@@ -263,7 +270,104 @@ export async function scrapePostComments(
   return { posts: posts.length, engagements, matchedInstallers: matched, errors };
 }
 
+/**
+ * Load all stored posts for a competitor as engagement-scrape targets.
+ * Used to (re)scrape reactions/comments for posts already in the DB.
+ */
+export async function loadStoredPosts(
+  competitorId: number
+): Promise<{ dbId: number; postUrl: string; postId: string | null }[]> {
+  const rows = await db
+    .select({
+      dbId: competitorPosts.id,
+      postUrl: competitorPosts.postUrl,
+      postId: competitorPosts.postId,
+    })
+    .from(competitorPosts)
+    .where(eq(competitorPosts.competitorId, competitorId));
+
+  return rows
+    .filter((r) => r.postUrl)
+    .map((r) => ({ dbId: r.dbId, postUrl: r.postUrl as string, postId: r.postId }));
+}
+
 // ── Helpers ──
+
+/**
+ * Insert an engager, or update the descriptive fields of an existing one.
+ * Dedupes on (post, profile URL or name, engagement type) so re-scrapes don't
+ * duplicate rows — and preserves any installer link (manual or auto) that was
+ * already set, so refreshing engagement never wipes a match the user made.
+ */
+async function upsertEngagement(opts: {
+  postDbId: number;
+  competitorId: number;
+  profileId: string | null;
+  name: string;
+  headline: string | null;
+  profileUrl: string | null;
+  company: string | null;
+  engagementType: string;
+  commentText: string | null;
+  now: string;
+}): Promise<{ inserted: boolean; matched: boolean }> {
+  // Identity key, in order of reliability: stable LinkedIn member id → profile
+  // URL → name. The member id (actor.id) is the same across reactions, comments
+  // and future scrapes even if the person's vanity URL or name changes.
+  const identity = opts.profileId
+    ? eq(competitorPostEngagement.engagerProfileId, opts.profileId)
+    : opts.profileUrl
+      ? eq(competitorPostEngagement.engagerProfileUrl, opts.profileUrl)
+      : eq(competitorPostEngagement.engagerName, opts.name);
+
+  const [existing] = await db
+    .select({
+      id: competitorPostEngagement.id,
+      installerId: competitorPostEngagement.installerId,
+    })
+    .from(competitorPostEngagement)
+    .where(
+      and(
+        eq(competitorPostEngagement.postId, opts.postDbId),
+        eq(competitorPostEngagement.engagementType, opts.engagementType),
+        identity
+      )
+    )
+    .limit(1);
+
+  if (existing) {
+    await db
+      .update(competitorPostEngagement)
+      .set({
+        engagerProfileId: opts.profileId,
+        engagerName: opts.name,
+        engagerHeadline: opts.headline,
+        engagerProfileUrl: opts.profileUrl,
+        engagerCompany: opts.company,
+        commentText: opts.commentText,
+        scrapedAt: opts.now,
+        // installerId intentionally left untouched to preserve existing links
+      })
+      .where(eq(competitorPostEngagement.id, existing.id));
+    return { inserted: false, matched: existing.installerId != null };
+  }
+
+  const installerId = opts.company ? await findInstallerByCompany(opts.company) : null;
+  await db.insert(competitorPostEngagement).values({
+    postId: opts.postDbId,
+    competitorId: opts.competitorId,
+    engagerProfileId: opts.profileId,
+    engagerName: opts.name,
+    engagerHeadline: opts.headline,
+    engagerProfileUrl: opts.profileUrl,
+    engagerCompany: opts.company,
+    installerId,
+    engagementType: opts.engagementType,
+    commentText: opts.commentText,
+    scrapedAt: opts.now,
+  });
+  return { inserted: true, matched: installerId != null };
+}
 
 function extractActivityId(url: string): string | null {
   const match = url.match(/activity[:-](\d+)/);

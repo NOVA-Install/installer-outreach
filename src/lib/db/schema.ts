@@ -700,6 +700,7 @@ export const competitorPostEngagement = pgTable("competitor_post_engagement", {
     .references(() => competitors.id),
   // The person who engaged
   engagerName: text("engager_name").notNull(),
+  engagerProfileId: text("engager_profile_id"), // stable LinkedIn member URN (actor.id) — survives vanity-URL/name changes
   engagerHeadline: text("engager_headline"),
   engagerProfileUrl: text("engager_profile_url"),
   engagerCompany: text("engager_company"),
