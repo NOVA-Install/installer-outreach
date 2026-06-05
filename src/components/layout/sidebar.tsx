@@ -15,6 +15,7 @@ import {
   TrendingUp,
   Settings,
   Send,
+  Swords,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CommandK } from "@/components/layout/command-k";
@@ -27,6 +28,7 @@ const navItems = [
   { href: "/outreach", label: "Outreach", icon: Send },
   { href: "/enrichment", label: "Enrichment", icon: Sparkles },
   { href: "/price-tracker", label: "Price Tracker", icon: TrendingUp },
+  { href: "/competitors", label: "Competitors", icon: Swords },
   { href: "/mystery-shopping", label: "Mystery Shopping", icon: ShoppingCart },
   { href: "/import", label: "Import Data", icon: Upload },
 ];

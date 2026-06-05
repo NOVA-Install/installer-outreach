@@ -598,6 +598,74 @@ export const linkedInPostsBulk = inngest.createFunction(
   }
 );
 
+// ── Competitor Post Scraping ─────────────────────────
+// Scrapes posts + reactions + comments for a single competitor
+
+export const competitorPostScrape = inngest.createFunction(
+  {
+    id: "competitor-post-scrape",
+    retries: 1,
+    triggers: [{ event: "competitor/scrape-posts" }],
+  },
+  async ({ event, step }) => {
+    const competitorId = event.data.competitorId as number;
+    const jobId = await step.run("create-job", () => createJob("competitor_posts"));
+
+    // Step 1: Scrape company + employee posts
+    const postResult = await step.run("scrape-posts", async () => {
+      const { scrapeCompetitorPosts } = await import("@/lib/enrichment/competitor-posts");
+      return scrapeCompetitorPosts(competitorId);
+    });
+
+    if (postResult.error) {
+      await step.run("fail-job", () => failJob(jobId, postResult.error));
+      return { jobId, error: postResult.error };
+    }
+
+    const totalPosts = postResult.storedPosts.length;
+    await step.run("update-after-posts", () =>
+      updateJobProgress(jobId, 1, 0, 3) // 3 steps: posts, reactions, comments
+    );
+
+    // Step 2: Scrape reactions in batches of 10 posts
+    let totalEngagements = 0;
+    let totalMatched = 0;
+    let totalErrors = 0;
+    const BATCH_SIZE = 10;
+
+    for (let i = 0; i < postResult.storedPosts.length; i += BATCH_SIZE) {
+      const batch = postResult.storedPosts.slice(i, i + BATCH_SIZE);
+      const result = await step.run(`reactions-batch-${i}`, async () => {
+        const { scrapePostReactions } = await import("@/lib/enrichment/competitor-posts");
+        return scrapePostReactions(competitorId, batch);
+      });
+      totalEngagements += result.engagements;
+      totalMatched += result.matchedInstallers;
+      totalErrors += result.errors;
+    }
+
+    await step.run("update-after-reactions", () =>
+      updateJobProgress(jobId, 2, totalErrors, 3)
+    );
+
+    // Step 3: Scrape comments in batches of 10 posts
+    for (let i = 0; i < postResult.storedPosts.length; i += BATCH_SIZE) {
+      const batch = postResult.storedPosts.slice(i, i + BATCH_SIZE);
+      const result = await step.run(`comments-batch-${i}`, async () => {
+        const { scrapePostComments } = await import("@/lib/enrichment/competitor-posts");
+        return scrapePostComments(competitorId, batch);
+      });
+      totalEngagements += result.engagements;
+      totalMatched += result.matchedInstallers;
+      totalErrors += result.errors;
+    }
+
+    await step.run("complete-job", () => completeJob(jobId, 3, totalErrors));
+
+    return { jobId, totalPosts, totalEngagements, totalMatched };
+  }
+);
+
 import { mysteryShoppingFunctions } from "./mystery-shopping";
 
 // Export all functions for the serve handler
@@ -618,5 +686,6 @@ export const allFunctions = [
   linkedInCompanyLookup,
   linkedInEmployeesBulk,
   linkedInPostsBulk,
+  competitorPostScrape,
   ...mysteryShoppingFunctions,
 ];
