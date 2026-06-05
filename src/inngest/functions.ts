@@ -666,6 +666,58 @@ export const competitorPostScrape = inngest.createFunction(
   }
 );
 
+// ── Competitor Engagement Scraping ───────────────────
+// (Re)scrapes reactions + comments for a competitor's already-stored posts.
+// Lets us backfill engagement for posts scraped before this worked, and refresh
+// it on demand without re-fetching the posts themselves.
+export const competitorEngagementScrape = inngest.createFunction(
+  {
+    id: "competitor-engagement-scrape",
+    retries: 1,
+    triggers: [{ event: "competitor/scrape-engagement" }],
+  },
+  async ({ event, step }) => {
+    const competitorId = event.data.competitorId as number;
+    const jobId = await step.run("create-job", () => createJob("competitor_engagement"));
+
+    const posts = await step.run("load-posts", async () => {
+      const { loadStoredPosts } = await import("@/lib/enrichment/competitor-posts");
+      return loadStoredPosts(competitorId);
+    });
+
+    let totalEngagements = 0;
+    let totalMatched = 0;
+    let totalErrors = 0;
+    const BATCH_SIZE = 10;
+
+    for (let i = 0; i < posts.length; i += BATCH_SIZE) {
+      const batch = posts.slice(i, i + BATCH_SIZE);
+      const result = await step.run(`reactions-batch-${i}`, async () => {
+        const { scrapePostReactions } = await import("@/lib/enrichment/competitor-posts");
+        return scrapePostReactions(competitorId, batch);
+      });
+      totalEngagements += result.engagements;
+      totalMatched += result.matchedInstallers;
+      totalErrors += result.errors;
+    }
+
+    for (let i = 0; i < posts.length; i += BATCH_SIZE) {
+      const batch = posts.slice(i, i + BATCH_SIZE);
+      const result = await step.run(`comments-batch-${i}`, async () => {
+        const { scrapePostComments } = await import("@/lib/enrichment/competitor-posts");
+        return scrapePostComments(competitorId, batch);
+      });
+      totalEngagements += result.engagements;
+      totalMatched += result.matchedInstallers;
+      totalErrors += result.errors;
+    }
+
+    await step.run("complete-job", () => completeJob(jobId, posts.length, totalErrors));
+
+    return { jobId, posts: posts.length, totalEngagements, totalMatched };
+  }
+);
+
 import { mysteryShoppingFunctions } from "./mystery-shopping";
 
 // Export all functions for the serve handler
@@ -687,5 +739,6 @@ export const allFunctions = [
   linkedInEmployeesBulk,
   linkedInPostsBulk,
   competitorPostScrape,
+  competitorEngagementScrape,
   ...mysteryShoppingFunctions,
 ];

@@ -48,6 +48,22 @@ export async function POST(
     const now = new Date().toISOString();
     let inserted = 0;
 
+    // Load existing employees for this competitor once so we can dedupe in
+    // memory. LinkedIn returns the same person under different profile-URL
+    // formats across scrapes (public vanity slug vs opaque URN), so matching
+    // on exact URL alone misses duplicates — we also match on name.
+    const existingEmployees = await db
+      .select({
+        id: competitorEmployees.id,
+        fullName: competitorEmployees.fullName,
+        profileUrl: competitorEmployees.profileUrl,
+        headline: competitorEmployees.headline,
+        avatarUrl: competitorEmployees.avatarUrl,
+        role: competitorEmployees.role,
+      })
+      .from(competitorEmployees)
+      .where(eq(competitorEmployees.competitorId, competitorId));
+
     for (const item of items) {
       const employee = item as Record<string, unknown>;
       const fullName =
@@ -61,21 +77,43 @@ export async function POST(
       const positions = employee.currentPositions as Record<string, unknown>[] | undefined;
       const jobTitle = (positions?.[0]?.title as string) || null;
 
-      // Upsert by competitor + profile URL to avoid duplicates
-      if (profileUrl) {
-        const existing = await db
-          .select({ id: competitorEmployees.id })
-          .from(competitorEmployees)
-          .where(eq(competitorEmployees.profileUrl, profileUrl))
-          .limit(1);
+      // Match an existing row by exact profile URL, else by name (case-insensitive)
+      const match = existingEmployees.find(
+        (e) =>
+          (profileUrl && e.profileUrl === profileUrl) ||
+          e.fullName.toLowerCase() === fullName.toLowerCase()
+      );
 
-        if (existing.length > 0) {
-          await db
-            .update(competitorEmployees)
-            .set({ fullName, headline, avatarUrl, role: jobTitle, lastSeenAt: now })
-            .where(eq(competitorEmployees.id, existing[0].id));
-        } else {
-          await db.insert(competitorEmployees).values({
+      if (match) {
+        // Preserve existing values when this scrape didn't return them — the
+        // "Short" scrape mode often omits the picture/headline, and we don't
+        // want a re-scrape to wipe data a previous richer scrape captured.
+        const mergedProfileUrl = profileUrl ?? match.profileUrl;
+        const mergedHeadline = headline ?? match.headline;
+        const mergedAvatarUrl = avatarUrl ?? match.avatarUrl;
+        const mergedRole = jobTitle ?? match.role;
+
+        await db
+          .update(competitorEmployees)
+          .set({
+            fullName,
+            headline: mergedHeadline,
+            profileUrl: mergedProfileUrl,
+            avatarUrl: mergedAvatarUrl,
+            role: mergedRole,
+            lastSeenAt: now,
+          })
+          .where(eq(competitorEmployees.id, match.id));
+
+        // Reflect merged values locally so later items in this batch match too
+        match.profileUrl = mergedProfileUrl;
+        match.headline = mergedHeadline;
+        match.avatarUrl = mergedAvatarUrl;
+        match.role = mergedRole;
+      } else {
+        const [created] = await db
+          .insert(competitorEmployees)
+          .values({
             competitorId,
             fullName,
             headline,
@@ -83,17 +121,15 @@ export async function POST(
             avatarUrl,
             role: jobTitle,
             lastSeenAt: now,
-          });
-          inserted++;
-        }
-      } else {
-        await db.insert(competitorEmployees).values({
-          competitorId,
+          })
+          .returning({ id: competitorEmployees.id });
+        existingEmployees.push({
+          id: created.id,
           fullName,
+          profileUrl,
           headline,
           avatarUrl,
           role: jobTitle,
-          lastSeenAt: now,
         });
         inserted++;
       }
