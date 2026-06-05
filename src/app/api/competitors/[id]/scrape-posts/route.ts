@@ -66,16 +66,17 @@ export async function POST(
 
     const employeeUrls = employees
       .filter((e) => e.profileUrl)
+      .slice(0, 20) // Cap to avoid timeout
       .map((e) => e.profileUrl!);
 
     let employeePostItems: Record<string, unknown>[] = [];
     if (employeeUrls.length > 0) {
       const profileRun = await client.actor(PROFILE_POSTS_ACTOR).start({
         targetUrls: employeeUrls,
-        maxPosts: 5,
+        maxPosts: 3,
         postedLimit: "month",
       });
-      await client.run(profileRun.id).waitForFinish({ waitSecs: 120 });
+      await client.run(profileRun.id).waitForFinish({ waitSecs: 180 });
       employeePostItems = (await client.dataset(profileRun.defaultDatasetId).listItems())
         .items as Record<string, unknown>[];
     }
@@ -86,7 +87,7 @@ export async function POST(
       ...employeePostItems,
     ];
 
-    const storedPostIds: { dbId: number; postUrl: string }[] = [];
+    const storedPostIds: { dbId: number; postUrl: string; postId: string | null }[] = [];
 
     for (const post of allPosts) {
       const postId = (post.id as string) || (post.urn as string) || null;
@@ -123,7 +124,7 @@ export async function POST(
           .returning({ id: competitorPosts.id });
 
         if (inserted && postUrl) {
-          storedPostIds.push({ dbId: inserted.id, postUrl });
+          storedPostIds.push({ dbId: inserted.id, postUrl, postId });
           totalPosts++;
         }
       } catch {
@@ -155,7 +156,7 @@ export async function POST(
         const reactorCompany = extractCompany(reactorHeadline);
         const postUrl = (reaction.postUrl as string) || (reaction.sourceUrl as string) || "";
 
-        const matchedPost = postsToScrape.find((p) => postUrl.includes(p.postUrl) || p.postUrl.includes(postUrl));
+        const matchedPost = matchPostToStored(postUrl, postsToScrape);
         if (!matchedPost) continue;
 
         const matchedInstaller = reactorCompany
@@ -196,7 +197,7 @@ export async function POST(
         const commentText = (comment.text as string) || (comment.comment as string) || null;
         const postUrl = (comment.postUrl as string) || (comment.sourceUrl as string) || "";
 
-        const matchedPost = postsToScrape.find((p) => postUrl.includes(p.postUrl) || p.postUrl.includes(postUrl));
+        const matchedPost = matchPostToStored(postUrl, postsToScrape);
         if (!matchedPost) continue;
 
         const matchedInstaller = commenterCompany
@@ -233,6 +234,33 @@ export async function POST(
       { status: 500 }
     );
   }
+}
+
+/** Extract activity ID from a LinkedIn post URL */
+function extractActivityId(url: string): string | null {
+  const match = url.match(/activity[:-](\d+)/);
+  return match?.[1] ?? null;
+}
+
+/** Match a reaction/comment postUrl back to a stored post */
+function matchPostToStored(
+  url: string,
+  stored: { dbId: number; postUrl: string; postId: string | null }[]
+): (typeof stored)[0] | undefined {
+  if (!url) return undefined;
+  // Try exact URL match first
+  const exact = stored.find((p) => p.postUrl === url);
+  if (exact) return exact;
+  // Try activity ID match
+  const actId = extractActivityId(url);
+  if (actId) {
+    const byActivity = stored.find(
+      (p) => p.postUrl.includes(actId) || p.postId?.includes(actId)
+    );
+    if (byActivity) return byActivity;
+  }
+  // Fallback: substring match
+  return stored.find((p) => url.includes(p.postUrl) || p.postUrl.includes(url));
 }
 
 /** Extract company name from a LinkedIn headline like "Solar Engineer at Green Energy Co" */
