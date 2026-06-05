@@ -50,7 +50,7 @@ export async function scrapeCompetitorPosts(competitorId: number): Promise<{
   // Scrape company page posts (last 30 days)
   const companyRun = await client.actor(COMPANY_POSTS_ACTOR).start({
     companies: [competitor.linkedinUrl],
-    maxPosts: 500,
+    maxPosts: 100,
     postedLimit: "month",
   });
   await client.run(companyRun.id).waitForFinish({ waitSecs: 120 });
